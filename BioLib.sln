@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.4.33403.182
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BioLib", "BioLib.csproj", "{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D8A3AACA-55FE-470D-AB8B-B1DD339AA182}
+	EndGlobalSection
+EndGlobal
