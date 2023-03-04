@@ -21,3 +21,9 @@ packages
 *.properties
 *.TMP
 *.vsidx
+*.json
+*.props
+*.targets
+*.v2
+*.v2
+*.v2

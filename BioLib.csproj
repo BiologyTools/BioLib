@@ -12,13 +12,25 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>1.0.0</AssemblyVersion>
-    <FileVersion>1.0.0</FileVersion>
+    <AssemblyVersion>1.2.1</AssemblyVersion>
+    <FileVersion>1.2.1</FileVersion>
+    <PackageVersion>1.2.1</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
-    <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy;</PackageTags>
+    <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
+    <PackageReleaseNotes>Added support for .ndpi whole slide images.</PackageReleaseNotes>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="bioformats_package.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="bioformats_package.dll">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
   <ItemGroup>
     <None Include="..\..\BioCore\BioCore\banner.jpg">
@@ -34,6 +46,10 @@
     <PackageReference Include="CS-Script" Version="4.6.2" />
     <PackageReference Include="IKVM" Version="8.4.5" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+    <PackageReference Include="NuGet.Build.Tasks.Pack" Version="6.5.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -43,9 +59,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="bioformats_package.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="README.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
