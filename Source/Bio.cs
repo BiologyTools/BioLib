@@ -129,7 +129,7 @@ namespace BioGTK
         /// 
         /// @param id The id of the image to update.
         /// @param im The BioImage to update with.
-        /// @return The image is being returned.
+        /// @return The image is being returned.d
         public static void UpdateImage(BioImage im)
         {
             for (int i = 0; i < images.Count; i++)
@@ -321,6 +321,11 @@ namespace BioGTK
             Ellipse,
             Label
         }
+        public enum CoordinateSystem
+        {
+            pixel,
+            micron
+        }
         /* A property of a class. */
         public PointD Point
         {
@@ -440,7 +445,7 @@ namespace BioGTK
             get { return resolution; }
             set { resolution = value; }
         }
-
+        public CoordinateSystem coordinateSystem = CoordinateSystem.micron;
         public Type type;
         public static float selectBoxSize = 8f;
         private List<PointD> Points = new List<PointD>();
@@ -2811,6 +2816,8 @@ namespace BioGTK
         /// @return The return value is a double.
         public double ToImageSpaceX(double x)
         {
+            if (isPyramidal)
+                return x;
             return (float)((x - stageSizeX) / physicalSizeX);
         }
         /// > Convert a Y coordinate from stage space to image space
@@ -2820,6 +2827,8 @@ namespace BioGTK
         /// @return The return value is the y-coordinate of the image.
         public double ToImageSpaceY(double y)
         {
+            if (isPyramidal)
+                return y;
             return (float)((y - stageSizeY) / physicalSizeY);
         }
         /// Convert a point in the stage coordinate system to a point in the image coordinate system
@@ -5020,10 +5029,13 @@ namespace BioGTK
             st.Start();
             BioImage b = new BioImage(file);
             b.Loading = true;
-            b.meta = (IMetadata)((OMEXMLService)new ServiceFactory().getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
+            if (b.meta == null)
+                b.meta = (IMetadata)((OMEXMLService)new ServiceFactory().getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
             string f = file.Replace("\\", "/");
-            if (reader.getCurrentFile() != f)
+            string cf = reader.getCurrentFile();
+            if (cf != f)
             {
+                reader.setMetadataStore(b.meta);
                 reader.setId(file);
             }
             reader.setSeries(serie);
@@ -5541,6 +5553,7 @@ namespace BioGTK
                         zc = b.meta.getPlaneTheZ(serie, bi).getNumberValue().intValue();
                     if (b.meta.getPlaneTheC(serie, bi) != null)
                         tc = b.meta.getPlaneTheT(serie, bi).getNumberValue().intValue();
+                    pl.Coordinate = new ZCT(zc, cc, tc);
                     if (b.meta.getPlaneDeltaT(serie, bi) != null)
                         pl.Delta = b.meta.getPlaneDeltaT(serie, bi).value().doubleValue();
                     if (b.meta.getPlaneExposureTime(serie, bi) != null)
@@ -5583,13 +5596,6 @@ namespace BioGTK
             b.Loading = false;
             return b;
         }
-        /// 
-        /// @param file the path to the file
-        /// @param serie the serie number of the image to open
-        /// @param tilex the x coordinate of the tile you want to open
-        /// @param tiley the y coordinate of the tile
-        /// @param tileSizeX the width of the tile in pixels
-        /// @param tileSizeY the height of the tile in pixels
         ImageReader imRead;
         /// It reads a tile from a file, and returns a bitmap
         /// 
@@ -5620,6 +5626,43 @@ namespace BioGTK
             bool littleEndian = b.imRead.isLittleEndian();
             int RGBChannelCount = b.imRead.getRGBChannelCount();
             b.bitsPerPixel = b.imRead.getBitsPerPixel();
+            b.physicalSizeX = (96 / 2.54) / 1000;
+            b.physicalSizeY = (96 / 2.54) / 1000;
+            b.physicalSizeZ = 1;
+            try
+            {
+                bool hasPhysical = false;
+                if (b.meta.getPixelsPhysicalSizeX(b.series) != null)
+                {
+                    b.physicalSizeX = b.meta.getPixelsPhysicalSizeX(b.series).value().doubleValue();
+                    hasPhysical = true;
+                }
+                if (b.meta.getPixelsPhysicalSizeY(b.series) != null)
+                {
+                    b.physicalSizeY = b.meta.getPixelsPhysicalSizeY(b.series).value().doubleValue();
+                }
+                if (b.meta.getPixelsPhysicalSizeZ(b.series) != null)
+                {
+                    b.physicalSizeZ = b.meta.getPixelsPhysicalSizeZ(b.series).value().doubleValue();
+                }
+                else
+                {
+                    b.physicalSizeZ = 1;
+                }
+
+                if (b.meta.getStageLabelX(b.series) != null)
+                    b.stageSizeX = b.meta.getStageLabelX(b.series).value().doubleValue();
+                if (b.meta.getStageLabelY(b.series) != null)
+                    b.stageSizeY = b.meta.getStageLabelY(b.series).value().doubleValue();
+                if (b.meta.getStageLabelZ(b.series) != null)
+                    b.stageSizeZ = b.meta.getStageLabelZ(b.series).value().doubleValue();
+                else
+                    b.stageSizeZ = 1;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("No Stage Coordinates. PhysicalSize:(" + b.physicalSizeX + "," + b.physicalSizeY + "," + b.physicalSizeZ + ")");
+            }
 
             PixelFormat PixelFormat = GetPixelFormat(RGBChannelCount, b.bitsPerPixel);
             if (tilex < 0)
@@ -5640,7 +5683,6 @@ namespace BioGTK
                 return null;
             if (sy <= 0)
                 return null;
-            byte[] bytes = null;
             int strplane = 0;
             if (RGBChannelCount == 1)
             {
@@ -5662,47 +5704,64 @@ namespace BioGTK
                 strplane = sx * 4;
             }
 
-            bytes = b.imRead.openBytes(b.Coords[coord.Z, coord.C, coord.Z], tilex, tiley, sx, sy);
-            if (b.file.EndsWith("tif") || b.file.EndsWith("ndpi"))
+            byte[] bytesr = b.imRead.openBytes(b.Coords[coord.Z, coord.C, coord.T], tilex, tiley, sx, sy);
+            bool interleaved = b.imRead.isInterleaved();
+            if (!interleaved)
             {
                 byte[] rb = new byte[strplane * sy];
                 byte[] gb = new byte[strplane * sy];
                 byte[] bb = new byte[strplane * sy];
-                Bitmap[] bfs = new Bitmap[3];
+                int ind = 0;
                 for (int y = 0; y < sy; y++)
                 {
-                    for (int x = 0; x < strplane; x++)
+                    for (int st = 0; st < strplane; st++)
                     {
-                        rb[((strplane) * y) + x] = bytes[((strplane) * y) + x];
-                        gb[((strplane) * y) + x] = bytes[((strplane) * y) + x];
-                        bb[((strplane) * y) + x] = bytes[((strplane) * y) + x];
+                        rb[((strplane) * y) + st] = bytesr[((strplane) * y) + st];
+                        ind++;
                     }
                 }
-                Bitmap binf = null;
+                byte[] bytes = new byte[ind];
+                Array.Copy(bytesr, ind, bytes, 0, ind);
+                for (int y = 0; y < sy; y++)
+                {
+                    int x = 0;
+                    for (int st = 0; st < strplane; st++)
+                    {
+                        int i = ((strplane) * y) + x;
+                        gb[i] = bytes[((strplane) * y) + st];
+                        x++;
+                    }
+                }
+                Array.Copy(bytesr, ind * 2, bytes, 0, ind);
+                for (int y = 0; y < sy; y++)
+                {
+                    int x = 0;
+                    for (int st = 0; st < strplane; st++)
+                    {
+                        int i = ((strplane) * y) + x;
+                        bb[i] = bytes[((strplane) * y) + st];
+                        x++;
+                    }
+                }
+                Bitmap[] bms = new Bitmap[3];
                 if (b.bitsPerPixel == 8)
                 {
-                    bfs[0] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, rb, new ZCT(0, 0, 0), p, littleEndian);
-                    bfs[1] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, gb, new ZCT(0, 0, 0), p, littleEndian);
-                    bfs[2] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, bb, new ZCT(0, 0, 0), p, littleEndian);
-                    binf = Bitmap.RGB8To24(bfs);
+                    bms[2] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, rb, new ZCT(0, 0, 0), p, littleEndian);
+                    bms[1] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, gb, new ZCT(0, 0, 0), p, littleEndian);
+                    bms[0] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, bb, new ZCT(0, 0, 0), p, littleEndian);
+                    return Bitmap.RGB8To24(bms);
                 }
                 else
                 {
-                    bfs[0] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, rb, new ZCT(0, 0, 0), p, littleEndian);
-                    bfs[1] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, gb, new ZCT(0, 0, 0), p, littleEndian);
-                    bfs[2] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, bb, new ZCT(0, 0, 0), p, littleEndian);
-                    binf = Bitmap.RGB16To48(bfs);
+                    bms[2] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, rb, new ZCT(0, 0, 0), p, littleEndian);
+                    bms[1] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, gb, new ZCT(0, 0, 0), p, littleEndian);
+                    bms[0] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, bb, new ZCT(0, 0, 0), p, littleEndian);
+                    return Bitmap.RGB16To48(bms);
                 }
-                return binf;
             }
-            Bitmap bm = new Bitmap(b.file, sx, sy, PixelFormat, bytes, coord, p, littleEndian);
+            Bitmap bm = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, coord, p, littleEndian);
             bm.Stats = Statistics.FromBytes(bm);
             return bm;
-            //else
-            //    bytes = b.imRead.openBytes(b.Coords[coord.Z, coord.C, coord.Z], tilex, tiley, sx, sy);
-            //bf = new Bitmap(b.file, sx, sy, PixelFormat, bytes, coord, p, littleEndian);
-            //bf.SwitchRedBlue();
-            //return bf;
         }
         /// This function sets the minimum and maximum values of the image to the minimum and maximum
         /// values of the stack
