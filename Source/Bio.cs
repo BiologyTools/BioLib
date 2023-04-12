@@ -4400,53 +4400,23 @@ namespace BioGTK
                 int pages = image.NumberOfDirectories() / b.seriesCount;
                 //int stride = image.ScanlineSize();
                 int str = image.ScanlineSize();
-                bool planes = false;
-                //If calculated stride and image scanline size is not the same it means the image is written in planes
+                bool inter = true;
                 if (stride != str)
-                    planes = true;
+                    inter = false;
                 for (int p = series * pages; p < (series + 1) * pages; p++)
                 {
                     image.SetDirectory((short)p);
-                    if (planes)
+                    byte[] bytes = new byte[stride * SizeY];
+                    for (int im = 0, offset = 0; im < SizeY; im++)
                     {
-                        Bitmap[] bfs = new Bitmap[3];
-                        for (int pl = 0; pl < 3; pl++)
-                        {
-                            byte[] bytes = new byte[str * SizeY];
-                            for (int im = 0, offset = 0; im < SizeY; im++)
-                            {
-                                image.ReadScanline(bytes, offset, im, (short)pl);
-                                offset += str;
-                            }
-                            if (b.bitsPerPixel > 8)
-                                bfs[pl] = new Bitmap(file, SizeX, SizeY, PixelFormat.Format16bppGrayScale, bytes, new ZCT(0, 0, 0), p, b.littleEndian);
-                            else
-                                bfs[pl] = new Bitmap(file, SizeX, SizeY, PixelFormat.Format8bppIndexed, bytes, new ZCT(0, 0, 0), p, b.littleEndian);
-                        }
-                        Bitmap bf;
-                        if (b.bitsPerPixel > 8)
-                            bf = Bitmap.RGB16To48(bfs);
-                        else
-                            bf = Bitmap.RGB8To24(bfs);
-                        bf.SwitchRedBlue();
-                        Statistics.CalcStatistics(bf);
-                        b.Buffers.Add(bf);
+                        image.ReadScanline(bytes, offset, im, 0);
+                        offset += stride;
                     }
-                    else
-                    {
-                        byte[] bytes = new byte[stride * SizeY];
-                        for (int im = 0, offset = 0; im < SizeY; im++)
-                        {
-                            image.ReadScanline(bytes, offset, im, 0);
-                            offset += stride;
-                        }
-                        Bitmap inf = new Bitmap(file, SizeX, SizeY, PixelFormat, bytes, new ZCT(0, 0, 0), p, b.littleEndian);
-                        if (inf.PixelFormat == PixelFormat.Format48bppRgb)
-                            inf.SwitchRedBlue();
-                        b.Buffers.Add(inf);
-                        Statistics.CalcStatistics(inf);
-                    }
-                    //progressValue = (float)p / (float)(series + 1) * pages;
+                    Bitmap inf = new Bitmap(file, SizeX, SizeY, PixelFormat, bytes, new ZCT(0, 0, 0), p, b.littleEndian, inter);
+                    if (inf.PixelFormat == PixelFormat.Format48bppRgb)
+                        inf.SwitchRedBlue();
+                    b.Buffers.Add(inf);
+                    Statistics.CalcStatistics(inf);
                 }
                 image.Close();
                 b.UpdateCoords();
@@ -5063,6 +5033,12 @@ namespace BioGTK
             b.series = serie;
             string order = reader.getDimensionOrder();
             PixelFormat PixelFormat = GetPixelFormat(RGBChannelCount, b.bitsPerPixel);
+            ome.xml.model.enums.PixelType ppx = b.meta.getPixelsType(serie);
+            if (ppx == ome.xml.model.enums.PixelType.UINT8 && RGBChannelCount == 3)
+            {
+                PixelFormat = PixelFormat.Format24bppRgb;
+                b.bitsPerPixel = 8;
+            }
             int stride = 0;
             if (RGBChannelCount == 1)
             {
@@ -5504,6 +5480,7 @@ namespace BioGTK
 
             b.Buffers = new List<Bitmap>();
             // read the image data bytes
+            bool inter = reader.isInterleaved();
             int pages = reader.getImageCount();
             int z = 0;
             int c = 0;
@@ -5519,7 +5496,7 @@ namespace BioGTK
                 {
                     //progressValue = (float)p / (float)pages;
                     byte[] bytes = reader.openBytes(p);
-                    bf = new Bitmap(file, SizeX, SizeY, PixelFormat, bytes, new ZCT(z, c, t), p, b.littleEndian);
+                    bf = new Bitmap(file, SizeX, SizeY, PixelFormat, bytes, new ZCT(z, c, t), p, b.littleEndian, inter);
                     b.Buffers.Add(bf);
                 }
             }
@@ -5683,31 +5660,32 @@ namespace BioGTK
                 return null;
             if (sy <= 0)
                 return null;
-            int strplane = 0;
-            if (RGBChannelCount == 1)
-            {
-                if (b.bitsPerPixel > 8)
-                    strplane = sx * 2;
-                else
-                    strplane = sx;
-            }
-            else
-            if (RGBChannelCount == 3)
-            {
-                if (b.bitsPerPixel > 8)
-                    strplane = sx * 2;
-                else
-                    strplane = sx;
-            }
-            else
-            {
-                strplane = sx * 4;
-            }
+            
 
             byte[] bytesr = b.imRead.openBytes(b.Coords[coord.Z, coord.C, coord.T], tilex, tiley, sx, sy);
             bool interleaved = b.imRead.isInterleaved();
             if (!interleaved)
             {
+                int strplane = 0;
+                if (RGBChannelCount == 1)
+                {
+                    if (b.bitsPerPixel > 8)
+                        strplane = sx * 2;
+                    else
+                        strplane = sx;
+                }
+                else
+                if (RGBChannelCount == 3)
+                {
+                    if (b.bitsPerPixel > 8)
+                        strplane = sx * 2;
+                    else
+                        strplane = sx;
+                }
+                else
+                {
+                    strplane = sx * 4;
+                }
                 byte[] rb = new byte[strplane * sy];
                 byte[] gb = new byte[strplane * sy];
                 byte[] bb = new byte[strplane * sy];
@@ -5718,6 +5696,21 @@ namespace BioGTK
                     {
                         rb[((strplane) * y) + st] = bytesr[((strplane) * y) + st];
                         ind++;
+                    }
+                }
+                if (RGBChannelCount == 1)
+                {
+                    if (b.bitsPerPixel == 8)
+                    {
+                        Bitmap bmp = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, rb, new ZCT(0, 0, 0), p, littleEndian, true);
+                        bmp.Stats = Statistics.FromBytes(bmp);
+                        return bmp;
+                    }
+                    else
+                    {
+                        Bitmap bmp = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, rb, new ZCT(0, 0, 0), p, littleEndian, true);
+                        bmp.Stats = Statistics.FromBytes(bmp);
+                        return bmp;
                     }
                 }
                 byte[] bytes = new byte[ind];
@@ -5746,20 +5739,24 @@ namespace BioGTK
                 Bitmap[] bms = new Bitmap[3];
                 if (b.bitsPerPixel == 8)
                 {
-                    bms[2] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, rb, new ZCT(0, 0, 0), p, littleEndian);
-                    bms[1] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, gb, new ZCT(0, 0, 0), p, littleEndian);
-                    bms[0] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, bb, new ZCT(0, 0, 0), p, littleEndian);
-                    return Bitmap.RGB8To24(bms);
+                    bms[2] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, rb, new ZCT(0, 0, 0), p, littleEndian, true);
+                    bms[1] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, gb, new ZCT(0, 0, 0), p, littleEndian, true);
+                    bms[0] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, bb, new ZCT(0, 0, 0), p, littleEndian, true);
+                    Bitmap bmp = Bitmap.RGB8To24(bms);
+                    bmp.Stats = Statistics.FromBytes(bmp);
+                    return bmp;
                 }
                 else
                 {
-                    bms[2] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, rb, new ZCT(0, 0, 0), p, littleEndian);
-                    bms[1] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, gb, new ZCT(0, 0, 0), p, littleEndian);
-                    bms[0] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, bb, new ZCT(0, 0, 0), p, littleEndian);
-                    return Bitmap.RGB16To48(bms);
+                    bms[2] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, rb, new ZCT(0, 0, 0), p, littleEndian, true);
+                    bms[1] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, gb, new ZCT(0, 0, 0), p, littleEndian, true);
+                    bms[0] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, bb, new ZCT(0, 0, 0), p, littleEndian, true);
+                    Bitmap bmp = Bitmap.RGB16To48(bms);
+                    bmp.Stats = Statistics.FromBytes(bmp);
+                    return bmp;
                 }
             }
-            Bitmap bm = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, coord, p, littleEndian);
+            Bitmap bm = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, coord, p, littleEndian, true);
             bm.Stats = Statistics.FromBytes(bm);
             return bm;
         }
