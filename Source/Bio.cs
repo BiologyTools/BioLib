@@ -4993,31 +4993,38 @@ namespace BioGTK
                 return null;
             if (file == null || file == "")
                 throw new InvalidDataException("File is empty or null");
-            //progressValue = 0;
             progFile = file;
-            status = "Opening OME Image";
-            st.Start();
             BioImage b = new BioImage(file);
             b.Loading = true;
             if (b.meta == null)
                 b.meta = (IMetadata)((OMEXMLService)new ServiceFactory().getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
             string f = file.Replace("\\", "/");
             string cf = reader.getCurrentFile();
+            if (cf != null)
+                cf = cf.Replace("\\", "/");
             if (cf != f)
             {
+                status = "Opening OME Image.";
                 reader.setMetadataStore(b.meta);
                 reader.setId(file);
             }
+            status = "Reading OME Metadata.";
             reader.setSeries(serie);
             int RGBChannelCount = reader.getRGBChannelCount();
-            b.bitsPerPixel = reader.getBitsPerPixel();
-            //Sometimes getBitsPerPixel will return an incorrect value
-            if (b.bitsPerPixel > 16)
+
+
+            //OME reader.getBitsPerPixel(); sometimes returns incorrect bits per pixel, like when opening ImageJ images.
+            //So we check the pixel type from xml metadata and if it fails we use the readers value.
+            PixelFormat PixelFormat;
+            try
             {
-                //pr.Close();
-                Console.WriteLine("Image bit depth of " + b.bitsPerPixel + " is not supported.");
-                return null;
+                PixelFormat = GetPixelFormat(RGBChannelCount, b.meta.getPixelsType(serie));
             }
+            catch (Exception)
+            {
+                PixelFormat = GetPixelFormat(RGBChannelCount, reader.getBitsPerPixel());
+            }
+
             b.id = file;
             b.file = file;
             int SizeX, SizeY;
@@ -5032,38 +5039,8 @@ namespace BioGTK
             b.imagesPerSeries = reader.getImageCount();
             b.series = serie;
             string order = reader.getDimensionOrder();
-            PixelFormat PixelFormat = GetPixelFormat(RGBChannelCount, b.bitsPerPixel);
-            ome.xml.model.enums.PixelType ppx = b.meta.getPixelsType(serie);
-            if (ppx == ome.xml.model.enums.PixelType.UINT8 && RGBChannelCount == 3)
-            {
-                PixelFormat = PixelFormat.Format24bppRgb;
-                b.bitsPerPixel = 8;
-            }
-            int stride = 0;
-            if (RGBChannelCount == 1)
-            {
-                if (b.bitsPerPixel > 8)
-                    stride = SizeX * 2;
-                else
-                    stride = SizeX;
-            }
-            else
-            if (RGBChannelCount == 3)
-            {
-                b.sizeC = 1;
-                if (b.bitsPerPixel > 8)
-                    stride = SizeX * 2 * 3;
-                else
-                    stride = SizeX * 3;
-            }
-            else
-            {
-                b.sizeC = 1;
-                stride = SizeX * 4;
-            }
-
             b.Coords = new int[b.SizeZ, b.SizeC, b.SizeT];
-            //Lets get the channels amd initialize them
+            //Lets get the channels and initialize them
             int i = 0;
             while (true)
             {
@@ -5131,14 +5108,18 @@ namespace BioGTK
                 }
                 i++;
             }
-
+            if (b.Channels.Count == 0)
+            {
+                for (int r = 0; r < RGBChannelCount; r++)
+                {
+                    b.Channels.Add(new Channel(r, b.bitsPerPixel, 1));
+                }
+            }
             try
             {
-                bool hasPhysical = false;
                 if (b.meta.getPixelsPhysicalSizeX(b.series) != null)
                 {
                     b.physicalSizeX = b.meta.getPixelsPhysicalSizeX(b.series).value().doubleValue();
-                    hasPhysical = true;
                 }
                 else
                     b.physicalSizeX = (96 / 2.54) / 1000;
@@ -5168,6 +5149,9 @@ namespace BioGTK
             }
             catch (Exception e)
             {
+                b.physicalSizeX = (96 / 2.54) / 1000;
+                b.physicalSizeY = (96 / 2.54) / 1000;
+                b.physicalSizeZ = 1;
                 b.stageSizeX = 0;
                 b.stageSizeY = 0;
                 b.stageSizeZ = 1;
@@ -5480,11 +5464,12 @@ namespace BioGTK
 
             b.Buffers = new List<Bitmap>();
             // read the image data bytes
-            bool inter = reader.isInterleaved();
             int pages = reader.getImageCount();
+            bool inter = reader.isInterleaved();
             int z = 0;
             int c = 0;
             int t = 0;
+            status = "Reading OME Image Planes";
             for (int p = 0; p < pages; p++)
             {
                 Bitmap bf;
@@ -5494,13 +5479,48 @@ namespace BioGTK
                 }
                 else
                 {
-                    //progressValue = (float)p / (float)pages;
                     byte[] bytes = reader.openBytes(p);
                     bf = new Bitmap(file, SizeX, SizeY, PixelFormat, bytes, new ZCT(z, c, t), p, b.littleEndian, inter);
                     b.Buffers.Add(bf);
                 }
             }
+            b.physicalSizeX = (96 / 2.54) / 1000;
+            b.physicalSizeY = (96 / 2.54) / 1000;
+            b.physicalSizeZ = 1;
+            try
+            {
+                bool hasPhysical = false;
+                if (b.meta.getPixelsPhysicalSizeX(b.series) != null)
+                {
+                    b.physicalSizeX = b.meta.getPixelsPhysicalSizeX(b.series).value().doubleValue();
+                    hasPhysical = true;
+                }
+                if (b.meta.getPixelsPhysicalSizeY(b.series) != null)
+                {
+                    b.physicalSizeY = b.meta.getPixelsPhysicalSizeY(b.series).value().doubleValue();
+                }
+                if (b.meta.getPixelsPhysicalSizeZ(b.series) != null)
+                {
+                    b.physicalSizeZ = b.meta.getPixelsPhysicalSizeZ(b.series).value().doubleValue();
+                }
+                else
+                {
+                    b.physicalSizeZ = 1;
+                }
 
+                if (b.meta.getStageLabelX(b.series) != null)
+                    b.stageSizeX = b.meta.getStageLabelX(b.series).value().doubleValue();
+                if (b.meta.getStageLabelY(b.series) != null)
+                    b.stageSizeY = b.meta.getStageLabelY(b.series).value().doubleValue();
+                if (b.meta.getStageLabelZ(b.series) != null)
+                    b.stageSizeZ = b.meta.getStageLabelZ(b.series).value().doubleValue();
+                else
+                    b.stageSizeZ = 1;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("No Stage Coordinates. PhysicalSize:(" + b.physicalSizeX + "," + b.physicalSizeY + "," + b.physicalSizeZ + ")");
+            }
             int pls;
             try
             {
@@ -5537,7 +5557,16 @@ namespace BioGTK
                         pl.Exposure = b.meta.getPlaneExposureTime(serie, bi).value().doubleValue();
                     b.Buffers[bi].Plane = pl;
                 }
-
+            if (tile)
+            {
+                double dw = b.physicalSizeX * tilex;
+                double dh = b.physicalSizeY * tiley;
+                double dd = b.physicalSizeZ * b.Buffers.Count;
+                b.Volume.Location = new Point3D(dw + b.imageInfo.StageSizeX, dh + b.imageInfo.StageSizeY, dd + b.imageInfo.StageSizeZ);
+                b.Volume.Width = dw;
+                b.Volume.Height = dh;
+                b.Volume.Depth = dd;
+            }
             b.UpdateCoords(b.SizeZ, b.SizeC, b.SizeT, order);
             //We use a try block to close the reader as sometimes this will cause an error.
             bool stop = false;
@@ -5553,16 +5582,6 @@ namespace BioGTK
 
                 }
             } while (!stop);
-            if (tile)
-            {
-                double dw = b.physicalSizeX * tilex;
-                double dh = b.physicalSizeY * tiley;
-                double dd = b.physicalSizeZ * b.Buffers.Count;
-                b.Volume.Location = new Point3D(dw + b.imageInfo.StageSizeX, dh + b.imageInfo.StageSizeY, dd + b.imageInfo.StageSizeZ);
-                b.Volume.Width = dw;
-                b.Volume.Height = dh;
-                b.Volume.Depth = dd;
-            }
             AutoThreshold(b, false);
             if (b.bitsPerPixel > 8)
                 b.StackThreshold(true);
@@ -5603,44 +5622,6 @@ namespace BioGTK
             bool littleEndian = b.imRead.isLittleEndian();
             int RGBChannelCount = b.imRead.getRGBChannelCount();
             b.bitsPerPixel = b.imRead.getBitsPerPixel();
-            b.physicalSizeX = (96 / 2.54) / 1000;
-            b.physicalSizeY = (96 / 2.54) / 1000;
-            b.physicalSizeZ = 1;
-            try
-            {
-                bool hasPhysical = false;
-                if (b.meta.getPixelsPhysicalSizeX(b.series) != null)
-                {
-                    b.physicalSizeX = b.meta.getPixelsPhysicalSizeX(b.series).value().doubleValue();
-                    hasPhysical = true;
-                }
-                if (b.meta.getPixelsPhysicalSizeY(b.series) != null)
-                {
-                    b.physicalSizeY = b.meta.getPixelsPhysicalSizeY(b.series).value().doubleValue();
-                }
-                if (b.meta.getPixelsPhysicalSizeZ(b.series) != null)
-                {
-                    b.physicalSizeZ = b.meta.getPixelsPhysicalSizeZ(b.series).value().doubleValue();
-                }
-                else
-                {
-                    b.physicalSizeZ = 1;
-                }
-
-                if (b.meta.getStageLabelX(b.series) != null)
-                    b.stageSizeX = b.meta.getStageLabelX(b.series).value().doubleValue();
-                if (b.meta.getStageLabelY(b.series) != null)
-                    b.stageSizeY = b.meta.getStageLabelY(b.series).value().doubleValue();
-                if (b.meta.getStageLabelZ(b.series) != null)
-                    b.stageSizeZ = b.meta.getStageLabelZ(b.series).value().doubleValue();
-                else
-                    b.stageSizeZ = 1;
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine("No Stage Coordinates. PhysicalSize:(" + b.physicalSizeX + "," + b.physicalSizeY + "," + b.physicalSizeZ + ")");
-            }
-
             PixelFormat PixelFormat = GetPixelFormat(RGBChannelCount, b.bitsPerPixel);
             if (tilex < 0)
                 tilex = 0;
@@ -5660,104 +5641,9 @@ namespace BioGTK
                 return null;
             if (sy <= 0)
                 return null;
-            
-
             byte[] bytesr = b.imRead.openBytes(b.Coords[coord.Z, coord.C, coord.T], tilex, tiley, sx, sy);
             bool interleaved = b.imRead.isInterleaved();
-            if (!interleaved)
-            {
-                int strplane = 0;
-                if (RGBChannelCount == 1)
-                {
-                    if (b.bitsPerPixel > 8)
-                        strplane = sx * 2;
-                    else
-                        strplane = sx;
-                }
-                else
-                if (RGBChannelCount == 3)
-                {
-                    if (b.bitsPerPixel > 8)
-                        strplane = sx * 2;
-                    else
-                        strplane = sx;
-                }
-                else
-                {
-                    strplane = sx * 4;
-                }
-                byte[] rb = new byte[strplane * sy];
-                byte[] gb = new byte[strplane * sy];
-                byte[] bb = new byte[strplane * sy];
-                int ind = 0;
-                for (int y = 0; y < sy; y++)
-                {
-                    for (int st = 0; st < strplane; st++)
-                    {
-                        rb[((strplane) * y) + st] = bytesr[((strplane) * y) + st];
-                        ind++;
-                    }
-                }
-                if (RGBChannelCount == 1)
-                {
-                    if (b.bitsPerPixel == 8)
-                    {
-                        Bitmap bmp = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, rb, new ZCT(0, 0, 0), p, littleEndian, true);
-                        bmp.Stats = Statistics.FromBytes(bmp);
-                        return bmp;
-                    }
-                    else
-                    {
-                        Bitmap bmp = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, rb, new ZCT(0, 0, 0), p, littleEndian, true);
-                        bmp.Stats = Statistics.FromBytes(bmp);
-                        return bmp;
-                    }
-                }
-                byte[] bytes = new byte[ind];
-                Array.Copy(bytesr, ind, bytes, 0, ind);
-                for (int y = 0; y < sy; y++)
-                {
-                    int x = 0;
-                    for (int st = 0; st < strplane; st++)
-                    {
-                        int i = ((strplane) * y) + x;
-                        gb[i] = bytes[((strplane) * y) + st];
-                        x++;
-                    }
-                }
-                Array.Copy(bytesr, ind * 2, bytes, 0, ind);
-                for (int y = 0; y < sy; y++)
-                {
-                    int x = 0;
-                    for (int st = 0; st < strplane; st++)
-                    {
-                        int i = ((strplane) * y) + x;
-                        bb[i] = bytes[((strplane) * y) + st];
-                        x++;
-                    }
-                }
-                Bitmap[] bms = new Bitmap[3];
-                if (b.bitsPerPixel == 8)
-                {
-                    bms[2] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, rb, new ZCT(0, 0, 0), p, littleEndian, true);
-                    bms[1] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, gb, new ZCT(0, 0, 0), p, littleEndian, true);
-                    bms[0] = new Bitmap(b.file, sx, sy, PixelFormat.Format8bppIndexed, bb, new ZCT(0, 0, 0), p, littleEndian, true);
-                    Bitmap bmp = Bitmap.RGB8To24(bms);
-                    bmp.Stats = Statistics.FromBytes(bmp);
-                    return bmp;
-                }
-                else
-                {
-                    bms[2] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, rb, new ZCT(0, 0, 0), p, littleEndian, true);
-                    bms[1] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, gb, new ZCT(0, 0, 0), p, littleEndian, true);
-                    bms[0] = new Bitmap(b.file, sx, sy, PixelFormat.Format16bppGrayScale, bb, new ZCT(0, 0, 0), p, littleEndian, true);
-                    Bitmap bmp = Bitmap.RGB16To48(bms);
-                    bmp.Stats = Statistics.FromBytes(bmp);
-                    return bmp;
-                }
-            }
-            Bitmap bm = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, coord, p, littleEndian, true);
-            bm.Stats = Statistics.FromBytes(bm);
+            Bitmap bm = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, coord, p, littleEndian, interleaved);
             return bm;
         }
         /// This function sets the minimum and maximum values of the image to the minimum and maximum
@@ -5875,6 +5761,24 @@ namespace BioGTK
                 if (rgbChannelCount == 1)
                     return PixelFormat.Format16bppGrayScale;
                 if (rgbChannelCount == 3)
+                    return PixelFormat.Format48bppRgb;
+            }
+            throw new NotSupportedException("Not supported pixel format.");
+        }
+        public static PixelFormat GetPixelFormat(int rgbChannelCount, ome.xml.model.enums.PixelType px)
+        {
+            if (rgbChannelCount == 1)
+            {
+                if (px == ome.xml.model.enums.PixelType.INT8 || px == ome.xml.model.enums.PixelType.UINT8)
+                    return PixelFormat.Format8bppIndexed;
+                else if (px == ome.xml.model.enums.PixelType.INT16 || px == ome.xml.model.enums.PixelType.UINT16)
+                    return PixelFormat.Format16bppGrayScale;
+            }
+            else
+            {
+                if (px == ome.xml.model.enums.PixelType.INT8 || px == ome.xml.model.enums.PixelType.UINT8)
+                    return PixelFormat.Format24bppRgb;
+                else if (px == ome.xml.model.enums.PixelType.INT16 || px == ome.xml.model.enums.PixelType.UINT16)
                     return PixelFormat.Format48bppRgb;
             }
             throw new NotSupportedException("Not supported pixel format.");
