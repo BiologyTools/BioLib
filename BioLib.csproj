@@ -28,6 +28,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="bioformats_package.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="bioformats_package.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="..\..\BioCore\BioCore\banner.jpg">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
@@ -61,9 +71,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="bioformats_package.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="README.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
