@@ -18,7 +18,7 @@
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>Updated Bioformats to 6.14.0.</PackageReleaseNotes>
+    <PackageReleaseNotes>Updated Bioformats to 6.14.0 and added libvips for better tile performance.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
   </PropertyGroup>
 
