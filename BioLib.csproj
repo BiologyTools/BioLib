@@ -24,10 +24,7 @@
 
   <ItemGroup>
     <Content Remove="C:\Users\Erikr\.nuget\packages\bioformats.net6\6.13.1\contentFiles\any\net6.0\bioformats_package.dll" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Remove="bioformats_package.dll" />
+    <Content Remove="C:\Users\Kari\.nuget\packages\bioformats.net6\6.14.1\contentFiles\any\net6.0\bioformats_package.dll" />
   </ItemGroup>
 
   <ItemGroup>
@@ -64,12 +61,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Update="C:\Users\Kari\.nuget\packages\bioformats.net6\6.14.1\contentFiles\any\net6.0\bioformats_package.dll">
+    <None Update="bioformats_package.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
-  <ItemGroup>
+    </None>
     <None Update="README.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
