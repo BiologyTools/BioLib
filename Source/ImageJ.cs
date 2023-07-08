@@ -142,15 +142,15 @@ namespace BioGTK
             //If not in images we add it to a new tab.
             if (Images.GetImage(fn) == null)
             {
-                BioImage bm = BioImage.OpenFile(f, index, false);
+                BioImage bm = BioImage.OpenFile(f, index, false, false);
                 bm.Filename = fn;
                 bm.ID = fn;
                 bm.file = dir + "/" + fn;
-                Images.AddImage(bm);
+                Images.AddImage(bm,false);
             }
             else
             {
-                BioImage b = BioImage.OpenFile(f, index, false);
+                BioImage b = BioImage.OpenFile(f, index, false, false);
                 b.ID = bi.ID;
                 b.Filename = bi.ID;
                 b.file = dir + "/" + fn;
@@ -1063,7 +1063,7 @@ namespace BioGTK
                         */
                     if (roi.PointsD.Count == 4)
                     {
-                        PointD[] pts = roi.GetPointsImage(bi);
+                        PointD[] pts = roi.ImagePoints(bi.Resolutions[bi.Resolution]);
                         putFloat(RoiDecoder.XD, (float)pts[0].X);
                         putFloat(RoiDecoder.YD, (float)pts[0].Y);
                         //putFloat(RoiDecoder.WIDTHD, p.xpoints[1] - roi.PointsD[0]);
@@ -1105,7 +1105,7 @@ namespace BioGTK
 
                 if(type == line) //(roi instanceof Line) 
                 {
-                    PointD[] pts = roi.GetPointsImage(bi);
+                    PointD[] pts = roi.ImagePoints(bi.Resolutions[bi.Resolution]);
                     //Line line = (Line)roi;
                     putFloat(RoiDecoder.X1, (float)pts[0].X);
                     putFloat(RoiDecoder.Y1, (float)pts[0].Y);
