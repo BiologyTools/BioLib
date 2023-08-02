@@ -8,7 +8,6 @@ using System.IO;
 using CSScripting;
 using Gtk;
 using AForge;
-using BioGTK;
 
 namespace BioGTK
 {

@@ -4680,6 +4680,7 @@ namespace BioGTK
             ImageReader reader = new ImageReader();
             var meta = (IMetadata)((OMEXMLService)new ServiceFactory().getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
             reader.setMetadataStore((MetadataStore)meta);
+            file = file.Replace("\\", "/");
             reader.setId(file);
             bool ser = false;
             if (reader.getSeriesCount() > 1)
@@ -5024,6 +5025,7 @@ namespace BioGTK
 
             }
             writer.setMetadataRetrieve(omexml);
+            f = f.Replace("\\", "/");
             writer.setId(f);
             status = "Saving OME Image Planes.";
             for (int i = 0; i < files.Length; i++)
@@ -5222,6 +5224,7 @@ namespace BioGTK
                 status = "Opening OME Image.";
                 reader.close();
                 reader.setMetadataStore(b.meta);
+                file = file.Replace("\\", "/");
                 reader.setId(file);
             }
             status = "Reading OME Metadata.";
@@ -5827,6 +5830,7 @@ namespace BioGTK
                 b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
                 reader.close();
                 reader.setMetadataStore(b.meta);
+                b.file = b.file.Replace("\\", "/");
                 reader.setId(b.file);
             }
             else
@@ -5836,6 +5840,7 @@ namespace BioGTK
                     reader.close();
                     b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
                     reader.setMetadataStore(b.meta);
+                    b.file = b.file.Replace("\\", "/");
                     reader.setId(b.file);
                 }
             }
@@ -6198,6 +6203,7 @@ namespace BioGTK
                 s++;
             }
             writer.setMetadataRetrieve(omexml);
+            file = file.Replace("\\", "/");
             writer.setId(file);
             writer.setCompression(compression);
             s = 0;
@@ -6395,6 +6401,7 @@ namespace BioGTK
                 if (reader.getCurrentFile() != file)
                 {
                     status = "Opening OME Image.";
+                    file = file.Replace("\\", "/");
                     reader.setId(file);
                 }
             }
@@ -6729,6 +6736,7 @@ namespace BioGTK
             ImageReader imageReader = new ImageReader();
             imageReader.setMetadataStore(meta);
             // initialize file
+            file = file.Replace("\\", "/");
             imageReader.setId(file);
             int imageCount = imageReader.getImageCount();
             int seriesCount = imageReader.getSeriesCount();
