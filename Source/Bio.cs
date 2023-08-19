@@ -4364,7 +4364,7 @@ namespace BioGTK
                 int SizeX = image.GetField(TiffTag.IMAGEWIDTH)[0].ToInt();
                 int SizeY = image.GetField(TiffTag.IMAGELENGTH)[0].ToInt();
                 b.bitsPerPixel = image.GetField(TiffTag.BITSPERSAMPLE)[0].ToInt();
-                b.littleEndian = image.IsBigEndian();
+                b.littleEndian = !image.IsBigEndian();
                 int RGBChannelCount = image.GetField(TiffTag.SAMPLESPERPIXEL)[0].ToInt();
                 string desc = "";
 
@@ -4500,7 +4500,7 @@ namespace BioGTK
                     }
                 }
                 b.Coords = new int[b.SizeZ, b.SizeC, b.SizeT];
-                if (tileSizeX == 0 && tileSizeY == 0)
+                if (tiled && tileSizeX == 0 && tileSizeY == 0)
                 {
                     tileSizeX = 1920;
                     tileSizeY = 1080;
@@ -4557,7 +4557,7 @@ namespace BioGTK
                             image.ReadScanline(bytes, offset, im, 0);
                             offset += stride;
                         }
-                        Bitmap inf = new Bitmap(file, tileSizeX, tileSizeY, b.Resolutions[series].PixelFormat, bytes, new ZCT(0, 0, 0), p, null, b.littleEndian, inter);
+                        Bitmap inf = new Bitmap(file, SizeX, SizeY, b.Resolutions[series].PixelFormat, bytes, new ZCT(0, 0, 0), p, null, b.littleEndian, inter);
                         b.Buffers.Add(inf);
                         Statistics.CalcStatistics(inf);
                         progressValue = (int)(p / (float)(series + 1) * pages);
@@ -6655,18 +6655,9 @@ namespace BioGTK
         public static bool OMESupport()
         {
             bool isMacOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
-            if (isMacOS && !supportDialog)
+            if (RuntimeInformation.OSArchitecture == Architecture.Arm64 && isMacOS)
             {
-                MessageDialog md = new MessageDialog(
-                null,
-                DialogFlags.DestroyWithParent,
-                MessageType.Info,
-                ButtonsType.Ok, "BioGTK currently doens't support OME images on MacOS due to dependency IKVM not supporting Mac. " +
-                "On MacOS ImageJ Tiff files, LibVips supported whole-slide images, and BioGTK Tiff files are supported.");
-                md.Run();
-                md.Destroy();
                 OmeSupport = false;
-                supportDialog = true;
                 return false;
             }
             else

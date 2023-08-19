@@ -3,6 +3,8 @@
 bin/ 	# ignore bin directory 
 bin/Debug/
 bin/Release/
+.vs
+.vs/ProjectEvaluation
 bin/x64/
 bin/ARM64/
 obj/Debug/
