@@ -11,14 +11,14 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>1.6.0</AssemblyVersion>
-    <FileVersion>1.6.0</FileVersion>
-    <PackageVersion>1.6.0</PackageVersion>
+    <AssemblyVersion>1.6.2</AssemblyVersion>
+    <FileVersion>1.6.2</FileVersion>
+    <PackageVersion>1.6.2</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>Bioformats support on Mac x64. As well as better Arm64 support.</PackageReleaseNotes>
+    <PackageReleaseNotes>OME ROI Saving Fix.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
   </PropertyGroup>
   <ItemGroup>

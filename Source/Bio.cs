@@ -4816,7 +4816,6 @@ namespace BioGTK
                         }
                     }
                 }
-
                 int i = 0;
                 foreach (ROI an in b.Annotations)
                 {
@@ -4936,7 +4935,7 @@ namespace BioGTK
                             omexml.setEllipseID(an.id, i, serie);
                         else
                             omexml.setEllipseID("Shape:" + i + ":" + serie, i, serie);
-                        //We need to change Rectangle to ellipse radius;
+                        //We need to change System.Drawing.Rectangle to ellipse radius;
                         double w = (double)an.W / 2;
                         double h = (double)an.H / 2;
                         omexml.setEllipseRadiusX(java.lang.Double.valueOf(b.ToImageSizeX(w)), i, serie);
@@ -4990,7 +4989,6 @@ namespace BioGTK
                     }
                     i++;
                 }
-
                 if (b.Buffers[0].Plane != null && planes)
                     for (int bu = 0; bu < b.Buffers.Count; bu++)
                     {
