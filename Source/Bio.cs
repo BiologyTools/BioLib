@@ -31,8 +31,15 @@ namespace BioGTK
     public static class Images
     {
         public static List<BioImage> images = new List<BioImage>();
-        /// 
-        /// @param ids The id of the image you want to get.
+        /// <summary>
+        /// The function `GetImage` returns a `BioImage` object from a list of images based on a given
+        /// ID or file name.
+        /// </summary>
+        /// <param name="ids">The parameter "ids" is a string that represents the ID or file name of an
+        /// image.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage GetImage(string ids)
         {
             for (int i = 0; i < images.Count; i++)
@@ -42,9 +49,21 @@ namespace BioGTK
             }
             return null;
         }
-        /// It adds an image to the list of images
-        /// 
-        /// @param BioImage A class that contains the image data and other information.
+
+        /// <summary>
+        /// The function `AddImage` adds a `BioImage` object to a collection of images if it is not
+        /// already present.
+        /// </summary>
+        /// <param name="BioImage">The BioImage parameter is an object that represents an image in a
+        /// biological context. It likely contains properties such as the image file name, ID, and
+        /// possibly other metadata related to the image.</param>
+        /// <param name="newtab">The "newtab" parameter is a boolean value that determines whether the
+        /// image should be added to a new tab or not. If "newtab" is set to true, the image will be
+        /// added to a new tab. If "newtab" is set to false, the image will be added</param>
+        /// <returns>
+        /// If the condition `if (images.Contains(im))` is true, then the method will return and nothing
+        /// will be returned explicitly.
+        /// </returns>
         public static void AddImage(BioImage im, bool newtab)
         {
             if (images.Contains(im)) return;
@@ -55,12 +74,15 @@ namespace BioGTK
             //App.Image = im;
             //NodeView.viewer.AddTab(im);
         }
-        /// It takes a string as an argument, and returns the number of times that string appears in the
-        /// list of images
-        /// 
-        /// @param s The name of the image
-        /// 
-        /// @return The number of images that contain the name of the image.
+
+        /// <summary>
+        /// The function `GetImageCountByName` returns the count of images with a specific name.
+        /// </summary>
+        /// <param name="s">The parameter "s" is a string that represents the name of an image
+        /// file.</param>
+        /// <returns>
+        /// The method is returning the count of images with the given name.
+        /// </returns>
         public static int GetImageCountByName(string s)
         {
             int i = 0;
@@ -72,18 +94,21 @@ namespace BioGTK
             }
             return i;
         }
-        /// It takes a string, and returns a string
-        /// 
-        /// @param s The path to the image.
-        /// 
-        /// @return The name of the image.
+
+        /// <summary>
+        /// The GetImageName function generates a unique image name based on the input string.
+        /// </summary>
+        /// <param name="s">The parameter "s" is a string that represents the file path of an
+        /// image.</param>
+        /// <returns>
+        /// The method returns a string that represents the unique name for an image.
+        /// </returns>
         public static string GetImageName(string s)
         {
             //Here we create a unique ID for an image.
             int i = Images.GetImageCountByName(s);
             if (i == 0)
                 return Path.GetFileName(s);
-            string test = Path.GetFileName(s);
             string name = Path.GetFileNameWithoutExtension(s);
             string ext = Path.GetExtension(s);
             int sti = name.LastIndexOf("-");
@@ -104,20 +129,29 @@ namespace BioGTK
                 else
                     return name + "-" + i + ext;
             }
-            //
         }
-        /// This function removes an image from the table
-        /// 
-        /// @param BioImage This is the image that you want to remove.
+
+        /// <summary>
+        /// The function "RemoveImage" takes a BioImage object as a parameter and removes the image with
+        /// the corresponding ID.
+        /// </summary>
+        /// <param name="BioImage">The BioImage is a class that represents an image in a biological
+        /// context. It likely contains properties such as ID, name, file path, and other relevant
+        /// information about the image.</param>
         public static void RemoveImage(BioImage im)
         {
             RemoveImage(im.ID);
         }
-        /// It removes an image from the table
-        /// 
-        /// @param id The id of the image to remove.
-        /// 
-        /// @return The image is being returned.
+
+        /// <summary>
+        /// The RemoveImage function removes an image from a collection and disposes of it.
+        /// </summary>
+        /// <param name="id">The "id" parameter is a string that represents the unique identifier of the
+        /// image that needs to be removed.</param>
+        /// <returns>
+        /// If the `im` object is `null`, then nothing is being returned. The method will simply exit
+        /// and no further code will be executed.
+        /// </returns>
         public static void RemoveImage(string id)
         {
             BioImage im = GetImage(id);
@@ -128,11 +162,14 @@ namespace BioGTK
             im = null;
         }
 
-        /// It updates an image from the table
-        /// 
-        /// @param id The id of the image to update.
-        /// @param im The BioImage to update with.
-        /// @return The image is being returned.
+        /// <summary>
+        /// The function `UpdateImage` updates an image in a list of images based on its ID.
+        /// </summary>
+        /// <param name="BioImage">BioImage is a class that represents an image object. It likely has
+        /// properties such as ID, image data, and other relevant information.</param>
+        /// <returns>
+        /// The method is returning nothing (void).
+        /// </returns>
         public static void UpdateImage(BioImage im)
         {
             for (int i = 0; i < images.Count; i++)
@@ -145,7 +182,7 @@ namespace BioGTK
             }
         }
     }
-    /* A struct that is used to store the resolution of an image. */
+
     /* A struct that is used to store the resolution of an image. */
     public struct Resolution
     {
@@ -224,6 +261,8 @@ namespace BioGTK
                     return 4;
             }
         }
+        /* The above code is defining a property called "SizeInBytes" in C#. This property returns the
+        size of an image in bytes based on its pixel format. */
         public long SizeInBytes
         {
             get
@@ -241,6 +280,11 @@ namespace BioGTK
                 throw new NotSupportedException(format + " is not supported.");
             }
         }
+        /* The above code is defining a constructor for a class called "Resolution". The constructor
+        takes in several parameters including the width and height of an image, the number of pixels
+        per unit of physical measurement, the number of bits per pixel, the physical dimensions of
+        the image, and the stage dimensions of the image. The constructor assigns these values to
+        the corresponding properties of the class. */
         public Resolution(int w, int h, int omePx, int bitsPerPixel, double physX, double physY, double physZ, double stageX, double stageY, double stageZ)
         {
             x = w;
@@ -253,6 +297,10 @@ namespace BioGTK
             py = physY;
             pz = physZ;
         }
+        /* The above code is defining a constructor for a class called "Resolution". The constructor
+        takes in several parameters including width (w), height (h), pixel format (f), physical
+        dimensions (physX, physY, physZ), and stage dimensions (stageX, stageY, stageZ). The
+        constructor assigns the parameter values to corresponding class variables. */
         public Resolution(int w, int h, PixelFormat f, double physX, double physY, double physZ, double stageX, double stageY, double stageZ)
         {
             x = w;
@@ -286,6 +334,11 @@ namespace BioGTK
         public double W { get { return w; } set { w = value; } }
         public double H { get { return h; } set { h = value; } }
 
+        /* The above code is defining a constructor for a class called RectangleD in C#. The
+        constructor takes four parameters: X, Y, W, and H, which represent the x-coordinate,
+        y-coordinate, width, and height of the rectangle, respectively. Inside the constructor, the
+        values of these parameters are assigned to the corresponding instance variables x, y, w, and
+        h. */
         public RectangleD(double X, double Y, double W, double H)
         {
             x = X;
@@ -293,16 +346,30 @@ namespace BioGTK
             w = W;
             h = H;
         }
+        /// <summary>
+        /// The function converts the coordinates and dimensions of a rectangle from float to integer
+        /// values.
+        /// </summary>
+        /// <returns>
+        /// The method is returning a new instance of the Rectangle class, with the X, Y, W, and H
+        /// values casted to integers.
+        /// </returns>
         public Rectangle ToRectangleInt()
         {
             return new Rectangle((int)X, (int)Y, (int)W, (int)H);
         }
-        /// If any of the four corners of the rectangle are inside the polygon, then the rectangle
-        /// intersects with the polygon
-        /// 
-        /// @param RectangleD The rectangle that is being checked for intersection.
-        /// 
-        /// @return a boolean value.
+
+        /// <summary>
+        /// The function checks if a given rectangle intersects with another rectangle.
+        /// </summary>
+        /// <param name="RectangleD">The RectangleD is a custom data type that represents a rectangle in
+        /// 2D space. It has four properties: X (the x-coordinate of the top-left corner), Y (the
+        /// y-coordinate of the top-left corner), W (the width of the rectangle), and H (the height of
+        /// the</param>
+        /// <returns>
+        /// The method is returning a boolean value. If the rectangles intersect, it returns true. If
+        /// they do not intersect, it returns false.
+        /// </returns>
         public bool IntersectsWith(RectangleD rect1)
         {
             if (rect1.X + rect1.W < X || X + W < rect1.X ||
@@ -312,21 +379,32 @@ namespace BioGTK
             }
             return true;
         }
-        /// > Returns true if the point is inside the rectangle
-        /// 
-        /// @param PointD 
-        /// 
-        /// @return The return value is a boolean value.
+
+        /// <summary>
+        /// The function checks if a given point intersects with another point.
+        /// </summary>
+        /// <param name="PointD">The PointD class represents a point in a two-dimensional space. It
+        /// typically has two properties: X and Y, which represent the coordinates of the point on the
+        /// x-axis and y-axis, respectively.</param>
+        /// <returns>
+        /// The method is returning a boolean value.
+        /// </returns>
         public bool IntersectsWith(PointD p)
         {
             return IntersectsWith(p.X, p.Y);
         }
-        /// If the point is within the rectangle, return true. Otherwise, return false
-        /// 
-        /// @param x The x coordinate of the point to check
-        /// @param y The y coordinate of the point to test.
-        /// 
-        /// @return A boolean value.
+
+        /// <summary>
+        /// The function checks if a given point (x, y) intersects with a rectangle defined by its
+        /// top-left corner (X, Y) and its width (W) and height (H).
+        /// </summary>
+        /// <param name="x">The x-coordinate of the point to check for intersection.</param>
+        /// <param name="y">The y parameter represents the y-coordinate of a point.</param>
+        /// <returns>
+        /// The method is returning a boolean value. It returns true if the given coordinates (x, y)
+        /// intersect with the rectangle defined by the X, Y, W, and H properties. Otherwise, it returns
+        /// false.
+        /// </returns>
         public bool IntersectsWith(double x, double y)
         {
             if (X <= x && (X + W) >= x && Y <= y && (Y + H) >= y)
@@ -334,17 +412,29 @@ namespace BioGTK
             else
                 return false;
         }
-        /// It converts a RectangleD to a RectangleF
-        /// 
-        /// @return A RectangleF object.
+
+        /// <summary>
+        /// The function converts the values of X, Y, W, and H into a RectangleF object and returns it.
+        /// </summary>
+        /// <returns>
+        /// The method is returning a new instance of the RectangleF class, with the X, Y, W, and H
+        /// values converted to float.
+        /// </returns>
         public RectangleF ToRectangleF()
         {
             return new RectangleF((float)X, (float)Y, (float)W, (float)H);
         }
-        /// This function returns a string that contains the values of the X, Y, W, and H properties of
-        /// the object
-        /// 
-        /// @return The X, Y, W, and H values of the rectangle.
+
+        /// <summary>
+        /// The ToString() function returns a string representation of the object's properties, rounded
+        /// to two decimal places.
+        /// </summary>
+        /// <returns>
+        /// The method is returning a string representation of the object's properties, specifically the
+        /// values of X, Y, W, and H. The values are rounded to two decimal places using the
+        /// MidpointRounding.ToZero rounding method. The values are concatenated with commas and spaces
+        /// to form the returned string.
+        /// </returns>
         public override string ToString()
         {
             double w = Math.Round(W, 2, MidpointRounding.ToZero);
@@ -393,6 +483,7 @@ namespace BioGTK
                 UpdateBoundingBox();
             }
         }
+        /* The above code is defining a property called "Rect" of type "RectangleD". */
         public RectangleD Rect
         {
             get
@@ -501,6 +592,17 @@ namespace BioGTK
                 return Points;
             }
         }
+        /// <summary>
+        /// The function "ImagePoints" takes a Resolution object as input and returns an array of PointD
+        /// objects that have been converted to image space using the provided resolution values.
+        /// </summary>
+        /// <param name="Resolution">The "Resolution" parameter is an object that contains information
+        /// about the resolution of an image. It typically includes properties such as the stage size
+        /// (width and height), physical size (width and height), and possibly other properties related
+        /// to the image resolution.</param>
+        /// <returns>
+        /// The method is returning an array of PointD objects.
+        /// </returns>
         public PointD[] ImagePoints(Resolution res)
         {
             return BioImage.ToImageSpace(PointsD,(int)res.StageSizeX, (int)res.StageSizeY, (int)res.PhysicalSizeX, (int)res.PhysicalSizeY);
@@ -538,6 +640,12 @@ namespace BioGTK
             }
         }
         */
+        /// <summary>
+        /// The Copy function creates a deep copy of an ROI object.
+        /// </summary>
+        /// <returns>
+        /// The method is returning a copy of the ROI object.
+        /// </returns>
         public ROI Copy()
         {
             ROI copy = new ROI();
@@ -563,6 +671,15 @@ namespace BioGTK
 
             return copy;
         }
+        /// <summary>
+        /// The function "Copy" creates a deep copy of an ROI object, including all its properties and
+        /// coordinates.
+        /// </summary>
+        /// <param name="ZCT">The ZCT parameter is of type ZCT and is used to pass the coordinates of
+        /// the ROI.</param>
+        /// <returns>
+        /// The method is returning a copy of the ROI object.
+        /// </returns>
         public ROI Copy(ZCT cord)
         {
             ROI copy = new ROI();
@@ -603,18 +720,26 @@ namespace BioGTK
                 }
             }
         }
-        /// > This function returns a rectangle that is the bounding box of the object, but with a
-        /// border of half the scale
-        /// 
-        /// @param scale the scale of the image
-        /// 
-        /// @return A rectangle with the following properties:
+
+        /// <summary>
+        /// The function returns a new RectangleD object with adjusted dimensions based on the given
+        /// scale.
+        /// </summary>
+        /// <param name="scale">The scale parameter represents the scaling factor that will be applied
+        /// to the rectangle's dimensions.</param>
+        /// <returns>
+        /// The method is returning a RectangleD object.
+        /// </returns>
         public RectangleD GetSelectBound(double scale)
         {
             double f = scale / 2;
             return new RectangleD(BoundingBox.X - f, BoundingBox.Y - f, BoundingBox.W + scale, BoundingBox.H + scale);
         }
-        /* Creating a new ROI object. */
+        /* The above code is defining a constructor for a class called ROI. The constructor initializes
+        the coord variable with a new instance of the ZCT class, passing in the values 0, 0, and 0
+        as parameters. It also sets the strokeColor variable to the Color.Yellow value.
+        Additionally, it creates a new instance of the RectangleD class, passing in the values 0, 0,
+        1, and 1 as parameters, and assigns it to the BoundingBox variable. */
         public ROI()
         {
             coord = new ZCT(0, 0, 0);
@@ -622,12 +747,14 @@ namespace BioGTK
             BoundingBox = new RectangleD(0, 0, 1, 1);
         }
 
-        /// It returns an array of RectangleF objects that are used to draw the selection boxes around
-        /// the points of the polygon
-        /// 
-        /// @param s the size of the select box
-        /// 
-        /// @return A list of RectangleF objects.
+        /// <summary>
+        /// The function takes a size parameter and returns an array of rectangles with that size,
+        /// centered around each point in a list.
+        /// </summary>
+        /// <param name="s">The parameter "s" represents the size of the select boxes.</param>
+        /// <returns>
+        /// The method is returning an array of RectangleD objects.
+        /// </returns>
         public RectangleD[] GetSelectBoxes(double s)
         {
             double f = s / 2;
@@ -638,13 +765,20 @@ namespace BioGTK
             }
             return selectBoxs.ToArray();
         }
-        /// Create a new ROI object, add a point to it, and return it
-        /// 
-        /// @param ZCT a class that contains the Z, C, and T coordinates of the image.
-        /// @param x x coordinate of the point
-        /// @param y The y coordinate of the point
-        /// 
-        /// @return A new ROI object
+
+        /// <summary>
+        /// The function "CreatePoint" creates a new ROI (Region of Interest) object with a specified
+        /// coordinate and adds a point to it.
+        /// </summary>
+        /// <param name="ZCT">ZCT is an object that represents the Z, C, and T coordinates of a point in
+        /// a three-dimensional space. It is used to specify the position of the point in a stack or
+        /// image sequence.</param>
+        /// <param name="x">The x-coordinate of the point.</param>
+        /// <param name="y">The parameter "y" is a double value representing the y-coordinate of the
+        /// point.</param>
+        /// <returns>
+        /// The method is returning an object of type ROI.
+        /// </returns>
         public static ROI CreatePoint(ZCT coord, double x, double y)
         {
             ROI an = new ROI();
@@ -654,14 +788,23 @@ namespace BioGTK
             //Recorder.AddLine("ROI.CreatePoint(new ZCT(" + coord.Z + "," + coord.C + "," + coord.T + "), " + x + "," + y + ");");
             return an;
         }
-        /// Create a new ROI object, set its type to Line, add two points to it, and return it
-        /// 
-        /// @param ZCT Z is the Z-axis, C is the color channel, and T is the time frame.
-        /// @param PointD X,Y
-        /// @param PointD X,Y
-        /// 
-        /// @return A new ROI object.
 
+        /// <summary>
+        /// The function CreateLine creates a line region of interest (ROI) with specified coordinates
+        /// and points.
+        /// </summary>
+        /// <param name="ZCT">ZCT is a custom class that represents the coordinates of a point in a 3D
+        /// space. It has three properties: Z, C, and T, which represent the Z-axis, C-axis, and T-axis
+        /// coordinates respectively.</param>
+        /// <param name="PointD">PointD is a class representing a point in a two-dimensional space. It
+        /// has two properties: X and Y, which represent the coordinates of the point on the X and Y
+        /// axes, respectively.</param>
+        /// <param name="PointD">PointD is a class representing a point in a two-dimensional space. It
+        /// has two properties: X and Y, which represent the coordinates of the point on the X and Y
+        /// axes, respectively.</param>
+        /// <returns>
+        /// The method is returning an object of type ROI.
+        /// </returns>
         public static ROI CreateLine(ZCT coord, PointD x1, PointD x2)
         {
             ROI an = new ROI();
@@ -672,15 +815,22 @@ namespace BioGTK
             //Recorder.AddLine("ROI.CreateLine(new ZCT(" + coord.Z + "," + coord.C + "," + coord.T + "), new PointD(" + x1.X + "," + x1.Y + "), new PointD(" + x2.X + "," + x2.Y + "));");
             return an;
         }
-        /// Create a new ROI object with a rectangle shape, and add a line to the recorder
-        /// 
-        /// @param ZCT The ZCT coordinates of the image you want to create the ROI on.
-        /// @param x x coordinate of the top left corner of the rectangle
-        /// @param y y-coordinate of the top-left corner of the rectangle
-        /// @param w width
-        /// @param h height
-        /// 
-        /// @return A new ROI object.
+
+        /// <summary>
+        /// The function CreateRectangle creates a new ROI (Region of Interest) object with a specified
+        /// coordinate, type, and rectangle dimensions.
+        /// </summary>
+        /// <param name="ZCT">ZCT is an object that represents the coordinates of a point in a 3D space.
+        /// It has three properties: Z, C, and T, which represent the Z-axis, C-axis, and T-axis
+        /// coordinates respectively.</param>
+        /// <param name="x">The x-coordinate of the top-left corner of the rectangle.</param>
+        /// <param name="y">The parameter "y" represents the y-coordinate of the top-left corner of the
+        /// rectangle.</param>
+        /// <param name="w">The parameter "w" represents the width of the rectangle.</param>
+        /// <param name="h">The parameter "h" represents the height of the rectangle.</param>
+        /// <returns>
+        /// The method is returning an object of type ROI.
+        /// </returns>
         public static ROI CreateRectangle(ZCT coord, double x, double y, double w, double h)
         {
             ROI an = new ROI();
@@ -690,15 +840,22 @@ namespace BioGTK
             //Recorder.AddLine("ROI.CreateRectangle(new ZCT(" + coord.Z + "," + coord.C + "," + coord.T + "), new RectangleD(" + x + "," + y + "," + w + "," + h + ");");
             return an;
         }
-        /// Create an ellipse ROI at the specified ZCT coordinate with the specified width and height
-        /// 
-        /// @param ZCT The ZCT coordinates of the image you want to create the ROI on.
-        /// @param x x-coordinate of the top-left corner of the rectangle
-        /// @param y The y-coordinate of the upper-left corner of the rectangle to create.
-        /// @param w width
-        /// @param h height
-        /// 
-        /// @return A new ROI object.
+
+        /// <summary>
+        /// The function CreateEllipse creates an ROI (Region of Interest) object with an ellipse shape,
+        /// given the coordinates, width, and height.
+        /// </summary>
+        /// <param name="ZCT">ZCT is a custom class that represents the coordinates of a point in a 3D
+        /// space. It has three properties: Z, C, and T, which represent the Z-axis, C-axis, and T-axis
+        /// coordinates respectively.</param>
+        /// <param name="x">The x-coordinate of the center of the ellipse.</param>
+        /// <param name="y">The parameter "y" represents the y-coordinate of the center of the
+        /// ellipse.</param>
+        /// <param name="w">The width of the ellipse.</param>
+        /// <param name="h">The parameter "h" represents the height of the ellipse.</param>
+        /// <returns>
+        /// The method is returning an object of type ROI.
+        /// </returns>
         public static ROI CreateEllipse(ZCT coord, double x, double y, double w, double h)
         {
             ROI an = new ROI();
@@ -708,12 +865,19 @@ namespace BioGTK
             //Recorder.AddLine("ROI.CreateEllipse(new ZCT(" + coord.Z + "," + coord.C + "," + coord.T + "), new RectangleD(" + x + "," + y + "," + w + "," + h + ");");
             return an;
         }
-        /// > Create a new ROI object of type Polygon, with the given coordinate system and points
-        /// 
-        /// @param ZCT The ZCT coordinate of the ROI.
-        /// @param pts an array of PointD objects, which are just a pair of doubles (x,y)
-        /// 
-        /// @return A ROI object
+
+        /// <summary>
+        /// The function "CreatePolygon" creates a polygon region of interest (ROI) with the given
+        /// coordinates and points.
+        /// </summary>
+        /// <param name="ZCT">ZCT is a data type that represents the coordinate system used for the
+        /// polygon. It could be a specific coordinate system like WGS84 or a custom coordinate system
+        /// defined by the application.</param>
+        /// <param name="pts">The "pts" parameter is an array of PointD objects. Each PointD object
+        /// represents a point in the polygon.</param>
+        /// <returns>
+        /// The method is returning an instance of the ROI class.
+        /// </returns>
         public static ROI CreatePolygon(ZCT coord, PointD[] pts)
         {
             ROI an = new ROI();
@@ -723,12 +887,20 @@ namespace BioGTK
             an.closed = true;
             return an;
         }
-        /// > Create a new ROI object of type Freeform, with the specified ZCT coordinate and points
-        /// 
-        /// @param ZCT A class that contains the Z, C, and T coordinates of the ROI.
-        /// @param pts an array of PointD objects, which are just a pair of doubles (x,y)
-        /// 
-        /// @return A new ROI object.
+
+        /// <summary>
+        /// The function creates a freeform region of interest (ROI) with the given coordinates and
+        /// points.
+        /// </summary>
+        /// <param name="ZCT">The ZCT parameter is a data structure that represents the coordinate
+        /// system in which the points are defined. It may contain information such as the zoom level,
+        /// the center point, and the transformation matrix for converting between screen coordinates
+        /// and world coordinates.</param>
+        /// <param name="pts">The "pts" parameter is an array of PointD objects. Each PointD object
+        /// represents a point in a coordinate system.</param>
+        /// <returns>
+        /// The method is returning an instance of the ROI class.
+        /// </returns>
         public static ROI CreateFreeform(ZCT coord, PointD[] pts)
         {
             ROI an = new ROI();
@@ -739,10 +911,15 @@ namespace BioGTK
             return an;
         }
 
-        /// This function updates the point at the specified index
-        /// 
-        /// @param PointD A class that contains an X and Y coordinate.
-        /// @param i The index of the point to update
+        /// <summary>
+        /// The function updates a specific point in a list of points and then updates the bounding box.
+        /// </summary>
+        /// <param name="PointD">The parameter "p" is of type PointD, which represents a point in a
+        /// two-dimensional space. It likely has properties such as X and Y to store the coordinates of
+        /// the point.</param>
+        /// <param name="i">The parameter "i" is an integer that represents the index of the point in
+        /// the list of points. It is used to determine which point in the list should be updated with
+        /// the new point "p".</param>
         public void UpdatePoint(PointD p, int i)
         {
             if (i < Points.Count)
@@ -751,25 +928,38 @@ namespace BioGTK
             }
             UpdateBoundingBox();
         }
-        /// This function returns the point at the specified index
-        /// 
-        /// @param i The index of the point to get.
-        /// 
-        /// @return The point at index i in the Points array.
+
+        /// <summary>
+        /// The function "GetPoint" returns a PointD object at the specified index from an array of
+        /// PointD objects.
+        /// </summary>
+        /// <param name="i">The parameter "i" is an integer that represents the index of the point you
+        /// want to retrieve from the "Points" array.</param>
+        /// <returns>
+        /// The method is returning a PointD object.
+        /// </returns>
         public PointD GetPoint(int i)
         {
             return Points[i];
         }
-        /// It returns an array of PointD objects
-        /// 
-        /// @return An array of PointD objects.
+
+        /// <summary>
+        /// The function returns an array of PointD objects.
+        /// </summary>
+        /// <returns>
+        /// An array of PointD objects.
+        /// </returns>
         public PointD[] GetPoints()
         {
             return Points.ToArray();
         }
-        /// It converts a list of points to an array of points
-        /// 
-        /// @return A PointF array.
+
+        /// <summary>
+        /// The function converts a list of points to an array of PointF objects in C#.
+        /// </summary>
+        /// <returns>
+        /// The method is returning an array of PointF objects.
+        /// </returns>
         public PointF[] GetPointsF()
         {
             PointF[] pfs = new PointF[Points.Count];
@@ -780,25 +970,36 @@ namespace BioGTK
             }
             return pfs;
         }
-        /// > Adds a point to the list of points and updates the bounding box
-        /// 
-        /// @param PointD 
+
+        /// <summary>
+        /// The function adds a PointD object to a list of points and updates the bounding box.
+        /// </summary>
+        /// <param name="PointD">The parameter "p" is of type PointD, which is likely a custom class
+        /// representing a point in a two-dimensional space.</param>
         public void AddPoint(PointD p)
         {
             Points.Add(p);
             UpdateBoundingBox();
         }
-        /// > Adds a range of points to the Points collection and updates the bounding box
-        /// 
-        /// @param p The points to add to the polygon
+
+        /// <summary>
+        /// The function adds an array of PointD objects to a list and updates the bounding box.
+        /// </summary>
+        /// <param name="p">The parameter "p" is an array of PointD objects.</param>
         public void AddPoints(PointD[] p)
         {
             Points.AddRange(p);
             UpdateBoundingBox();
         }
-        /// > Adds a range of integer points to the Points collection and updates the bounding box
-        /// 
-        /// @param p The points to add to the polygon
+
+        /// <summary>
+        /// The function takes two arrays of integers representing x and y coordinates and adds them as
+        /// points to a list, then updates the bounding box.
+        /// </summary>
+        /// <param name="xp">The xp parameter is an array of integers representing the x-coordinates of
+        /// the points to be added.</param>
+        /// <param name="yp">The parameter `yp` is an array of integers representing the y-coordinates
+        /// of the points to be added.</param>
         public void AddPoints(int[] xp, int[] yp)
         {
             for (int i = 0; i < xp.Length; i++)
@@ -807,9 +1008,14 @@ namespace BioGTK
             }
             UpdateBoundingBox();
         }
-        /// > Adds a range of float points to the Points collection and updates the bounding box
-        /// 
-        /// @param p The points to add to the polygon
+
+        /// <summary>
+        /// The function `AddPoints` takes in two arrays of floats representing x and y coordinates and
+        /// adds them as points to a list, then updates the bounding box.
+        /// </summary>
+        /// <param name="xp">An array of x-coordinates for the points to be added.</param>
+        /// <param name="yp">The parameter `yp` is an array of `float` values representing the
+        /// y-coordinates of the points to be added.</param>
         public void AddPoints(float[] xp, float[] yp)
         {
             for (int i = 0; i < xp.Length; i++)
@@ -818,9 +1024,12 @@ namespace BioGTK
             }
             UpdateBoundingBox();
         }
-        /// It removes points from a list of points based on an array of indexes
-        /// 
-        /// @param indexs an array of integers that represent the indexes of the points to be removed
+
+        /// <summary>
+        /// The function removes points from a list based on their indices and updates the bounding box.
+        /// </summary>
+        /// <param name="indexs">The parameter "indexs" is an array of integers that represents the
+        /// indices of the points to be removed from the "Points" list.</param>
         public void RemovePoints(int[] indexs)
         {
             List<PointD> inds = new List<PointD>();
@@ -839,18 +1048,27 @@ namespace BioGTK
             UpdateBoundingBox();
         }
 
-        /// This function returns the number of points in the polygon
-        /// 
-        /// @return The number of points in the list.
+        /// <summary>
+        /// The function returns the count of points in a collection.
+        /// </summary>
+        /// <returns>
+        /// The method is returning the count of points in the Points collection.
+        /// </returns>
         public int GetPointCount()
         {
             return Points.Count;
         }
-        /// It takes a string of points and returns an array of points
-        /// 
-        /// @param s The string to convert to points.
-        /// 
-        /// @return A list of points.
+
+        /// <summary>
+        /// The function takes a string of coordinates and converts them into an array of PointD
+        /// objects.
+        /// </summary>
+        /// <param name="s">The parameter `s` is a string that represents a series of points. Each point
+        /// is represented by a pair of coordinates separated by a space, tab, or comma. The x and y
+        /// coordinates are separated by either a tab or a comma.</param>
+        /// <returns>
+        /// The method is returning an array of PointD objects.
+        /// </returns>
         public PointD[] stringToPoints(string s)
         {
             List<PointD> pts = new List<PointD>();
@@ -869,11 +1087,15 @@ namespace BioGTK
             return pts.ToArray();
         }
 
-        /// This function takes a BioImage object and returns a string of the points in the image space
-        /// 
-        /// @param BioImage The image that the ROI is on
-        /// 
-        /// @return The points of the polygon in the image space.
+        /// <summary>
+        /// The function "PointsToString" takes a BioImage object and converts its points to a string
+        /// representation in image space.
+        /// </summary>
+        /// <param name="BioImage">The BioImage parameter is an object of type BioImage. It is used to
+        /// convert the points from the image space to the desired format.</param>
+        /// <returns>
+        /// The method is returning a string representation of the points in the BioImage object.
+        /// </returns>
         public string PointsToString(BioImage b)
         {
             string pts = "";
@@ -887,8 +1109,11 @@ namespace BioGTK
             }
             return pts;
         }
-        /// It takes a list of points and returns a rectangle that contains all of the points
-        /// 
+
+        /// <summary>
+        /// The function calculates the bounding box of a set of points by finding the minimum and
+        /// maximum x and y coordinates, and then creates a rectangle with those coordinates.
+        /// </summary>
         public void UpdateBoundingBox()
         {
             PointD min = new PointD(double.MaxValue, double.MaxValue);
@@ -956,11 +1181,15 @@ namespace BioGTK
     public static class Filters
     {
         public static int[,] indexs;
-        /// It takes a string as an argument and returns a filter object
-        /// 
-        /// @param name The name of the filter.
-        /// 
-        /// @return The value of the key "name" in the dictionary "filters"
+
+        /// <summary>
+        /// The function "GetFilter" returns a filter object from a list of filters based on the given
+        /// name.
+        /// </summary>
+        /// <param name="name">The name of the filter that you want to retrieve.</param>
+        /// <returns>
+        /// The method is returning an object of type Filt.
+        /// </returns>
         public static Filt GetFilter(string name)
         {
             foreach (Filt item in filters)
@@ -970,26 +1199,37 @@ namespace BioGTK
             }
             return null;
         }
-        /// It returns a filter from the filters dictionary, using the indexs array to find the index of
-        /// the filter in the dictionary
-        /// 
-        /// @param type The type of filter you want to get.
-        /// @param index The index of the filter in the list of filters.
-        /// 
-        /// @return The value of the filter at the index of the type and index.
+
+        /// <summary>
+        /// The function "GetFilter" returns a filter based on the given type and index.
+        /// </summary>
+        /// <param name="type">The type parameter is an integer that represents the type of filter. It
+        /// is used to determine which array to access in order to retrieve the filter.</param>
+        /// <param name="index">The index parameter is used to specify the position of the filter within
+        /// the filters array.</param>
+        /// <returns>
+        /// The method is returning a filter object.
+        /// </returns>
         public static Filt GetFilter(int type, int index)
         {
             return filters[indexs[type, index]];
         }
         public static List<Filt> filters = new List<Filt>();
-        /// It takes an image, applies a filter to it, and returns the filtered image
-        /// 
-        /// @param id The id of the image to apply the filter to.
-        /// @param name The name of the filter.
-        /// @param inPlace If true, the image will be modified in place. If false, a new image will be
-        /// created.
-        /// 
-        /// @return The image that was filtered.
+
+        /// <summary>
+        /// The Base function applies a filter to a BioImage object and returns the modified image.
+        /// </summary>
+        /// <param name="id">The id parameter is a string that represents the unique identifier of the
+        /// image. It is used to retrieve the image from a collection or database.</param>
+        /// <param name="name">The "name" parameter is a string that represents the name of the filter
+        /// to be applied to the image.</param>
+        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
+        /// filter should be applied to the original image or to a copy of the image. If "inPlace" is
+        /// set to true, the filter will be applied to the original image. If "inPlace" is set to
+        /// false,</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage Base(string id, string name, bool inPlace)
         {
             BioImage img = Images.GetImage(id);
@@ -1018,16 +1258,24 @@ namespace BioGTK
             }
             return img;
         }
-        /// It takes two images, applies a filter to the first image, and then applies the second image
-        /// to the first image
-        /// 
-        /// @param id the image id
-        /// @param id2 The image to be filtered
-        /// @param name The name of the filter.
-        /// @param inPlace If true, the image will be modified in place. If false, a new image will be
-        /// created.
-        /// 
-        /// @return The image that was filtered.
+
+        /// <summary>
+        /// The Base2 function applies a filter to an image, using another image as an overlay, and
+        /// returns the resulting image.
+        /// </summary>
+        /// <param name="id">The parameter "id" is a string that represents the ID of the first
+        /// image.</param>
+        /// <param name="id2">The parameter "id2" is a string that represents the ID of the second
+        /// image.</param>
+        /// <param name="name">The "name" parameter is a string that represents the name of the filter
+        /// to be applied to the images.</param>
+        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
+        /// filter should be applied to the image in-place or create a new image with the filtered
+        /// result. If "inPlace" is set to true, the filter will be applied directly to the input image
+        /// and modify it. If "in</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage Base2(string id, string id2, string name, bool inPlace)
         {
             BioImage c2 = Images.GetImage(id);
@@ -1058,14 +1306,22 @@ namespace BioGTK
             }
             return img;
         }
-        /// It takes an image, applies a filter to it, and returns the image
-        /// 
-        /// @param id The id of the image to apply the filter to.
-        /// @param name The name of the filter
-        /// @param inPlace If true, the image will be modified in place. If false, a copy of the image
-        /// will be created and modified.
-        /// 
-        /// @return The image that was passed in.
+
+        /// <summary>
+        /// The function takes an image ID, filter name, and a boolean indicating whether to apply the
+        /// filter in place or create a copy, and applies the filter to the image.
+        /// </summary>
+        /// <param name="id">The "id" parameter is a string that represents the unique identifier of the
+        /// image. It is used to retrieve the image from the Images collection.</param>
+        /// <param name="name">The "name" parameter is a string that represents the name of the filter
+        /// to be applied to the image.</param>
+        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
+        /// filter should be applied in place or create a new copy of the image. If "inPlace" is true,
+        /// the filter will be applied directly to the image buffers. If "inPlace" is false, a copy of
+        /// the</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage InPlace(string id, string name, bool inPlace)
         {
             BioImage img = Images.GetImage(id);
@@ -1094,14 +1350,24 @@ namespace BioGTK
             }
             return img;
         }
-        /// This function takes an image, applies a filter to it, and returns the filtered image
-        /// 
-        /// @param id the image id
-        /// @param id2 the image to be filtered
-        /// @param name The name of the filter
-        /// @param inPlace true or false
-        /// 
-        /// @return The image that was passed in.
+
+        /// <summary>
+        /// The function "InPlace2" applies a filter to an image, either in place or by creating a copy,
+        /// and returns the resulting image.
+        /// </summary>
+        /// <param name="id">The parameter "id" is a string that represents the ID of the first
+        /// image.</param>
+        /// <param name="id2">The parameter "id2" is a string that represents the ID of the second
+        /// image.</param>
+        /// <param name="name">The "name" parameter is a string that represents the name of the filter
+        /// to be applied to the images.</param>
+        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
+        /// filter should be applied in place or not. If "inPlace" is true, the filter will be applied
+        /// directly to the input image ("img") without creating a copy. If "inPlace" is false, a copy
+        /// of</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage InPlace2(string id, string id2, string name, bool inPlace)
         {
             BioImage c2 = Images.GetImage(id);
@@ -1132,14 +1398,23 @@ namespace BioGTK
             }
             return img;
         }
-        /// It takes an image, applies a filter to it, and returns the filtered image
-        /// 
-        /// @param id the id of the image to be filtered
-        /// @param name The name of the filter
-        /// @param inPlace If true, the image is modified in place. If false, a copy of the image is
-        /// created and modified.
-        /// 
-        /// @return The image that was passed in.
+
+        /// <summary>
+        /// The function takes an image ID, filter name, and a boolean flag indicating whether to apply
+        /// the filter in place or create a copy, and applies the filter to the image buffers
+        /// accordingly.
+        /// </summary>
+        /// <param name="id">The id parameter is a string that represents the unique identifier of the
+        /// image. It is used to retrieve the image from the Images collection.</param>
+        /// <param name="name">The "name" parameter is a string that represents the name of the filter
+        /// to be applied to the image.</param>
+        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
+        /// filter should be applied in place or create a new copy of the image. If "inPlace" is true,
+        /// the filter will be applied directly to the image buffers. If "inPlace" is false, a copy of
+        /// the</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage InPlacePartial(string id, string name, bool inPlace)
         {
             BioImage img = Images.GetImage(id);
@@ -1168,16 +1443,26 @@ namespace BioGTK
             }
             return img;
         }
-        /// This function takes an image, resizes it, and returns the resized image
-        /// 
-        /// @param id the id of the image to be resized
-        /// @param name The name of the filter to use.
-        /// @param inPlace If true, the image will be modified in place. If false, a new image will be
-        /// created.
-        /// @param w width
-        /// @param h height
-        /// 
-        /// @return The image that was resized.
+
+        /// <summary>
+        /// The function resizes a BioImage object using a specified filter and returns the resized
+        /// image.
+        /// </summary>
+        /// <param name="id">The id parameter is a string that represents the unique identifier of the
+        /// image. It is used to retrieve the image from the Images collection.</param>
+        /// <param name="name">The "name" parameter is a string that represents the name of the filter
+        /// to be applied to the image.</param>
+        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
+        /// image should be resized in place or if a new copy of the image should be created. If
+        /// "inPlace" is set to true, the image will be resized directly, modifying the original image.
+        /// If "inPlace" is</param>
+        /// <param name="w">The parameter "w" in the Resize method represents the desired width of the
+        /// resized image.</param>
+        /// <param name="h">The parameter "h" in the code represents the desired height of the resized
+        /// image.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage Resize(string id, string name, bool inPlace, int w, int h)
         {
             BioImage img = Images.GetImage(id);
@@ -1207,18 +1492,34 @@ namespace BioGTK
             }
             return img;
         }
-        /// It takes an image, rotates it, and returns the rotated image
-        /// 
-        /// @param id the id of the image to be rotated
-        /// @param name The name of the filter
-        /// @param inPlace whether to apply the filter to the original image or to a copy of it
-        /// @param angle the angle to rotate the image
-        /// @param a alpha
-        /// @param r red
-        /// @param g the image to be rotated
-        /// @param b blue
-        /// 
-        /// @return The image that was rotated.
+
+        /// <summary>
+        /// The function takes an image, rotates it by a specified angle, and returns the rotated image.
+        /// </summary>
+        /// <param name="id">The id parameter is a string that represents the unique identifier of the
+        /// image.</param>
+        /// <param name="name">The "name" parameter is a string that represents the name of the filter
+        /// to be applied to the image.</param>
+        /// <param name="inPlace">The "inPlace" parameter determines whether the rotation should be
+        /// applied to the original image or a copy of it. If "inPlace" is set to true, the rotation
+        /// will be applied to the original image. If "inPlace" is set to false, a copy of the image
+        /// will be</param>
+        /// <param name="angle">The angle parameter is the amount of rotation in degrees that you want
+        /// to apply to the image.</param>
+        /// <param name="a">The parameter "a" represents the alpha value of the fill color. Alpha value
+        /// determines the transparency of the color, with 0 being fully transparent and 255 being fully
+        /// opaque.</param>
+        /// <param name="r">The parameter "r" represents the red component of the fill color. It is an
+        /// integer value ranging from 0 to 255, where 0 represents no red and 255 represents maximum
+        /// red intensity.</param>
+        /// <param name="g">The parameter "g" in the Rotate method represents the green component of the
+        /// fill color used in the rotation operation. It is an integer value ranging from 0 to 255,
+        /// where 0 represents no green and 255 represents maximum green intensity.</param>
+        /// <param name="b">The parameter "b" represents the blue component of the fill color used in
+        /// the rotation operation.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage Rotate(string id, string name, bool inPlace, float angle, int a, int r, int g, int b)
         {
             BioImage img = Images.GetImage(id);
@@ -1250,16 +1551,26 @@ namespace BioGTK
             return img;
 
         }
-        /// This function takes an image, applies a transformation filter to it, and returns the
-        /// transformed image
-        /// 
-        /// @param id the id of the image to be transformed
-        /// @param name The name of the filter.
-        /// @param inPlace If true, the image will be modified in place. If false, a new image will be
-        /// created.
-        /// @param angle the angle of rotation
-        /// 
-        /// @return The image that was transformed.
+
+        /// <summary>
+        /// The function takes an image ID, a filter name, a boolean indicating whether the
+        /// transformation should be applied in place, and an angle, and applies the specified
+        /// transformation filter to the image.
+        /// </summary>
+        /// <param name="id">The id parameter is a string that represents the unique identifier of the
+        /// bioimage.</param>
+        /// <param name="name">The "name" parameter is a string that represents the name of the
+        /// transformation filter to be applied to the image.</param>
+        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
+        /// transformation should be applied to the original image or a copy of it. If "inPlace" is set
+        /// to true, the transformation will be applied to the original image. If it is set to false, a
+        /// copy of the image</param>
+        /// <param name="angle">The angle parameter is a float value that represents the rotation angle
+        /// in degrees. It is used to specify the amount of rotation to be applied to the image during
+        /// the transformation.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage Transformation(string id, string name, bool inPlace, float angle)
         {
             BioImage img = Images.GetImage(id);
@@ -1287,14 +1598,23 @@ namespace BioGTK
             }
             return img;
         }
-        /// It takes an image, applies a filter to it, and returns the filtered image
-        /// 
-        /// @param id the id of the image to be filtered
-        /// @param name The name of the filter to apply
-        /// @param inPlace If true, the image will be modified in place. If false, a copy of the image
-        /// will be created and the copy will be modified.
-        /// 
-        /// @return The image that was copied.
+
+        /// <summary>
+        /// The function `Copy` takes an image ID, a filter name, and a boolean flag indicating whether
+        /// to perform the operation in place, and returns a copy of the image with the specified filter
+        /// applied.
+        /// </summary>
+        /// <param name="id">The id parameter is a string that represents the unique identifier of the
+        /// bioimage.</param>
+        /// <param name="name">The "name" parameter is a string that represents the name of the filter
+        /// to be applied to the image.</param>
+        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
+        /// image processing operation should be performed on the original image or on a copy of the
+        /// image. If "inPlace" is set to true, the operation will be performed on the original image.
+        /// If "inPlace" is set to</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage Copy(string id, string name, bool inPlace)
         {
             BioImage img = Images.GetImage(id);
@@ -1322,15 +1642,23 @@ namespace BioGTK
             }
             return img;
         }
-        /// It takes an image, crops it, and returns the cropped image
-        /// 
-        /// @param id the id of the image to crop
-        /// @param x x coordinate of the top left corner of the rectangle
-        /// @param y y-coordinate of the top-left corner of the rectangle
-        /// @param w width
-        /// @param h height
-        /// 
-        /// @return The cropped image.
+
+        /// <summary>
+        /// The Crop function takes an image ID, coordinates, and dimensions, crops the image based on
+        /// those parameters, applies thresholding and stacking filters, and returns the cropped image.
+        /// </summary>
+        /// <param name="id">The id parameter is a string that represents the identifier of the
+        /// bioimage.</param>
+        /// <param name="x">The x-coordinate of the top-left corner of the crop area.</param>
+        /// <param name="y">The parameter "y" in the Crop method represents the y-coordinate of the
+        /// top-left corner of the rectangle to be cropped from the image.</param>
+        /// <param name="w">The parameter "w" in the Crop method represents the width of the rectangle
+        /// to be cropped from the image.</param>
+        /// <param name="h">The parameter "h" in the Crop method represents the height of the rectangle
+        /// to be cropped from the image.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage Crop(string id, double x, double y, double w, double h)
         {
             BioImage c = Images.GetImage(id);
@@ -1350,18 +1678,27 @@ namespace BioGTK
             //App.tabsView.AddTab(img);
             return img;
         }
-        /// This function takes a string and a rectangle and returns a BioImage
-        /// 
-        /// @param id the id of the image to crop
-        /// @param RectangleD 
-        /// 
-        /// @return A BioImage object.
+
+        /// <summary>
+        /// The Crop function takes an image ID and a rectangle, and returns a cropped version of the
+        /// image.
+        /// </summary>
+        /// <param name="id">The "id" parameter is a string that represents the identifier of the bio
+        /// image that you want to crop.</param>
+        /// <param name="RectangleD">The RectangleD is a class that represents a rectangle with double
+        /// precision coordinates. It has four properties:</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage Crop(string id, RectangleD r)
         {
             return Crop(id, r.X, r.Y, r.W, r.H);
         }
 
-        /// It creates a dictionary of filters and their names
+
+        /// <summary>
+        /// The Init() function initializes a list of filters with their corresponding names and types.
+        /// </summary>
         public static void Init()
         {
             //Base Filters
@@ -1716,9 +2053,13 @@ namespace BioGTK
             set { series = value; }
         }
 
-        /// Copy() is a function that copies the values of the ImageInfo class to a new ImageInfo class
-        /// 
-        /// @return A copy of the ImageInfo object.
+       /// <summary>
+       /// The Copy function creates a new ImageInfo object and copies the values of the properties from
+       /// the current object to the new object.
+       /// </summary>
+       /// <returns>
+       /// The method is returning an instance of the ImageInfo class.
+       /// </returns>
         public ImageInfo Copy()
         {
             ImageInfo inf = new ImageInfo();
@@ -1813,10 +2154,17 @@ namespace BioGTK
         private Statistics statistics;
         private int resolution = 0;
         ImageInfo imageInfo = new ImageInfo();
-        /// It copies the BioImage b and returns a new BioImage object.
-        /// 
-        /// @param BioImage The BioImage object to copy
-        /// @param rois If true, the ROIs will be copied. If false, the ROIs will be ignored.
+        /// <summary>
+        /// The Copy function creates a deep copy of a BioImage object, including its annotations,
+        /// buffers, channels, and other properties.
+        /// </summary>
+        /// <param name="BioImage">A class representing a bioimage, which contains various properties
+        /// and data related to the image.</param>
+        /// <param name="rois">A boolean value indicating whether to copy the ROIs (Region of Interest)
+        /// from the original BioImage or not.</param>
+        /// <returns>
+        /// The method is returning a copy of the BioImage object.
+        /// </returns>
         public static BioImage Copy(BioImage b, bool rois)
         {
             BioImage bi = new BioImage(b.ID);
@@ -1851,38 +2199,62 @@ namespace BioGTK
             bi.statistics = b.statistics;
             return bi;
         }
-        /// Copy a BioImage object.
-        /// 
-        /// @param BioImage The image to copy
-        /// 
-        /// @return A copy of the BioImage object.
+
+        /// <summary>
+        /// The function "Copy" in C# takes a BioImage object as input and returns a copy of it.
+        /// </summary>
+        /// <param name="BioImage">The BioImage class is a data structure that represents an image in a
+        /// biological context. It may contain information such as pixel data, metadata, and other
+        /// properties related to the image.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage Copy(BioImage b)
         {
             return Copy(b, true);
         }
-        /// Copy the image and optionally the ROIs
-        /// 
-        /// @param rois Boolean value indicating whether to copy the ROIs or not.
-        /// 
-        /// @return A copy of the BioImage object.
+
+        /// <summary>
+        /// The function "Copy" creates a copy of a BioImage object, optionally including the regions of
+        /// interest (ROIs).
+        /// </summary>
+        /// <param name="rois">The "rois" parameter is a boolean value that determines whether or not to
+        /// include the regions of interest (ROIs) in the copied BioImage. If "rois" is set to true, the
+        /// ROIs will be included in the copied BioImage. If "rois" is set</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public BioImage Copy(bool rois)
         {
             return BioImage.Copy(this, rois);
         }
-        /// > This function copies the current BioImage object and returns a new BioImage object
-        /// 
-        /// @return A copy of the BioImage object.
+
+        /// <summary>
+        /// The function "Copy" returns a new instance of the BioImage class by making a deep copy of
+        /// the current instance.
+        /// </summary>
+        /// <returns>
+        /// The method is returning a copy of the BioImage object.
+        /// </returns>
         public BioImage Copy()
         {
             return BioImage.Copy(this, true);
         }
-        /// CopyInfo() copies the information from one BioImage to another
-        /// 
-        /// @param BioImage the image to copy
-        /// @param copyAnnotations true
-        /// @param copyChannels true
-        /// 
-        /// @return A new BioImage object.
+
+        /// <summary>
+        /// The function CopyInfo creates a new BioImage object and copies the properties and data from
+        /// the input BioImage object, optionally including annotations and channels.
+        /// </summary>
+        /// <param name="BioImage">The BioImage class represents an image object that contains various
+        /// properties and data related to an image.</param>
+        /// <param name="copyAnnotations">A boolean value indicating whether to copy the annotations
+        /// from the original BioImage to the new BioImage.</param>
+        /// <param name="copyChannels">A boolean value indicating whether to copy the channels of the
+        /// BioImage object.</param>
+        /// <returns>
+        /// The method is returning a copy of the BioImage object with the specified properties and data
+        /// copied from the original BioImage object.
+        /// </returns>
         public static BioImage CopyInfo(BioImage b, bool copyAnnotations, bool copyChannels)
         {
             BioImage bi = new BioImage(b.ID);
@@ -1951,12 +2323,12 @@ namespace BioGTK
         }
         public double StageSizeY
         {
-            get { return Resolutions[Resolution].StageSizeX; }
+            get { return Resolutions[Resolution].StageSizeY; }
             set { imageInfo.StageSizeY = value; }
         }
         public double StageSizeZ
         {
-            get { return Resolutions[Resolution].StageSizeX; }
+            get { return Resolutions[Resolution].StageSizeZ; }
             set { imageInfo.StageSizeZ = value; }
         }
 
@@ -1983,6 +2355,8 @@ namespace BioGTK
                     return Channels[0];
             }
         }
+        /* The above code is defining a property called "GChannel" in C#. This property returns a
+        Channel object. */
         public Channel GChannel
         {
             get
@@ -1993,6 +2367,8 @@ namespace BioGTK
                     return Channels[0];
             }
         }
+        /* The above code is defining a property called "BChannel" in C#. This property returns a
+        Channel object. */
         public Channel BChannel
         {
             get
@@ -2022,6 +2398,17 @@ namespace BioGTK
             public int count;
             public bool bit8color = false;
 
+            /// <summary>
+            /// The function "FromImage" takes a BioImage object and returns an ImageJDesc object with
+            /// various properties set based on the properties of the BioImage object.
+            /// </summary>
+            /// <param name="BioImage">BioImage is a class that represents an image in a biological
+            /// context. It contains information about the image such as the number of channels, slices,
+            /// frames, and the physical properties of the image (e.g., frame interval, spacing). It
+            /// also contains information about the intensity range of each channel.</param>
+            /// <returns>
+            /// The method is returning an instance of the ImageJDesc class.
+            /// </returns>
             public ImageJDesc FromImage(BioImage b)
             {
                 ImageJ = "";
@@ -2052,9 +2439,14 @@ namespace BioGTK
                 max = b.Channels[0].RangeR.Max;
                 return this;
             }
-            /// It returns a string that contains the values of all the variables in the imagej image
-            /// 
-            /// @return A string representation of the imagej image data.
+
+            /// <summary>
+            /// The GetString function returns a string containing the values of various variables.
+            /// </summary>
+            /// <returns>
+            /// The method is returning a string that contains the values of various variables
+            /// concatenated together.
+            /// </returns>
             public string GetString()
             {
                 string s = "";
@@ -2073,9 +2465,19 @@ namespace BioGTK
                 s += "max=" + max.ToString() + "\n";
                 return s;
             }
-            /// It sets the string to the value of the parameter.
-            /// 
-            /// @param desc The description of the string.
+
+            /// <summary>
+            /// The function `SetString` takes a string input and parses it to set various properties
+            /// based on the key-value pairs in the string.
+            /// </summary>
+            /// <param name="desc">The `desc` parameter is a string that contains multiple lines of
+            /// text. Each line represents a key-value pair, where the key and value are separated by an
+            /// equals sign (=). The method `SetString` splits the `desc` string into individual lines
+            /// and then processes each line to set the corresponding</param>
+            /// <returns>
+            /// If the value of `i` is greater than or equal to `maxlen`, the method will return and
+            /// exit without returning any value.
+            /// </returns>
             public void SetString(string desc)
             {
                 string[] lines = desc.Split(new string[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
@@ -2236,6 +2638,9 @@ namespace BioGTK
         }
         public static string status;
         public static string progFile;
+        /* The above code is defining a public static property called "Initialized" in C#. The property
+        has a getter method that returns the value of a private static boolean variable called
+        "initialized". */
         public static bool Initialized
         {
             get
@@ -2243,7 +2648,14 @@ namespace BioGTK
                 return initialized;
             }
         }
-        /// Converts a 16-bit image to an 8-bit image
+
+        /// <summary>
+        /// The function converts an image to 8-bit format, either by converting from 48-bit or 24-bit
+        /// RGB format, or by converting from 16-bit grayscale format.
+        /// </summary>
+        /// <returns>
+        /// The method does not return anything. It is a void method.
+        /// </returns>
         public void To8Bit()
         {
             if (Buffers[0].RGBChannelsCount == 4)
@@ -2335,7 +2747,13 @@ namespace BioGTK
             AutoThreshold(this, false);
             bitsPerPixel = 8;
         }
-        /// Converts the image to 16 bit.
+
+        /// <summary>
+        /// The function converts an image to 16-bit format and performs thresholding on the image.
+        /// </summary>
+        /// <returns>
+        /// The method does not have a return type, so it does not return anything.
+        /// </returns>
         public void To16Bit()
         {
             if (Buffers[0].RGBChannelsCount == 4)
@@ -2435,7 +2853,14 @@ namespace BioGTK
             AutoThreshold(this, false);
             StackThreshold(true);
         }
-        /// Converts the image to 24 bit.
+
+        /// <summary>
+        /// The function converts the pixel format of the image buffers to 24-bit RGB format.
+        /// </summary>
+        /// <returns>
+        /// If the PixelFormat of the first buffer in the Buffers list is already Format24bppRgb, then
+        /// the method returns without performing any further actions.
+        /// </returns>
         public void To24Bit()
         {
             if (Buffers[0].PixelFormat == PixelFormat.Format24bppRgb)
@@ -2518,7 +2943,15 @@ namespace BioGTK
             AutoThreshold(this, true);
             StackThreshold(false);
         }
-        /// Converts the image to 32 bit.
+
+        /// <summary>
+        /// The function converts the pixel format of the image buffers to 32-bit ARGB format and
+        /// applies an auto threshold.
+        /// </summary>
+        /// <returns>
+        /// If the pixel format of the first buffer is already Format32bppArgb, then nothing is returned
+        /// and the method exits.
+        /// </returns>
         public void To32Bit()
         {
             if (Buffers[0].PixelFormat == PixelFormat.Format32bppArgb)
@@ -2534,9 +2967,14 @@ namespace BioGTK
             }
             AutoThreshold(this, true);
         }
-        /// It converts a 16 bit image to a 48 bit image
-        /// 
-        /// @return A list of Bitmaps.
+
+        /// <summary>
+        /// The function converts the image to a 48-bit format and performs various calculations and
+        /// operations on the image.
+        /// </summary>
+        /// <returns>
+        /// The method does not have a return type, so nothing is being returned.
+        /// </returns>
         public void To48Bit()
         {
             if (Buffers[0].RGBChannelsCount == 4)
@@ -2642,9 +3080,14 @@ namespace BioGTK
             AutoThreshold(this, false);
             StackThreshold(true);
         }
-        /// Rotates the image by specified degrees or flips it.
-        /// 
-        /// @param rot The type of rotation to perform.
+
+        /// <summary>
+        /// The RotateFlip function rotates and flips the images in the Buffers list and updates the
+        /// Volume property.
+        /// </summary>
+        /// <param name="rot">The "rot" parameter is of type AForge.RotateFlipType, which is an
+        /// enumeration that specifies the type of rotation or flip operation to be performed on the
+        /// image.</param>
         public void RotateFlip(AForge.RotateFlipType rot)
         {
             for (int i = 0; i < Buffers.Count; i++)
@@ -2653,24 +3096,41 @@ namespace BioGTK
             }
             Volume = new VolumeD(new Point3D(StageSizeX, StageSizeY, StageSizeZ), new Point3D(PhysicalSizeX * SizeX, PhysicalSizeY * SizeY, PhysicalSizeZ * SizeZ));
         }
-        /// Bake(int rmin, int rmax, int gmin, int gmax, int bmin, int bmax)
-        /// 
-        /// @param rmin The minimum value of the red channel.
-        /// @param rmax The maximum value of the red channel.
-        /// @param gmin The minimum value of the green channel.
-        /// @param gmax The maximum value of the green channel.
-        /// @param bmin The minimum value of the blue channel.
-        /// @param bmax The maximum value of the blue channel.
+
+        /// <summary>
+        /// The Bake function takes in minimum and maximum values for red, green, and blue color
+        /// channels and calls another Bake function with IntRange parameters.
+        /// </summary>
+        /// <param name="rmin">The minimum value for the red color component.</param>
+        /// <param name="rmax">The maximum value for the red component of the color range.</param>
+        /// <param name="gmin">The parameter "gmin" represents the minimum value for the green component
+        /// in the RGB color model.</param>
+        /// <param name="gmax">The parameter "gmax" represents the maximum value for the green component
+        /// of a color.</param>
+        /// <param name="bmin">The parameter "bmin" represents the minimum value for the blue component
+        /// in the color range.</param>
+        /// <param name="bmax">The parameter "bmax" represents the maximum value for the blue component
+        /// in the RGB color model.</param>
         public void Bake(int rmin, int rmax, int gmin, int gmax, int bmin, int bmax)
         {
             Bake(new IntRange(rmin, rmax), new IntRange(gmin, gmax), new IntRange(bmin, bmax));
         }
-        /// It takes a range of values for each channel, and creates a new image with the filtered
-        /// values
-        /// 
-        /// @param IntRange 
-        /// @param IntRange 
-        /// @param IntRange 
+
+        /// <summary>
+        /// The function "Bake" creates a new BioImage object, copies information from the current
+        /// object, applies filters to the image buffers, calculates statistics for the filtered images,
+        /// sets the coordinate values for the new BioImage object, adds the filtered images to the new
+        /// BioImage object, sets the range values for each channel in the new BioImage object, waits
+        /// for threshold image statistics calculation, applies auto thresholding to the new BioImage
+        /// object, clears the calculation buffer for statistics, and adds the new BioImage object to
+        /// the Images collection.
+        /// </summary>
+        /// <param name="IntRange">The IntRange class represents a range of integer values. It has two
+        /// properties: Min and Max, which define the minimum and maximum values of the range.</param>
+        /// <param name="IntRange">The IntRange class represents a range of integer values. It has two
+        /// properties: Min and Max, which define the minimum and maximum values of the range.</param>
+        /// <param name="IntRange">The IntRange class represents a range of integer values. It has two
+        /// properties: Min and Max, which define the minimum and maximum values of the range.</param>
         public void Bake(IntRange rf, IntRange gf, IntRange bf)
         {
             BioImage bm = new BioImage(Images.GetImageName(ID));
@@ -2704,7 +3164,11 @@ namespace BioGTK
             Statistics.ClearCalcBuffer();
             Images.AddImage(bm, true);
         }
-        /// It takes a list of images and assigns them to a 3D array of coordinates
+
+        /// <summary>
+        /// The function "UpdateCoords" assigns coordinates to each element in a three-dimensional array
+        /// based on the size of the array and the number of elements in a list.
+        /// </summary>
         public void UpdateCoords()
         {
             int z = 0;
@@ -2734,12 +3198,18 @@ namespace BioGTK
                 }
             }
         }
-        /// It takes the number of Z, C, and T planes in the image and then assigns each image buffer a
-        /// coordinate in the ZCT space
-        /// 
-        /// @param sz size of the Z dimension
-        /// @param sc number of channels
-        /// @param st number of time points
+
+        /// <summary>
+        /// The function "UpdateCoords" updates the coordinates of a multi-dimensional array based on
+        /// the given sizes and assigns each element of the array a corresponding index from a list of
+        /// buffers.
+        /// </summary>
+        /// <param name="sz">The parameter `sz` represents the size of the Z dimension in the `Coords`
+        /// array. It determines the number of elements in the Z dimension.</param>
+        /// <param name="sc">The parameter "sc" represents the size of the second dimension of the
+        /// Coords array. It determines the number of columns in the three-dimensional array.</param>
+        /// <param name="st">The parameter "st" represents the size of the third dimension in the Coords
+        /// array. It determines the number of elements in the third dimension of the array.</param>
         public void UpdateCoords(int sz, int sc, int st)
         {
             int z = 0;
@@ -2772,12 +3242,19 @@ namespace BioGTK
                 }
             }
         }
-        /// It takes a list of images and assigns them to a 3D array of coordinates
-        /// 
-        /// @param sz size of the Z dimension
-        /// @param sc number of channels
-        /// @param st number of time points
-        /// @param order XYCZT or XYZCT
+
+        /// <summary>
+        /// The function "UpdateCoords" updates the coordinates of a multi-dimensional array based on
+        /// the specified order.
+        /// </summary>
+        /// <param name="sz">The parameter `sz` represents the size of the Z dimension in the Coords
+        /// array.</param>
+        /// <param name="sc">The parameter "sc" represents the size of the second dimension of the
+        /// Coords array. It determines the number of columns in the Coords array.</param>
+        /// <param name="st">The parameter "st" represents the size of the T dimension in the Coords
+        /// array. It determines the number of elements in the T dimension.</param>
+        /// <param name="order">The "order" parameter determines the order in which the coordinates are
+        /// updated. It can have two possible values: "XYCZT" or "XYZCT".</param>
         public void UpdateCoords(int sz, int sc, int st, string order)
         {
             int z = 0;
@@ -2838,52 +3315,72 @@ namespace BioGTK
                 }
             }
         }
-        /// Convert a physical size to an image size
-        /// 
-        /// @param d the distance in microns
-        /// 
-        /// @return The value of d divided by the physicalSizeX.
+
+        /// <summary>
+        /// The function converts a value from a physical size to an image size in the X dimension.
+        /// </summary>
+        /// <param name="d">The parameter "d" represents a value that needs to be converted to image
+        /// size in the X direction.</param>
+        /// <returns>
+        /// The method is returning a double value.
+        /// </returns>
         public double ToImageSizeX(double d)
         {
             return d / PhysicalSizeX;
         }
-        /// Convert a physical size in Y direction to an image size in Y direction
-        /// 
-        /// @param d the distance in microns
-        /// 
-        /// @return The return value is the value of the parameter d divided by the value of the
-        /// physicalSizeY field.
+
+        /// <summary>
+        /// The function converts a value from a physical size to an image size in the Y-axis.
+        /// </summary>
+        /// <param name="d">The parameter "d" represents the size of an object in the physical
+        /// world.</param>
+        /// <returns>
+        /// The method is returning the value of `d` divided by the value of `PhysicalSizeY`.
+        /// </returns>
         public double ToImageSizeY(double d)
         {
             return d / PhysicalSizeY;
         }
-        /// > Convert a stage coordinate to an image coordinate
-        /// 
-        /// @param x the x coordinate of the point in the image
-        /// 
-        /// @return The return value is a double.
+
+        /// <summary>
+        /// The function converts a given x-coordinate from stage space to image space.
+        /// </summary>
+        /// <param name="x">The parameter "x" represents a coordinate value in some coordinate
+        /// space.</param>
+        /// <returns>
+        /// The method is returning a double value.
+        /// </returns>
         public double ToImageSpaceX(double x)
         {
             if (isPyramidal)
                 return x;
             return (float)((x - StageSizeX) / PhysicalSizeX);
         }
-        /// > Convert a Y coordinate from stage space to image space
-        /// 
-        /// @param y the y coordinate of the point in the image
-        /// 
-        /// @return The return value is the y-coordinate of the image.
+
+        /// <summary>
+        /// The function converts a given y-coordinate from stage space to image space.
+        /// </summary>
+        /// <param name="y">The parameter "y" represents the coordinate value in the image
+        /// space.</param>
+        /// <returns>
+        /// The method is returning a double value.
+        /// </returns>
         public double ToImageSpaceY(double y)
         {
             if (isPyramidal)
                 return y;
             return (float)((y - StageSizeY) / PhysicalSizeY);
         }
-        /// Convert a point in the stage coordinate system to a point in the image coordinate system
-        /// 
-        /// @param PointD 
-        /// 
-        /// @return A PointF object.
+
+        /// <summary>
+        /// The function converts a point from stage space to image space using given stage and physical
+        /// sizes.
+        /// </summary>
+        /// <param name="PointD">The PointD class represents a point in a two-dimensional space. It has
+        /// two properties, X and Y, which represent the coordinates of the point.</param>
+        /// <returns>
+        /// The method is returning a PointD object.
+        /// </returns>
         public PointD ToImageSpace(PointD p)
         {
             PointD pp = new PointD();
@@ -2891,11 +3388,16 @@ namespace BioGTK
             pp.Y = (float)((p.Y - StageSizeY) / PhysicalSizeY);
             return pp;
         }
-        /// Convert a list of points from stage space to image space
-        /// 
-        /// @param p List of points in stage space
-        /// 
-        /// @return A PointD array.
+
+        /// <summary>
+        /// The function takes a list of PointD objects and converts their coordinates from stage space
+        /// to image space.
+        /// </summary>
+        /// <param name="p">A list of PointD objects representing points in some coordinate
+        /// system.</param>
+        /// <returns>
+        /// The method is returning an array of PointD objects.
+        /// </returns>
         public PointD[] ToImageSpace(List<PointD> p)
         {
             PointD[] ps = new PointD[p.Count];
@@ -2908,6 +3410,21 @@ namespace BioGTK
             }
             return ps;
         }
+        /// <summary>
+        /// The function takes a list of points in stage space and converts them to image space using
+        /// the provided stage and physical size parameters.
+        /// </summary>
+        /// <param name="p">A list of PointD objects representing points in stage space.</param>
+        /// <param name="stageSizeX">The width of the stage or canvas in pixels.</param>
+        /// <param name="stageSizeY">The stageSizeY parameter represents the size of the stage or canvas
+        /// in the Y-axis direction. It is used to calculate the Y-coordinate of each point in the p
+        /// list in image space.</param>
+        /// <param name="physicalSizeX">The physical size of the X-axis in the image space.</param>
+        /// <param name="physicalSizeY">The physical size of the Y-axis in the coordinate system of the
+        /// stage or image.</param>
+        /// <returns>
+        /// The method is returning an array of PointD objects.
+        /// </returns>
         public static PointD[] ToImageSpace(List<PointD> p, int stageSizeX,int stageSizeY, int physicalSizeX,int physicalSizeY)
         {
             PointD[] ps = new PointD[p.Count];
@@ -2920,12 +3437,15 @@ namespace BioGTK
             }
             return ps;
         }
-        /// > The function takes a list of points in the stage coordinate system and returns a list of
-        /// points in the image coordinate system
-        /// 
-        /// @param p the points to be converted
-        /// 
-        /// @return A PointF[]
+
+        /// <summary>
+        /// The function converts an array of points from stage space to image space.
+        /// </summary>
+        /// <param name="p">An array of PointF objects representing points in some coordinate
+        /// space.</param>
+        /// <returns>
+        /// The method is returning an array of PointF objects.
+        /// </returns>
         public PointF[] ToImageSpace(PointF[] p)
         {
             PointF[] ps = new PointF[p.Length];
@@ -2938,11 +3458,16 @@ namespace BioGTK
             }
             return ps;
         }
-        /// > Convert a rectangle in physical space to a rectangle in image space
-        /// 
-        /// @param RectangleD 
-        /// 
-        /// @return A RectangleF object.
+
+        /// <summary>
+        /// The function converts a rectangle from a coordinate space with physical dimensions to a
+        /// coordinate space with image dimensions.
+        /// </summary>
+        /// <param name="RectangleD">A rectangle with double precision coordinates (X, Y, Width,
+        /// Height).</param>
+        /// <returns>
+        /// The method is returning a RectangleF object.
+        /// </returns>
         public RectangleF ToImageSpace(RectangleD p)
         {
             RectangleF r = new RectangleF();
@@ -2953,11 +3478,15 @@ namespace BioGTK
             r.Height = (int)(p.H / PhysicalSizeY);
             return r;
         }
-        /// > This function converts a point in the image space to a point in the stage space
-        /// 
-        /// @param PointD A class that contains an X and Y coordinate.
-        /// 
-        /// @return A PointD object.
+
+        /// <summary>
+        /// The function converts a point from a coordinate space to a stage space.
+        /// </summary>
+        /// <param name="PointD">A structure representing a point in 2D space, with X and Y
+        /// coordinates.</param>
+        /// <returns>
+        /// The method is returning a PointD object, which represents a point in stage space.
+        /// </returns>
         public PointD ToStageSpace(PointD p)
         {
             PointD pp = new PointD();
@@ -2974,12 +3503,19 @@ namespace BioGTK
                 return pp;
             }
         }
-        /// Convert a point in the image space to a point in the stage space
-        /// 
-        /// @param PointD A point in the image space
-        /// @param resolution the resolution of the image (0, 1, 2, 3, 4)
-        /// 
-        /// @return A PointD object.
+
+        /// <summary>
+        /// The function converts a point from a coordinate system with a given resolution to a stage
+        /// space coordinate system.
+        /// </summary>
+        /// <param name="PointD">A structure representing a point in 2D space, with X and Y
+        /// coordinates.</param>
+        /// <param name="resolution">The resolution parameter is an integer that represents the
+        /// resolution level. It is used to access the corresponding PhysicalSizeX and PhysicalSizeY
+        /// values from the Resolutions array.</param>
+        /// <returns>
+        /// The method is returning a PointD object, which represents a point in stage space.
+        /// </returns>
         public PointD ToStageSpace(PointD p, int resolution)
         {
             PointD pp = new PointD();
@@ -2987,16 +3523,25 @@ namespace BioGTK
             pp.Y = ((p.Y * Resolutions[resolution].PhysicalSizeY) + Volume.Location.Y);
             return pp;
         }
-        /// > The function takes a point in the volume space and converts it to a point in the stage
-        /// space
-        /// 
-        /// @param PointD A custom class that holds an X and Y coordinate.
-        /// @param physicalSizeX The width of the stage in mm
-        /// @param physicalSizeY The height of the stage in mm
-        /// @param volumeX The X coordinate of the top left corner of the volume in stage space.
-        /// @param volumeY The Y position of the top left corner of the volume in stage space.
-        /// 
-        /// @return A PointD object.
+
+        /// <summary>
+        /// The function converts a point from a coordinate system with physical sizes and volumes to a
+        /// stage space coordinate system.
+        /// </summary>
+        /// <param name="PointD">A structure representing a point in 2D space, with X and Y
+        /// coordinates.</param>
+        /// <param name="physicalSizeX">The physical size of the X-axis in the stage space.</param>
+        /// <param name="physicalSizeY">The physical size of the Y-axis in the stage space.</param>
+        /// <param name="volumeX">The volumeX parameter represents the offset or displacement in the
+        /// X-axis of the stage space. It is used to adjust the position of the point in the stage
+        /// space.</param>
+        /// <param name="volumeY">The parameter "volumeY" represents the offset or displacement in the
+        /// Y-axis direction in the stage space. It is used to adjust the position of the point in the
+        /// Y-axis direction after scaling and translating it from the physical space to the stage
+        /// space.</param>
+        /// <returns>
+        /// The method is returning a PointD object.
+        /// </returns>
         public static PointD ToStageSpace(PointD p, double physicalSizeX, double physicalSizeY, double volumeX, double volumeY)
         {
             PointD pp = new PointD();
@@ -3004,12 +3549,18 @@ namespace BioGTK
             pp.Y = ((p.Y * physicalSizeY) + volumeY);
             return pp;
         }
-        /// > Convert a rectangle from the coordinate space of the image to the coordinate space of the
-        /// stage
-        /// 
-        /// @param RectangleD A rectangle with double precision coordinates.
-        /// 
-        /// @return A RectangleD object.
+
+        /// <summary>
+        /// The function converts a rectangle from a normalized coordinate space to a stage coordinate
+        /// space.
+        /// </summary>
+        /// <param name="RectangleD">The RectangleD is a custom data structure that represents a
+        /// rectangle in 2D space. It has four properties: X (the x-coordinate of the top-left corner),
+        /// Y (the y-coordinate of the top-left corner), W (the width of the rectangle), and H (the
+        /// height of the</param>
+        /// <returns>
+        /// The method is returning a RectangleD object.
+        /// </returns>
         public RectangleD ToStageSpace(RectangleD p)
         {
             RectangleD r = new RectangleD();
@@ -3019,16 +3570,25 @@ namespace BioGTK
             r.H = (p.H * PhysicalSizeY);
             return r;
         }
-        /// > This function takes a rectangle in the coordinate space of the image and converts it to
-        /// the coordinate space of the stage
-        /// 
-        /// @param RectangleD A rectangle with double precision.
-        /// @param physicalSizeX The width of the physical screen in pixels
-        /// @param physicalSizeY The height of the stage in pixels
-        /// @param volumeX The X position of the volume in stage space.
-        /// @param volumeY The Y position of the top of the volume in stage space.
-        /// 
-        /// @return A RectangleD object.
+
+        /// <summary>
+        /// The function converts a rectangle from a coordinate space with physical dimensions to a
+        /// coordinate space with volume dimensions.
+        /// </summary>
+        /// <param name="RectangleD">A custom data structure representing a rectangle with double
+        /// precision coordinates and dimensions. It has properties X, Y, W, and H representing the
+        /// x-coordinate, y-coordinate, width, and height of the rectangle, respectively.</param>
+        /// <param name="physicalSizeX">The physical size of the X-axis in the stage space.</param>
+        /// <param name="physicalSizeY">The physical size of the Y-axis in the stage space.</param>
+        /// <param name="volumeX">The volumeX parameter represents the offset or displacement in the
+        /// x-axis of the rectangle in stage space. It is used to adjust the position of the rectangle
+        /// in the stage space.</param>
+        /// <param name="volumeY">The parameter "volumeY" represents the offset or displacement in the
+        /// Y-axis direction in the stage space. It is used to adjust the position of the rectangle in
+        /// the stage space.</param>
+        /// <returns>
+        /// The method is returning a RectangleD object.
+        /// </returns>
         public static RectangleD ToStageSpace(RectangleD p, double physicalSizeX, double physicalSizeY, double volumeX, double volumeY)
         {
             RectangleD r = new RectangleD();
@@ -3038,12 +3598,16 @@ namespace BioGTK
             r.H = (p.H * physicalSizeY);
             return r;
         }
-        /// > This function takes a list of points in the coordinate system of the image and returns a
-        /// list of points in the coordinate system of the stage
-        /// 
-        /// @param p The array of points to convert
-        /// 
-        /// @return A PointD[] array.
+
+        /// <summary>
+        /// The function takes an array of PointD objects and converts their coordinates to stage space
+        /// by scaling them and adding an offset.
+        /// </summary>
+        /// <param name="p">An array of PointD objects representing points in some coordinate
+        /// system.</param>
+        /// <returns>
+        /// The method is returning an array of PointD objects.
+        /// </returns>
         public PointD[] ToStageSpace(PointD[] p)
         {
             PointD[] ps = new PointD[p.Length];
@@ -3056,17 +3620,24 @@ namespace BioGTK
             }
             return ps;
         }
-        /// It takes a list of points, and converts them from a coordinate system where the origin is in
-        /// the center of the image, to a coordinate system where the origin is in the top left corner
-        /// of the image
-        /// 
-        /// @param p the array of points to convert
-        /// @param physicalSizeX The width of the image in microns
-        /// @param physicalSizeY The height of the image in microns
-        /// @param volumeX The X position of the volume in stage space.
-        /// @param volumeY The Y position of the top left corner of the volume in stage space.
-        /// 
-        /// @return A PointD array.
+
+        /// <summary>
+        /// The function converts an array of points from a normalized coordinate system to a stage
+        /// space coordinate system.
+        /// </summary>
+        /// <param name="p">An array of PointD objects representing points in some coordinate
+        /// system.</param>
+        /// <param name="physicalSizeX">The physical size of the X-axis in the stage space.</param>
+        /// <param name="physicalSizeY">The physical size of the Y-axis in the stage space.</param>
+        /// <param name="volumeX">The parameter volumeX represents the offset or translation in the
+        /// x-axis of the stage space. It determines how much the x-coordinate of each point in the
+        /// input array should be shifted in the stage space.</param>
+        /// <param name="volumeY">The parameter "volumeY" represents the offset or displacement in the
+        /// Y-axis direction in the stage space. It determines the position of the points in the Y-axis
+        /// direction after converting them to stage space.</param>
+        /// <returns>
+        /// The method is returning an array of PointD objects.
+        /// </returns>
         public static PointD[] ToStageSpace(PointD[] p, double physicalSizeX, double physicalSizeY, double volumeX, double volumeY)
         {
             PointD[] ps = new PointD[p.Length];
@@ -3079,7 +3650,8 @@ namespace BioGTK
             }
             return ps;
         }
-        /* Creating a new BioImage object. */
+        /* The above code is defining a constructor for the BioImage class in C#. The constructor takes
+        a string parameter called "file". */
         public BioImage(string file)
         {
             id = file;
@@ -3090,19 +3662,29 @@ namespace BioGTK
             rgbChannels[1] = 0;
             rgbChannels[2] = 0;
         }
-        /// It takes a BioImage object, and returns a new BioImage object that is a subset of the
-        /// original
-        /// 
-        /// @param BioImage the image to be processed
-        /// @param ser series number
-        /// @param zs starting z-plane
-        /// @param ze end of z-stack
-        /// @param cs channel start
-        /// @param ce channel end
-        /// @param ts time start
-        /// @param te time end
-        /// 
-        /// @return A new BioImage object.
+
+        /// <summary>
+        /// The Substack function takes a BioImage object and extracts a substack of images based on
+        /// specified parameters, including series, z-slices, channels, and timepoints.
+        /// </summary>
+        /// <param name="BioImage">The BioImage object that represents the original image.</param>
+        /// <param name="ser">The parameter "ser" stands for series, which represents the series number
+        /// of the image stack.</param>
+        /// <param name="zs">The parameter "zs" represents the starting z-index of the substack. It
+        /// determines the first z-slice to be included in the substack.</param>
+        /// <param name="ze">ze is the ending z-index of the substack. It represents the last z-slice
+        /// that will be included in the substack.</param>
+        /// <param name="cs">The parameter "cs" represents the starting channel index. It indicates the
+        /// index of the first channel to be included in the substack.</param>
+        /// <param name="ce">The parameter "ce" represents the ending channel index. It is used to
+        /// specify the last channel to include in the substack operation.</param>
+        /// <param name="ts">The parameter "ts" stands for "start time point". It represents the
+        /// starting time point of the substack in the original BioImage.</param>
+        /// <param name="te">The parameter "te" represents the end time point of the substack. It is
+        /// used to specify the last time point to include in the substack.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage Substack(BioImage orig, int ser, int zs, int ze, int cs, int ce, int ts, int te)
         {
             BioImage b = CopyInfo(orig, false, false);
@@ -3146,12 +3728,22 @@ namespace BioGTK
             //Recorder.AddLine("Bio.BioImage.Substack(" + '"' + orig.Filename + '"' + "," + ser + "," + zs + "," + ze + "," + cs + "," + ce + "," + ts + "," + te + ");");
             return b;
         }
-        /// This function takes two images and merges them together
-        /// 
-        /// @param BioImage The image to be merged
-        /// @param BioImage The image to be merged
-        /// 
-        /// @return A new BioImage object.
+
+        /// <summary>
+        /// The MergeChannels function takes two BioImage objects, b2 and b, and merges their channels
+        /// into a new BioImage object, res.
+        /// </summary>
+        /// <param name="BioImage">The BioImage class represents an image in a biological context. It
+        /// contains information about the image, such as its ID, series, size (Z, C, T), bits per
+        /// pixel, image info, little endian flag, series count, and images per series. It also contains
+        /// buffers for storing the</param>
+        /// <param name="BioImage">The BioImage class represents an image in a biological context. It
+        /// contains information about the image, such as its ID, series, size (Z, C, T), bits per
+        /// pixel, image info, little endian flag, series count, and images per series. It also contains
+        /// buffers for storing the</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage MergeChannels(BioImage b2, BioImage b)
         {
             BioImage res = new BioImage(b2.ID);
@@ -3237,23 +3829,35 @@ namespace BioGTK
             //Recorder.AddLine("Bio.BioImage.MergeChannels(" + '"' + b.ID + '"' + "," + '"' + b2.ID + '"' + ");");
             return res;
         }
-        /// MergeChannels(b, b2) takes two images, b and b2, and merges the channels of b2 into b
-        /// 
-        /// @param bname The name of the first image
-        /// @param b2name The name of the image to merge with the first image.
-        /// 
-        /// @return A BioImage object.
+
+        /// <summary>
+        /// The function "MergeChannels" takes in two image names as input, retrieves the corresponding
+        /// images, and merges the channels of the images into a single BioImage object.
+        /// </summary>
+        /// <param name="bname">The parameter "bname" is a string that represents the name of the first
+        /// BioImage that you want to merge channels from.</param>
+        /// <param name="b2name">The parameter "b2name" is a string that represents the name of the
+        /// second BioImage that you want to merge channels with.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage MergeChannels(string bname, string b2name)
         {
             BioImage b = Images.GetImage(bname);
             BioImage b2 = Images.GetImage(b2name);
             return MergeChannels(b, b2);
         }
-        /// It takes a 3D image and merges the Z-stack into a single 2D image
-        /// 
-        /// @param BioImage The image to be merged
-        /// 
-        /// @return A new BioImage object.
+
+        /// <summary>
+        /// The MergeZ function merges multiple images in the Z dimension and applies thresholding to
+        /// the resulting image.
+        /// </summary>
+        /// <param name="BioImage">The BioImage class represents an image in a biological context. It
+        /// contains information about the image such as its size, channels, and time points. It also
+        /// contains a list of buffers, which are the actual image data.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage MergeZ(BioImage b)
         {
             BioImage bi = BioImage.CopyInfo(b, true, true);
@@ -3292,11 +3896,17 @@ namespace BioGTK
             //Recorder.AddLine("Bio.BioImage.MergeZ(" + '"' + b.ID + '"' + ");");
             return bi;
         }
-        /// It takes a 3D image and merges the time dimension into a single image
-        /// 
-        /// @param BioImage The image to be processed
-        /// 
-        /// @return A new BioImage object.
+
+        /// <summary>
+        /// The MergeT function merges multiple images in a BioImage object and applies thresholding to
+        /// the resulting image.
+        /// </summary>
+        /// <param name="BioImage">The BioImage class represents an image with biological data. It
+        /// contains information about the image size, channels, slices, and time points, as well as the
+        /// pixel data stored in buffers.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage MergeT(BioImage b)
         {
             BioImage bi = BioImage.CopyInfo(b, true, true);
@@ -3335,9 +3945,14 @@ namespace BioGTK
             //Recorder.AddLine("Bio.BioImage.MergeT(" + '"' + b.ID + '"' + ");");
             return bi;
         }
-        /// It takes a single image and splits it into three images, one for each channel
-        /// 
-        /// @return A list of BioImages
+
+        /// <summary>
+        /// The SplitChannels function splits an image into separate color channels and returns an array
+        /// of BioImage objects representing each channel.
+        /// </summary>
+        /// <returns>
+        /// The method is returning an array of BioImage objects.
+        /// </returns>
         public BioImage[] SplitChannels()
         {
             BioImage[] bms;
@@ -3437,20 +4052,30 @@ namespace BioGTK
             //Recorder.AddLine("Bio.BioImage.SplitChannels(" + '"' + Filename + '"' + ");");
             return bms;
         }
-        /// > SplitChannels splits a BioImage into its constituent channels
-        /// 
-        /// @param BioImage The image to split
-        /// 
-        /// @return An array of BioImages
+
+        /// <summary>
+        /// The function "SplitChannels" takes a BioImage object as input and returns an array of
+        /// BioImage objects, each representing a different channel of the original image.
+        /// </summary>
+        /// <param name="BioImage">The BioImage class represents an image in a biological context,
+        /// typically used in bioinformatics or biomedical research. It may contain various properties
+        /// and methods related to image processing and analysis.</param>
+        /// <returns>
+        /// The method is returning an array of BioImage objects.
+        /// </returns>
         public static BioImage[] SplitChannels(BioImage bb)
         {
             return bb.SplitChannels();
         }
-        /// This function takes an image and splits it into its individual channels
-        /// 
-        /// @param name The name of the image to split.
-        /// 
-        /// @return An array of BioImage objects.
+        /// <summary>
+        /// The function "SplitChannels" takes in the name of an image and returns an array of BioImage
+        /// objects representing the individual color channels of the image.
+        /// </summary>
+        /// <param name="name">The name parameter is a string that represents the name of the image
+        /// file.</param>
+        /// <returns>
+        /// The method is returning an array of BioImage objects.
+        /// </returns>
         public static BioImage[] SplitChannels(string name)
         {
             return SplitChannels(Images.GetImage(name));
@@ -3463,60 +4088,51 @@ namespace BioGTK
         private static ExtractChannel extractG = new ExtractChannel(AForge.Imaging.RGB.G);
         private static ExtractChannel extractB = new ExtractChannel(AForge.Imaging.RGB.B);
 
-        /// > Get the image at the specified coordinates
-        /// 
-        /// @param z the z-stack index
-        /// @param c channel
-        /// @param t time
-        /// 
-        /// @return A Bitmap object.
+
+        /// <summary>
+        /// The function returns a Bitmap image based on the given coordinates.
+        /// </summary>
+        /// <param name="z">The z parameter represents the z-coordinate of the image. It is used to
+        /// access the correct z-slice of the image stack.</param>
+        /// <param name="c">The parameter "c" likely represents the column index of the coordinate in
+        /// the Coords array.</param>
+        /// <param name="t">The parameter "t" represents the index of the time dimension. It is used to
+        /// specify which time point or frame of the image to retrieve.</param>
+        /// <returns>
+        /// The method is returning a Bitmap object.
+        /// </returns>
         public Bitmap GetImageByCoord(int z, int c, int t)
         {
             return Buffers[Coords[z, c, t]];
         }
-        /// "Given a z, c, t coordinate, return the bitmap at that coordinate."
-        /// 
-        /// The function is called by the following code:
-        /// 
-        /// @param z the z-stack index
-        /// @param c channel
-        /// @param t time
-        /// 
-        /// @return A bitmap.
+
+        /// <summary>
+        /// The function "GetBitmap" returns a Bitmap object based on the provided parameters.
+        /// </summary>
+        /// <param name="z">The parameter "z" represents the z-coordinate of the desired bitmap. It is
+        /// used to access the appropriate index in the Coords array.</param>
+        /// <param name="c">The parameter "c" likely represents the index of the channel or color
+        /// component in the image.</param>
+        /// <param name="t">The parameter "t" represents the index of the buffer in the "Buffers"
+        /// array.</param>
+        /// <returns>
+        /// The method is returning a Bitmap object.
+        /// </returns>
         public Bitmap GetBitmap(int z, int c, int t)
         {
             return Buffers[Coords[z, c, t]];
         }
-        /// > GetIndex(x,y) = (y * stridex + x) * 2
-        /// 
-        /// The stridex is the width of the image in bytes. 
-        /// 
-        /// The stridey is the height of the image in bytes. 
-        /// 
-        /// The stridex and stridey are the same for a square image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The
-        /// 
-        /// @param ix x coordinate of the pixel
-        /// @param iy The y coordinate of the pixel
-        /// 
-        /// @return The index of the pixel in the array.
+
+        /// <summary>
+        /// The function returns the index of a pixel in a 2D image based on its x and y coordinates.
+        /// </summary>
+        /// <param name="ix">The parameter "ix" represents the x-coordinate of a pixel in an
+        /// image.</param>
+        /// <param name="iy">The parameter "iy" represents the y-coordinate of a pixel in an
+        /// image.</param>
+        /// <returns>
+        /// The method is returning an integer value.
+        /// </returns>
         public int GetIndex(int ix, int iy)
         {
             if (ix > SizeX || iy > SizeY || ix < 0 || iy < 0)
@@ -3533,13 +4149,21 @@ namespace BioGTK
                 return (y * stridex + x);
             }
         }
-        /// > The function returns the index of the pixel in the buffer
-        /// 
-        /// @param ix x coordinate of the pixel
-        /// @param iy The y coordinate of the pixel
-        /// @param index 0 = Red, 1 = Green, 2 = Blue
-        /// 
-        /// @return The index of the pixel in the buffer.
+        /// <summary>
+        /// The function returns the index of a pixel in an image buffer based on its x and y
+        /// coordinates and the index of the color channel.
+        /// </summary>
+        /// <param name="ix">The parameter "ix" represents the x-coordinate of the pixel in the
+        /// image.</param>
+        /// <param name="iy">The parameter "iy" represents the y-coordinate of the pixel in the
+        /// image.</param>
+        /// <param name="index">The `index` parameter represents the color channel index. It is used to
+        /// calculate the index of the pixel in the image buffer based on the given x and y
+        /// coordinates.</param>
+        /// <returns>
+        /// The method returns the index of the RGB value in the image buffer based on the given x and y
+        /// coordinates and the specified index.
+        /// </returns>
         public int GetIndexRGB(int ix, int iy, int index)
         {
             int stridex = SizeX;
@@ -3555,12 +4179,16 @@ namespace BioGTK
                 return (y * stridex + x) * index;
             }
         }
-        /// If the coordinate is within the bounds of the image, then return the value of the pixel at
-        /// that coordinate
-        /// 
-        /// @param ZCTXY a struct that contains the X, Y, Z, C, and T coordinates of the pixel.
-        /// 
-        /// @return The value of the pixel at the given coordinate.
+
+        /// <summary>
+        /// The function `GetValue` returns the value at a given coordinate, taking into account the RGB
+        /// channels if applicable.
+        /// </summary>
+        /// <param name="ZCTXY">ZCTXY is a custom data structure that represents a coordinate in a 3D
+        /// space. It has the following properties:</param>
+        /// <returns>
+        /// The method is returning a ushort value.
+        /// </returns>
         public ushort GetValue(ZCTXY coord)
         {
             if (coord.X < 0 || coord.Y < 0 || coord.X > SizeX || coord.Y > SizeY)
@@ -3580,12 +4208,20 @@ namespace BioGTK
                 return GetValueRGB(coord, 0);
             return 0;
         }
-        /// It takes a coordinate and an index and returns the value of the pixel at that coordinate
-        /// 
-        /// @param ZCTXY a struct that contains the Z, C, T, X, and Y coordinates of the pixel.
-        /// @param index 0, 1, 2
-        /// 
-        /// @return A ushort value.
+
+        /// <summary>
+        /// The function `GetValueRGB` returns the value of the red, green, or blue component of a pixel
+        /// at a given coordinate.
+        /// </summary>
+        /// <param name="ZCTXY">ZCTXY is a custom data structure that represents the coordinates of a
+        /// pixel in a multi-dimensional image. It has the following properties:</param>
+        /// <param name="index">The `index` parameter is an integer that represents the color channel
+        /// index. It can have the values 0, 1, or 2, where 0 represents the red channel, 1 represents
+        /// the green channel, and 2 represents the blue channel.</param>
+        /// <returns>
+        /// The method is returning a ushort value, which represents the red, green, or blue component
+        /// of a pixel at the specified coordinates.
+        /// </returns>
         public ushort GetValueRGB(ZCTXY coord, int index)
         {
             int ind = 0;
@@ -3605,38 +4241,61 @@ namespace BioGTK
                 return c.B;
             throw new IndexOutOfRangeException();
         }
-        /// > Get the value of the pixel at the given coordinates
-        /// 
-        /// @param ZCT Z is the Z-plane, C is the channel, T is the timepoint
-        /// @param x x coordinate of the pixel
-        /// @param y The y coordinate of the pixel
-        /// 
-        /// @return The value of the pixel at the given coordinates.
+
+        /// <summary>
+        /// The function "GetValue" returns a ushort value by calling the "GetValueRGB" function with a
+        /// modified coordinate.
+        /// </summary>
+        /// <param name="ZCT">ZCT is a custom data structure that represents the coordinates of a point
+        /// in a 3D space. It has three components: Z (representing the depth or height), C
+        /// (representing the channel or color), and T (representing the time).</param>
+        /// <param name="x">The parameter "x" represents the x-coordinate of the pixel in the
+        /// image.</param>
+        /// <param name="y">The parameter "y" represents the y-coordinate of a point in a
+        /// two-dimensional space. It is used to specify the vertical position of the point.</param>
+        /// <returns>
+        /// The method is returning a value of type ushort.
+        /// </returns>
         public ushort GetValue(ZCT coord, int x, int y)
         {
             return GetValueRGB(new ZCTXY(coord.Z, coord.C, coord.T, x, y), 0);
         }
-        /// > This function returns the value of the pixel at the specified ZCTXY coordinates
-        /// 
-        /// @param z The Z-plane of the image.
-        /// @param c channel
-        /// @param t time
-        /// @param x x coordinate of the pixel
-        /// @param y the y coordinate of the pixel
-        /// 
-        /// @return The value of the pixel at the given coordinates.
+
+        /// <summary>
+        /// The function `GetValue` takes in five integer parameters and returns an unsigned short
+        /// value.
+        /// </summary>
+        /// <param name="z">The parameter "z" represents the Z coordinate.</param>
+        /// <param name="c">The parameter "c" represents the channel number.</param>
+        /// <param name="t">The parameter "t" represents the time value.</param>
+        /// <param name="x">The parameter "x" represents the x-coordinate of the value you want to
+        /// retrieve.</param>
+        /// <param name="y">The parameter "y" represents the y-coordinate of a point in a 2D
+        /// space.</param>
+        /// <returns>
+        /// The method is returning a value of type `ushort`.
+        /// </returns>
         public ushort GetValue(int z, int c, int t, int x, int y)
         {
             return GetValue(new ZCTXY(z, c, t, x, y));
         }
-        /// > Get the value of a pixel at a given coordinate, x, y, and RGB index
-        /// 
-        /// @param ZCT The ZCT coordinate of the image.
-        /// @param x x coordinate of the pixel
-        /// @param y the y coordinate of the pixel
-        /// @param RGBindex 0 = Red, 1 = Green, 2 = Blue
-        /// 
-        /// @return The value of the pixel at the given coordinates.
+
+        /// <summary>
+        /// The function `GetValueRGB` returns the RGB value at a given coordinate and index if the
+        /// image is in RGB format, otherwise it returns the value at the given coordinate.
+        /// </summary>
+        /// <param name="ZCT">ZCT is a coordinate system that represents the position of a pixel in a 3D
+        /// image. It consists of three components: Z (depth), C (channel), and T (time).</param>
+        /// <param name="x">The x parameter represents the x-coordinate of the pixel in the
+        /// image.</param>
+        /// <param name="y">The parameter "y" represents the y-coordinate of the pixel in the
+        /// image.</param>
+        /// <param name="RGBindex">RGBindex is an integer representing the index of the RGB channel. It
+        /// is used to specify which channel's value to retrieve from the given coordinates (x, y) and
+        /// ZCT (Z, C, T) values.</param>
+        /// <returns>
+        /// The method is returning a value of type ushort.
+        /// </returns>
         public ushort GetValueRGB(ZCT coord, int x, int y, int RGBindex)
         {
             ZCTXY c = new ZCTXY(coord.Z, coord.C, coord.T, x, y);
@@ -3647,91 +4306,155 @@ namespace BioGTK
             else
                 return GetValue(coord, x, y);
         }
-        /// This function returns the value of the pixel at the specified coordinates in the specified
-        /// channel, frame, and RGB index
-        /// 
-        /// @param z The Z-plane index
-        /// @param c channel
-        /// @param t time index
-        /// @param x x coordinate of the pixel
-        /// @param y The y coordinate of the pixel
-        /// @param RGBindex 0 = Red, 1 = Green, 2 = Blue
-        /// 
-        /// @return The value of the pixel at the given coordinates.
+        /// <summary>
+        /// The function `GetValueRGB` returns the RGB value at a specific position in a 3D image
+        /// volume.
+        /// </summary>
+        /// <param name="z">The z parameter represents the z-coordinate of the pixel in a 3D image
+        /// volume. It indicates the position of the pixel along the z-axis.</param>
+        /// <param name="c">The parameter "c" represents the channel index. In an image or data set with
+        /// multiple channels, each channel contains different information. The "c" parameter allows you
+        /// to specify which channel you want to retrieve the value from.</param>
+        /// <param name="t">The parameter "t" represents the time value. It is used to specify a
+        /// particular time frame or moment in a dataset or image sequence.</param>
+        /// <param name="x">The x parameter represents the x-coordinate of the pixel in the
+        /// image.</param>
+        /// <param name="y">The parameter "y" represents the y-coordinate of the pixel in the
+        /// image.</param>
+        /// <param name="RGBindex">The RGBindex parameter represents the index of the color channel in
+        /// the RGB color space. In a typical RGB color space, the index 0 represents the red channel,
+        /// index 1 represents the green channel, and index 2 represents the blue channel.</param>
+        /// <returns>
+        /// The method is returning a value of type ushort.
+        /// </returns>
         public ushort GetValueRGB(int z, int c, int t, int x, int y, int RGBindex)
         {
             return GetValueRGB(new ZCT(z, c, t), x, y, RGBindex);
         }
-        /// It takes a coordinate and a value, and sets the value at that coordinate
-        /// 
-        /// @param ZCTXY a struct that contains the Z, C, T, X, and Y coordinates of the pixel
-        /// @param value the value to be set
+
+       /// <summary>
+       /// The function sets a value at a specific coordinate in a multi-dimensional array.
+       /// </summary>
+       /// <param name="ZCTXY">ZCTXY is a custom data structure that represents a coordinate in a
+       /// three-dimensional space. It has the following properties:</param>
+       /// <param name="value">The value parameter is of type ushort, which represents an unsigned short
+       /// integer. It is the value that you want to set at the specified coordinates.</param>
         public void SetValue(ZCTXY coord, ushort value)
         {
             int i = Coords[coord.Z, coord.C, coord.T];
             Buffers[i].SetValue(coord.X, coord.Y, value);
         }
-        /// It sets the value of a pixel in a buffer
-        /// 
-        /// @param x The x coordinate of the pixel to set.
-        /// @param y The y coordinate of the pixel to set.
-        /// @param ind The index of the buffer to set the value in.
-        /// @param value The value to set the pixel to.
+        /// <summary>
+        /// The function SetValue sets a value at a specific position in a buffer.
+        /// </summary>
+        /// <param name="x">The x parameter represents the x-coordinate of the value to be set in the
+        /// buffer.</param>
+        /// <param name="y">The parameter "y" represents the y-coordinate of the position where the
+        /// value should be set.</param>
+        /// <param name="ind">The parameter "ind" is an index that represents the buffer in which the
+        /// value will be set.</param>
+        /// <param name="value">The value parameter is of type ushort, which stands for unsigned short.
+        /// It is used to specify the value that will be set at the specified position (x, y) in the
+        /// Buffers array.</param>
         public void SetValue(int x, int y, int ind, ushort value)
         {
             Buffers[ind].SetValue(x, y, value);
         }
-        /// This function sets the value of a pixel at a given x,y coordinate in a given image plane
-        /// 
-        /// @param x x coordinate of the pixel
-        /// @param y The y coordinate of the pixel to set.
-        /// @param ZCT a struct that contains the Z, C, and T coordinates of the pixel
-        /// @param value the value to set
+
+        /// <summary>
+        /// The function SetValue sets a value at a specific coordinate in a three-dimensional array.
+        /// </summary>
+        /// <param name="x">An integer representing the x-coordinate of the location where the value
+        /// will be set.</param>
+        /// <param name="y">The parameter "y" represents the y-coordinate of the position where the
+        /// value will be set.</param>
+        /// <param name="ZCT">ZCT is an enum that represents three dimensions: Z, C, and T. These
+        /// dimensions are used to access a specific element in a three-dimensional array called
+        /// Coords.</param>
+        /// <param name="value">The value parameter is of type ushort, which stands for unsigned short.
+        /// It is used to specify the value that will be set at the specified coordinates (x, y,
+        /// coord).</param>
         public void SetValue(int x, int y, ZCT coord, ushort value)
         {
             SetValue(x, y, Coords[coord.Z, coord.C, coord.T], value);
         }
-        /// It takes a coordinate, an RGB index, and a value, and sets the value of the pixel at that
-        /// coordinate to the value
-        /// 
-        /// @param ZCTXY a struct that contains the Z, C, T, X, and Y coordinates of the pixel
-        /// @param RGBindex 0 = Red, 1 = Green, 2 = Blue
-        /// @param value the value to be set
+
+        /// <summary>
+        /// The function SetValueRGB sets the RGB value at a specific coordinate in a buffer.
+        /// </summary>
+        /// <param name="ZCTXY">ZCTXY is a custom data structure that represents the coordinates of a
+        /// pixel in a 3D image. It has the following properties:</param>
+        /// <param name="RGBindex">RGBindex is an integer representing the index of the RGB value to be
+        /// set. It is used to specify which RGB value (red, green, or blue) should be set in the
+        /// SetValueRGB method.</param>
+        /// <param name="value">The "value" parameter is an unsigned short (ushort) that represents the
+        /// value to be set for the specified RGB index at the given coordinate (X, Y) in the
+        /// buffer.</param>
         public void SetValueRGB(ZCTXY coord, int RGBindex, ushort value)
         {
             int ind = Coords[coord.Z, coord.C, coord.T];
             Buffers[ind].SetValueRGB(coord.X, coord.Y, RGBindex, value);
         }
-        /// > This function returns a Bitmap object from the image data stored in the OME-TIFF file
-        /// 
-        /// @param ZCT Z = Z-stack, C = channel, T = timepoint
-        /// 
-        /// @return A Bitmap object.
+
+        /// <summary>
+        /// The function "GetBitmap" returns a Bitmap object based on the provided ZCT coordinates.
+        /// </summary>
+        /// <param name="ZCT">The ZCT parameters represent the coordinates of a specific image in a
+        /// three-dimensional space.</param>
+        /// <returns>
+        /// The method is returning a Bitmap object.
+        /// </returns>
         public Bitmap GetBitmap(ZCT coord)
         {
             return (Bitmap)GetImageByCoord(coord.Z, coord.C, coord.T);
         }
-        /// > Get the image at the specified ZCT coordinate, and return a filtered version of it
-        /// 
-        /// @param ZCT a 3-tuple of integers (z, c, t)
-        /// @param IntRange 
-        /// @param IntRange 
-        /// @param IntRange 
-        /// 
-        /// @return An UnmanagedImage object.
+
+        /// <summary>
+        /// The function takes in a ZCT coordinate and three IntRange parameters for the red, green, and
+        /// blue channels, and returns a filtered Bitmap image.
+        /// </summary>
+        /// <param name="ZCT">ZCT refers to the coordinates of a pixel in a 3D image volume.</param>
+        /// <param name="IntRange">An IntRange is a range of integer values. It typically consists of a
+        /// minimum and maximum value. In this context, the IntRange parameters r, g, and b are used to
+        /// specify the range of values for the red, green, and blue color channels of a pixel.</param>
+        /// <param name="IntRange">An IntRange is a class that represents a range of integer values. It
+        /// typically has two properties: Min and Max, which define the minimum and maximum values of
+        /// the range. In the context of the GetFiltered method, the IntRange parameters r, g, and b are
+        /// used to specify the range</param>
+        /// <param name="IntRange">An IntRange is a class that represents a range of integer values. It
+        /// typically has two properties: Min and Max, which define the minimum and maximum values of
+        /// the range. In this context, the IntRange parameters r, g, and b are used to specify the
+        /// range of values for the red</param>
+        /// <returns>
+        /// The method is returning a Bitmap object.
+        /// </returns>
         public Bitmap GetFiltered(ZCT coord, IntRange r, IntRange g, IntRange b)
         {
             int index = Coords[coord.Z, coord.C, coord.T];
             return GetFiltered(index, r, g, b);
         }
-        /// It takes an image, and returns a filtered version of that image
-        /// 
-        /// @param ind the index of the buffer to be filtered
-        /// @param IntRange 
-        /// @param IntRange 
-        /// @param IntRange 
-        /// 
-        /// @return A filtered image.
+
+        /// <summary>
+        /// The function takes an index and three IntRange parameters for red, green, and blue values,
+        /// and returns a filtered Bitmap image based on the specified ranges.
+        /// </summary>
+        /// <param name="ind">The "ind" parameter is an integer that represents the index of the buffer
+        /// to apply the filter on.</param>
+        /// <param name="IntRange">An IntRange is a class that represents a range of integer values. It
+        /// has two properties: Min and Max, which define the minimum and maximum values of the range.
+        /// In the context of this code, the IntRange parameters r, g, and b are used to specify the
+        /// range of values for</param>
+        /// <param name="IntRange">An IntRange is a class that represents a range of integer values. It
+        /// has two properties: Min and Max, which define the minimum and maximum values of the range.
+        /// In the context of this code, the IntRange parameters r, g, and b are used to specify the
+        /// range of values for</param>
+        /// <param name="IntRange">An IntRange is a class that represents a range of integer values. It
+        /// has two properties: Min and Max, which define the minimum and maximum values of the range.
+        /// In the context of this code, the IntRange parameters r, g, and b are used to specify the
+        /// range of values for</param>
+        /// <returns>
+        /// The method is returning a Bitmap object.
+        /// </returns>
         public Bitmap GetFiltered(int ind, IntRange r, IntRange g, IntRange b)
         {
             if (Buffers[ind].BitsPerPixel > 8)
@@ -3750,10 +4473,19 @@ namespace BioGTK
                 return BioImage.filter8.Apply(Buffers[ind]);
             }
         }
-        /// It takes an image, and returns a channel of that image
-        /// 
-        /// @param ind the index of the buffer
-        /// @param s 0, 1, 2
+
+        /// <summary>
+        /// The function `GetChannelImage` returns an unmanaged image of a specific channel (R, G, or B)
+        /// from a bitmap buffer.
+        /// </summary>
+        /// <param name="ind">The parameter "ind" is an integer that represents the index of the
+        /// buffer.</param>
+        /// <param name="s">The parameter "s" is an integer value that represents the channel to extract
+        /// from the image. A value of 0 represents the red channel, a value of 1 represents the green
+        /// channel, and a value of 2 represents the blue channel.</param>
+        /// <returns>
+        /// The method is returning an UnmanagedImage object.
+        /// </returns>
         public UnmanagedImage GetChannelImage(int ind, short s)
         {
             Bitmap bf = Buffers[ind];
@@ -3770,15 +4502,29 @@ namespace BioGTK
             else
                 throw new InvalidOperationException();
         }
-        /// > GetEmission() returns an UnmanagedImage object that is a composite of the emission
-        /// channels
-        /// 
-        /// @param ZCT Z, C, T coordinates
-        /// @param IntRange 
-        /// @param IntRange 
-        /// @param IntRange 
-        /// 
-        /// @return A Bitmap or an UnmanagedImage.
+
+        /// <summary>
+        /// The function `GetEmission` returns a bitmap image based on the given coordinates and color
+        /// range values.
+        /// </summary>
+        /// <param name="ZCT">ZCT is a coordinate object that represents the position of a pixel in a 3D
+        /// image. It has three properties: Z (the z-coordinate), C (the channel index), and T (the time
+        /// index).</param>
+        /// <param name="IntRange">An IntRange is a class that represents a range of integer values. It
+        /// typically has two properties: Min and Max, which define the minimum and maximum values of
+        /// the range. In this context, the IntRange parameters rf, gf, and bf are used to specify the
+        /// range of red, green,</param>
+        /// <param name="IntRange">An IntRange is a class that represents a range of integer values. It
+        /// typically has two properties: Min and Max, which define the minimum and maximum values of
+        /// the range. In this context, the IntRange parameters rf, gf, and bf are used to specify the
+        /// range of red, green,</param>
+        /// <param name="IntRange">An IntRange is a class that represents a range of integer values. It
+        /// typically has two properties: Min and Max, which define the minimum and maximum values of
+        /// the range. In this context, the IntRange parameters rf, gf, and bf are used to specify the
+        /// range of red, green,</param>
+        /// <returns>
+        /// The method returns a Bitmap object.
+        /// </returns>
         public Bitmap GetEmission(ZCT coord, IntRange rf, IntRange gf, IntRange bf)
         {
             if (RGBChannelCount == 1)
@@ -3798,14 +4544,29 @@ namespace BioGTK
                 return Buffers[index];
             }
         }
-        /// > Get the RGB bitmap for the specified ZCT coordinate
-        /// 
-        /// @param ZCT Z, C, T coordinates
-        /// @param IntRange 
-        /// @param IntRange 
-        /// @param IntRange 
-        /// 
-        /// @return A Bitmap object.
+
+        /// <summary>
+        /// The function `GetRGBBitmap` returns a bitmap with specified RGB channel ranges based on the
+        /// given coordinates and buffer indices.
+        /// </summary>
+        /// <param name="ZCT">ZCT is a coordinate object that represents the position of a pixel in a 3D
+        /// image. It has three properties: Z (the z-axis coordinate), C (the channel coordinate), and T
+        /// (the time coordinate).</param>
+        /// <param name="IntRange">An IntRange is a range of integer values. It is typically used to
+        /// specify a range of values for a particular parameter. In this case, the IntRange parameters
+        /// rf, gf, and bf are used to specify the range of values for the red, green, and blue channels
+        /// respectively.</param>
+        /// <param name="IntRange">An IntRange is a range of integer values. It is typically used to
+        /// specify a range of values for a particular parameter. In this case, the IntRange parameters
+        /// rf, gf, and bf are used to specify the range of values for the red, green, and blue channels
+        /// respectively.</param>
+        /// <param name="IntRange">An IntRange is a range of integer values. It is typically used to
+        /// specify a range of values for a particular parameter. In this case, the IntRange parameters
+        /// rf, gf, and bf are used to specify the range of values for the red, green, and blue channels
+        /// respectively.</param>
+        /// <returns>
+        /// The method returns a Bitmap object.
+        /// </returns>
         public Bitmap GetRGBBitmap(ZCT coord, IntRange rf, IntRange gf, IntRange bf)
         {
             int index = Coords[coord.Z, coord.C, coord.T];
@@ -3831,14 +4592,22 @@ namespace BioGTK
             else
                 return Buffers[index];
         }
-        /// It takes a byte array of RGB or RGBA data and converts it to a Bitmap
-        /// 
-        /// @param w width of the image
-        /// @param h height of the image
-        /// @param PixelFormat The pixel format of the image.
-        /// @param bts the byte array of the image
-        /// 
-        /// @return A Bitmap object.
+
+        /// <summary>
+        /// The function `GetBitmapRGB` takes in the width, height, pixel format, and byte array of an
+        /// image and returns a Bitmap object with the RGB values of the image.
+        /// </summary>
+        /// <param name="w">The width of the bitmap in pixels.</param>
+        /// <param name="h">The parameter "h" represents the height of the bitmap in pixels.</param>
+        /// <param name="PixelFormat">The PixelFormat parameter specifies the format of the pixels in
+        /// the byte array. It can have the following values:</param>
+        /// <param name="bts">The parameter "bts" is a byte array that contains the pixel data of an
+        /// image. The format of the pixel data depends on the specified PixelFormat "px". The method
+        /// "GetBitmapRGB" takes this byte array and converts it into a Bitmap object with the specified
+        /// width and height. The</param>
+        /// <returns>
+        /// The method returns a Bitmap object.
+        /// </returns>
         public static unsafe Bitmap GetBitmapRGB(int w, int h, PixelFormat px, byte[] bts)
         {
             if (px == PixelFormat.Format32bppArgb)
@@ -3999,12 +4768,16 @@ namespace BioGTK
             throw new NotSupportedException("Pixelformat " + px + " is not supported.");
         }
         public static Stopwatch swatch = new Stopwatch();
-        /// > GetAnnotations() returns a list of ROI objects that are associated with the ZCT coordinate
-        /// passed in as a parameter
-        /// 
-        /// @param ZCT a 3D coordinate (Z, C, T)
-        /// 
-        /// @return A list of ROI objects.
+
+        /// <summary>
+        /// The function "GetAnnotations" returns a list of ROI objects that have a specific coordinate.
+        /// </summary>
+        /// <param name="ZCT">ZCT is a data type that represents the coordinates of a point in a
+        /// three-dimensional space. It likely has three properties: X, Y, and Z, which represent the
+        /// coordinates along the X, Y, and Z axes respectively.</param>
+        /// <returns>
+        /// The method is returning a list of ROI objects.
+        /// </returns>
         public List<ROI> GetAnnotations(ZCT coord)
         {
             List<ROI> annotations = new List<ROI>();
@@ -4017,14 +4790,20 @@ namespace BioGTK
             }
             return annotations;
         }
-        /// This function returns a list of ROI objects that are associated with the specified Z, C, and
-        /// T coordinates
-        /// 
-        /// @param Z The Z-stack index
-        /// @param C Channel
-        /// @param T Time
-        /// 
-        /// @return A list of ROI objects.
+
+        /// <summary>
+        /// The function "GetAnnotations" returns a list of ROI objects that match the specified Z, C,
+        /// and T coordinates.
+        /// </summary>
+        /// <param name="Z">Z represents the Z-coordinate of the annotation. It is used to filter the
+        /// annotations based on their Z-coordinate value.</param>
+        /// <param name="C">The parameter C represents the channel number. It is used to filter the
+        /// annotations based on the channel they belong to.</param>
+        /// <param name="T">T represents the time index of the annotations. It is used to filter the
+        /// annotations based on the specific time frame.</param>
+        /// <returns>
+        /// The method is returning a list of ROI objects.
+        /// </returns>
         public List<ROI> GetAnnotations(int Z, int C, int T)
         {
             List<ROI> annotations = new List<ROI>();
@@ -4037,8 +4816,15 @@ namespace BioGTK
         }
 
         public bool Loading = false;
-        /// We initialize OME on a seperate thread so the user doesn't have to wait for initialization
-        /// to view images.
+
+        /// <summary>
+        /// The Initialize function initializes OME on a separate thread to allow the user to view
+        /// images without waiting for initialization.
+        /// </summary>
+        /// <returns>
+        /// If the condition in the if statement is true (OMESupport() returns false), then nothing is
+        /// being returned. The method will simply exit and no further code will be executed.
+        /// </returns>
         public static void Initialize()
         {
             if (!OMESupport())
@@ -4048,7 +4834,10 @@ namespace BioGTK
             System.Threading.Thread t = new System.Threading.Thread(new System.Threading.ThreadStart(InitOME));
             t.Start();
         }
-        /// > Initialize the OME-XML library
+        /// <summary>
+        /// The function initializes the OME XML service by creating instances of the ServiceFactory,
+        /// OMEXMLService, ImageReader, and ImageWriter classes.
+        /// </summary>
         private static void InitOME()
         {
             factory = new ServiceFactory();
@@ -4057,21 +4846,29 @@ namespace BioGTK
             writer = new ImageWriter();
             initialized = true;
         }
-        /// This function takes a string array of file names and a string ID and saves the files to the
-        /// database
-        /// 
-        /// @param file The file path to the file you want to save.
-        /// @param ID The ID of the series you want to save.
+
+        /// <summary>
+        /// The SaveFile function saves a file with the given file name and ID.
+        /// </summary>
+        /// <param name="file">The file parameter is a string that represents the file path or file name
+        /// where the data will be saved.</param>
+        /// <param name="ID">The ID parameter is a string that represents the identifier of the file
+        /// being saved.</param>
         public static void SaveFile(string file, string ID)
         {
             string[] sts = new string[1];
             sts[0] = ID;
             SaveSeries(sts, file);
         }
-        /// It takes a list of image IDs, and saves them as a single multi-page TIFF file.
-        /// 
-        /// @param An array of IDs of the images to save
-        /// @param The path to the file to save to.
+
+        /// <summary>
+        /// The function `SaveSeries` saves a series of images to a TIFF file, including image metadata
+        /// and annotations.
+        /// </summary>
+        /// <param name="IDs">An array of strings representing the IDs of the images to be
+        /// saved.</param>
+        /// <param name="file">The "file" parameter is a string that represents the file path where the
+        /// series of images will be saved.</param>
         public static void SaveSeries(string[] IDs, string file)
         {
             string desc = "";
@@ -4175,12 +4972,20 @@ namespace BioGTK
             image.Dispose();
 
         }
-        /// It opens a tiff file, reads the number of pages, reads the number of channels, and then
-        /// reads each page into a BioImage object.
-        /// 
-        /// @param file the path to the file
-        /// @param tab open image in new tab.
-        /// @return An array of BioImage objects.
+
+        /// <summary>
+        /// The function `OpenSeries` opens a series of bioimages stored in a TIFF file and returns an
+        /// array of `BioImage` objects.
+        /// </summary>
+        /// <param name="file">The file parameter is a string that represents the file path of the TIFF
+        /// image file that you want to open.</param>
+        /// <param name="tab">The "tab" parameter is a boolean value that determines whether the image
+        /// series should be opened in a new tab or not. If the value is true, each image in the series
+        /// will be opened in a new tab. If the value is false, the images will be opened in the same
+        /// tab.</param>
+        /// <returns>
+        /// The method is returning an array of BioImage objects.
+        /// </returns>
         public static BioImage[] OpenSeries(string file, bool tab)
         {
             Tiff image = Tiff.Open(file, "r");
@@ -4208,29 +5013,67 @@ namespace BioGTK
             }
             return bs;
         }
-        /// This function opens a file and returns a BioImage object
-        /// 
-        /// @param file The path to the file to open.
-        /// 
-        /// @return A BioImage object.
+
+        /// <summary>
+        /// The function "OpenFile" in C# opens a bioimage file with the specified file path and returns
+        /// a BioImage object.
+        /// </summary>
+        /// <param name="file">The file parameter is a string that represents the path or name of the
+        /// file that you want to open.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage OpenFile(string file)
         {
             return OpenFile(file, 0, true, true);
         }
+       /// <summary>
+       /// The function "OpenFile" opens a bio image file and returns a BioImage object.
+       /// </summary>
+       /// <param name="file">The file parameter is a string that represents the file path or file name
+       /// of the file to be opened.</param>
+       /// <param name="tab">The "tab" parameter is a boolean value that determines whether the file
+       /// should be opened in a new tab or not. If the value is true, the file will be opened in a new
+       /// tab. If the value is false, the file will be opened in the current tab.</param>
+       /// <returns>
+       /// The method is returning a BioImage object.
+       /// </returns>
         public static BioImage OpenFile(string file, bool tab)
         {
             return OpenFile(file, 0, tab, true);
         }
-        /// It opens a TIFF file and returns a BioImage object
-        /// 
-        /// @param file the file path
-        /// @param series the series number of the image to open
-        /// 
-        /// @return A BioImage object.
+
+        /// <summary>
+        /// The function "OpenFile" opens a bioimage file and returns a BioImage object, with options to
+        /// specify the series, whether to open in a new tab, and whether to add the image to a
+        /// collection.
+        /// </summary>
+        /// <param name="file">The file parameter is a string that represents the file path or file name
+        /// of the image file you want to open.</param>
+        /// <param name="series">The "series" parameter is an integer that represents the series number
+        /// of the image file to be opened. It is used to specify which series of images to open if the
+        /// file contains multiple series.</param>
+        /// <param name="tab">The "tab" parameter is a boolean value that determines whether the file
+        /// should be opened in a new tab or not. If set to true, the file will be opened in a new tab;
+        /// if set to false, the file will be opened in the current tab.</param>
+        /// <param name="addToImages">The "addToImages" parameter is a boolean value that determines
+        /// whether the opened BioImage should be added to a collection of images. If set to true, the
+        /// BioImage will be added to the collection. If set to false, the BioImage will not be added to
+        /// the collection.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage OpenFile(string file, int series, bool tab, bool addToImages)
         {
             return OpenFile(file, series, tab, addToImages, false, 0, 0, 0, 0);
         }
+        /// <summary>
+        /// The function determines if a given image file is a TIFF file and if it is tiled.
+        /// </summary>
+        /// <param name="imagePath">A string representing the file path of the image file.</param>
+        /// <returns>
+        /// The method is returning a boolean value.
+        /// </returns>
         static bool IsTiffTiled(string imagePath)
         {
             if (imagePath.EndsWith(".tif") || imagePath.EndsWith(".tiff"))
@@ -4248,6 +5091,17 @@ namespace BioGTK
             }
             else return false;
         }
+        /// <summary>
+        /// The function initializes the directory resolution for a BioImage object based on the
+        /// resolution information from a Tiff image.
+        /// </summary>
+        /// <param name="BioImage">A BioImage object that represents an image in a biological
+        /// context.</param>
+        /// <param name="Tiff">The "Tiff" parameter is an object of the Tiff class. It represents a TIFF
+        /// image file and provides methods and properties to access and manipulate the image
+        /// data.</param>
+        /// <param name="ImageJDesc">ImageJDesc is a class that contains information about the image
+        /// dimensions and resolution in ImageJ format. It has the following properties:</param>
         static void InitDirectoryResolution(BioImage b, Tiff image, ImageJDesc jdesc = null)
         {
             Resolution res = new Resolution();
@@ -4319,12 +5173,34 @@ namespace BioGTK
             res.PixelFormat = GetPixelFormat(RGBChannelCount, bitsPerPixel);
             b.Resolutions.Add(res);
         }
-        /// It opens a TIFF file and returns a BioImage object
-        /// 
-        /// @param file the file path
-        /// @param series the series number of the image to open
-        /// 
-        /// @return A BioImage object.
+
+        /// <summary>
+        /// The function `OpenFile` opens a bioimage file, reads its metadata, and loads the image data
+        /// into a `BioImage` object.
+        /// </summary>
+        /// <param name="file">The file path of the bioimage to be opened.</param>
+        /// <param name="series">The series parameter is an integer that specifies the series number of
+        /// the image to open.</param>
+        /// <param name="tab">The "tab" parameter is a boolean value that determines whether the
+        /// BioImage should be opened in a new tab or not. If set to true, the BioImage will be opened
+        /// in a new tab. If set to false, the BioImage will be opened in the current tab.</param>
+        /// <param name="addToImages">A boolean value indicating whether to add the opened BioImage to
+        /// the list of Images.</param>
+        /// <param name="tile">A boolean flag indicating whether the image should be tiled or not. If
+        /// set to true, the image will be divided into tiles for faster loading and processing.</param>
+        /// <param name="tileX">The `tileX` parameter is an integer that represents the X-coordinate of
+        /// the top-left corner of the tile to be opened in the image.</param>
+        /// <param name="tileY">The parameter "tileY" is used to specify the starting Y coordinate of
+        /// the tile when opening a tiled image. It determines the position of the tile within the
+        /// image.</param>
+        /// <param name="tileSizeX">The tileSizeX parameter is the width of each tile in pixels when
+        /// opening a tiled image.</param>
+        /// <param name="tileSizeY">The parameter "tileSizeY" is the height of each tile in pixels when
+        /// the image is tiled. It determines the size of the individual tiles that the image is divided
+        /// into for efficient loading and processing.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage OpenFile(string file, int series, bool tab, bool addToImages, bool tile, int tileX, int tileY, int tileSizeX, int tileSizeY)
         {
             string fs = file.Replace("\\", "/");
@@ -4602,12 +5478,16 @@ namespace BioGTK
             Console.WriteLine("BioImage loaded " + b.ToString());
             return b;
         }
-        /// > The function checks if the image is a Tiff image and if it is, it checks if the image is a
-        /// series of images
-        /// 
-        /// @param file the path to the file
-        /// 
-        /// @return a boolean value.
+
+        /// <summary>
+        /// The function `isTiffSeries` checks if a TIFF image file is part of a series by reading the
+        /// image description and checking for a specific format.
+        /// </summary>
+        /// <param name="file">The "file" parameter is a string that represents the file path of the
+        /// TIFF image file that you want to check if it is part of a series.</param>
+        /// <returns>
+        /// The method is returning a boolean value.
+        /// </returns>
         public static bool isTiffSeries(string file)
         {
             Tiff image = Tiff.Open(file, "r");
@@ -4636,13 +5516,15 @@ namespace BioGTK
             }
             return false;
         }
-        /// If the file is a TIFF, check the ImageDescription tag for the string "OME-XML". If it's
-        /// there, return true. If it's not a TIFF, return true. If it's a PNG, JPG, JPEG, or BMP,
-        /// return false
-        /// 
-        /// @param file the path to the image file
-        /// 
-        /// @return A boolean value.
+        /// <summary>
+        /// The function isOME checks if a given file is an OME file based on its extension or by
+        /// reading its image description.
+        /// </summary>
+        /// <param name="file">The parameter "file" is a string that represents the file name or path of
+        /// the file that needs to be checked.</param>
+        /// <returns>
+        /// The method is returning a boolean value.
+        /// </returns>
         public static bool isOME(string file)
         {
             if (file.EndsWith("ome.tif") || file.EndsWith("ome.tiff"))
@@ -4668,11 +5550,17 @@ namespace BioGTK
             }
             else return false;
         }
-        /// > If the file is an OME file and has more than one series, return true
-        /// 
-        /// @param file the file to be checked
-        /// 
-        /// @return A boolean value.
+
+        /// <summary>
+        /// The function isOMESeries checks if a given file is an OME series by using an ImageReader and
+        /// OMEXMLMetadata.
+        /// </summary>
+        /// <param name="file">The "file" parameter is a string that represents the file path of an
+        /// image file.</param>
+        /// <returns>
+        /// The method is returning a boolean value, which indicates whether the given file is an OME
+        /// series or not.
+        /// </returns>
         public static bool isOMESeries(string file)
         {
             if (!isOME(file))
@@ -4689,25 +5577,53 @@ namespace BioGTK
             reader = null;
             return ser;
         }
-        /// This function takes a string array of image IDs, a file name, and a number of planes. It
-        /// then saves the images to the file name
-        /// 
-        /// @param file the file name to save the image to
-        /// @param ID The ID of the image you want to save
+        /// <summary>
+        /// The function "SaveOME" saves a single BioImage with a given ID to a specified file using the
+        /// OME file format.
+        /// </summary>
+        /// <param name="file">The "file" parameter is a string that represents the file path where the
+        /// OME series will be saved.</param>
+        /// <param name="ID">The ID parameter is a string that represents the unique identifier of an
+        /// image.</param>
+        /// <returns>
+        /// If the `OMESupport()` method returns `false`, then nothing is being returned. The `return`
+        /// statement will cause the method to exit without returning any value.
+        /// </returns>
         public static void SaveOME(string file, string ID)
         {
             if (!OMESupport())
                 return;
-            string[] sts = new string[1];
-            sts[0] = ID;
-            SaveOMESeries(sts, file, BioImage.Planes, false,0,0,0,0);
+            BioImage[] sts = new BioImage[1];
+            sts[0] = Images.GetImage(ID);
+            SaveOMESeries(sts, file, BioImage.Planes);
+        }
+
+        /// <summary>
+        /// The function saves a BioImage object as an OME file.
+        /// </summary>
+        /// <param name="BioImage">The BioImage parameter is an object that represents an image in a
+        /// biological context. It likely contains information such as pixel data, metadata, and other
+        /// properties related to the image.</param>
+        /// <param name="file">The "file" parameter is a string that represents the file path where the
+        /// OME (Open Microscopy Environment) file will be saved.</param>
+        /// <returns>
+        /// If the `OMESupport()` method returns `false`, then nothing is being returned. The method
+        /// will simply exit and no further code will be executed.
+        /// </returns>
+        public static void SaveOME(BioImage image, string file)
+        {
+            if (!OMESupport())
+                return;
+            BioImage[] sts = new BioImage[1];
+            sts[0] = image;
+            SaveOMESeries(sts, file, BioImage.Planes);
         }
         /// This function takes a list of image files and saves them as a single OME-TIFF file
         /// 
         /// @param files an array of file paths to the images to be saved
         /// @param f the file name to save to
         /// @param planes if true, the planes will be saved as well.
-        public static void SaveOMESeries(string[] files, string f, bool planes, bool tiles,int tileX,int tileY, int width,int height)
+        public static void SaveOMESeries(BioImage[] files, string f, bool planes)
         {
             if (!OMESupport())
                 return;
@@ -4718,17 +5634,9 @@ namespace BioGTK
             status = "Saving OME Image Metadata.";
             for (int fi = 0; fi < files.Length; fi++)
             {
-                progFile = files[fi];
                 int serie = fi;
-                string file = files[fi];
-
-                BioImage b = Images.GetImage(file);
-                if (b.isPyramidal)
-                {
-                    b = OpenOME(b.file, b.resolution, false, false, true, tileX,tileY,width, height);
-                }
+                BioImage b = files[fi];
                 // create OME-XML metadata store
-
                 omexml.setImageID("Image:" + serie, serie);
                 omexml.setPixelsID("Pixels:" + serie, serie);
                 omexml.setPixelsInterleaved(java.lang.Boolean.TRUE, serie);
@@ -4816,6 +5724,7 @@ namespace BioGTK
                         }
                     }
                 }
+
                 int i = 0;
                 foreach (ROI an in b.Annotations)
                 {
@@ -4989,6 +5898,7 @@ namespace BioGTK
                     }
                     i++;
                 }
+
                 if (b.Buffers[0].Plane != null && planes)
                     for (int bu = 0; bu < b.Buffers.Count; bu++)
                     {
@@ -5028,20 +5938,12 @@ namespace BioGTK
             status = "Saving OME Image Planes.";
             for (int i = 0; i < files.Length; i++)
             {
-                string file = files[i];
-                ////Progress pr = new //Progress(file, "Saving");
-                //pr.Show();
-                BioImage b = Images.GetImage(files[i]);
+                BioImage b = files[i];
                 writer.setSeries(i);
                 for (int bu = 0; bu < b.Buffers.Count; bu++)
                 {
-                    progressValue = (int)((float)bu / (float)b.Buffers.Count);
                     writer.saveBytes(bu, b.Buffers[bu].GetSaveBytes(BitConverter.IsLittleEndian));
-                    //pr.Update//ProgressF((float)bu / b.Buffers.Count);
-                    //Application.DoEvents();
                 }
-                //pr.Close();
-                //pr.Dispose();
             }
             bool stop = false;
             do
@@ -5058,21 +5960,37 @@ namespace BioGTK
 
             } while (!stop);
         }
-
+        /// <summary>
+        /// The function "OpenOME" opens a bioimage file in the OME format and returns the first image
+        /// in the series.
+        /// </summary>
+        /// <param name="file">The "file" parameter is a string that represents the file path or name of
+        /// the OME file that you want to open.</param>
+        /// <param name="tab">The "tab" parameter is a boolean value that determines whether the OME
+        /// metadata should be displayed in a tabular format. If the value is true, the metadata will be
+        /// displayed in a tabular format. If the value is false, the metadata will be displayed in a
+        /// non-tabular format.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage OpenOME(string file, bool tab)
         {
             if (!OMESupport())
                 return null;
             return OpenOMESeries(file, tab, true)[0];
         }
-        /// > OpenOME(string file, int serie)
-        /// 
-        /// The first parameter is a string, the second is an integer
-        /// 
-        /// @param file the path to the file
-        /// @param serie the image series to open
-        /// 
-        /// @return A BioImage object.
+
+        /// <summary>
+        /// The function "OpenOME" opens a BioImage file with the specified file path and series number,
+        /// and returns the BioImage object.
+        /// </summary>
+        /// <param name="file">The "file" parameter is a string that represents the file path or name of
+        /// the OME file that you want to open.</param>
+        /// <param name="serie">The "serie" parameter is an integer that represents the series number of
+        /// the OME file. It is used to specify which series within the file should be opened.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage OpenOME(string file, int serie)
         {
             if (!OMESupport())
@@ -5080,17 +5998,24 @@ namespace BioGTK
             //Recorder.AddLine("Bio.BioImage.OpenOME(\"" + file + "\"," + serie + ");");
             return OpenOME(file, serie, true, false, false, 0, 0, 0, 0);
         }
-        /// It takes a list of files, and creates a new BioImage object with the first file in the list.
-        /// Then it loops through the rest of the files, adding the buffers from each file to the new
-        /// BioImage object. Finally, it updates the coordinates of the new BioImage object, and adds it
-        /// to the Images list
-        /// 
-        /// @param files an array of file paths
-        /// @param sizeZ number of slices in the stack
-        /// @param sizeC number of channels
-        /// @param sizeT number of time points
-        /// 
-        /// @return A BioImage object.
+
+        /// <summary>
+        /// The function takes an array of file paths, along with the dimensions of a stack, and returns
+        /// a BioImage object that represents the stack of images.
+        /// </summary>
+        /// <param name="files">An array of file paths representing the bioimage files to be
+        /// processed.</param>
+        /// <param name="sizeZ">The sizeZ parameter represents the number of image slices or planes in
+        /// the Z dimension of the image stack.</param>
+        /// <param name="sizeC">The parameter "sizeC" represents the number of channels in the image.
+        /// Channels refer to different color or fluorescence channels in an image. For example, if an
+        /// image has red, green, and blue channels, the value of "sizeC" would be 3.</param>
+        /// <param name="sizeT">The sizeT parameter represents the number of time points in the image
+        /// stack. It determines the number of frames or time points in the resulting image
+        /// stack.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage FilesToStack(string[] files, int sizeZ, int sizeC, int sizeT)
         {
             BioImage b = new BioImage(files[0]);
@@ -5103,11 +6028,19 @@ namespace BioGTK
             Images.AddImage(b, true);
             return b;
         }
-        /// It takes a folder of images and creates a stack from them
-        /// 
-        /// @param path the path to the folder containing the images
-        /// 
-        /// @return A BioImage object.
+
+        /// <summary>
+        /// The function "FolderToStack" takes a path as input and returns a BioImage object that
+        /// represents a stack of images from the specified folder.
+        /// </summary>
+        /// <param name="path">The path parameter is a string that represents the directory path where
+        /// the image files are located.</param>
+        /// <param name="tab">The "tab" parameter is a boolean value that determines whether the
+        /// BioImage should be opened in a new tab or not. If "tab" is set to true, the BioImage will be
+        /// opened in a new tab. If "tab" is set to false, the BioImage will be opened</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage FolderToStack(string path, bool tab)
         {
             string[] files = Directory.GetFiles(path);
@@ -5145,6 +6078,15 @@ namespace BioGTK
         }
 
         static bool vips = false;
+        /// <summary>
+        /// The function "OpenVips" takes a BioImage object and an integer representing the number of
+        /// pages, and adds each page of a TIFF image to the BioImage's vipPages list.
+        /// </summary>
+        /// <param name="BioImage">The BioImage parameter is an object that represents a bio image. It
+        /// likely contains information about the image file, such as the file path and other
+        /// metadata.</param>
+        /// <param name="pagecount">The parameter "pagecount" represents the number of pages in the TIFF
+        /// image file that needs to be loaded.</param>
         public static void OpenVips(BioImage b, int pagecount)
         {
             try
@@ -5160,6 +6102,28 @@ namespace BioGTK
             }
 
         }
+        /// <summary>
+        /// The function `ExtractRegionFromTiledTiff` takes a BioImage object, coordinates, width,
+        /// height, and resolution as input, and returns a Bitmap object representing the extracted
+        /// region from the tiled TIFF image.
+        /// </summary>
+        /// <param name="BioImage">The BioImage object represents an image file that contains multiple
+        /// pages or resolutions. It contains information about the image file, such as the file path,
+        /// the number of pages, and the resolutions available.</param>
+        /// <param name="x">The x-coordinate of the top-left corner of the region to extract from the
+        /// tiled TIFF image.</param>
+        /// <param name="y">The parameter "y" represents the starting y-coordinate of the region to be
+        /// extracted from the tiled TIFF image.</param>
+        /// <param name="width">The width parameter represents the width of the region to be extracted
+        /// from the tiled TIFF image.</param>
+        /// <param name="height">The height parameter represents the height of the region that you want
+        /// to extract from the tiled TIFF image.</param>
+        /// <param name="res">The parameter "res" represents the resolution level of the tiled TIFF
+        /// image. It is used to specify the level of detail or zoom level at which the region is
+        /// extracted.</param>
+        /// <returns>
+        /// The method is returning a Bitmap object.
+        /// </returns>
         public static Bitmap ExtractRegionFromTiledTiff(BioImage b, int x, int y, int width, int height, int res)
         {
             try
@@ -6238,10 +7202,16 @@ namespace BioGTK
                 }
             } while (!stop);
         }
-        /// This function sets the minimum and maximum values of the image to the minimum and maximum
-        /// values of the stack
-        /// 
-        /// @param bit16 true = 16 bit, false = 8 bit
+
+        /// <summary>
+        /// The function `StackThreshold` adjusts the minimum and maximum values of each channel's range
+        /// based on the stack's minimum and maximum values, and sets the bits per pixel value
+        /// accordingly.
+        /// </summary>
+        /// <param name="bit16">The parameter "bit16" is a boolean value that determines whether the
+        /// stack threshold should be set for 16-bit or 8-bit channels. If "bit16" is true, the
+        /// threshold will be set for 16-bit channels. If "bit16" is false, the threshold will
+        /// be</param>
         public void StackThreshold(bool bit16)
         {
             if (bit16)
@@ -6271,16 +7241,15 @@ namespace BioGTK
                 bitsPerPixel = 8;
             }
         }
-        /// > If the number is less than or equal to 255, then it's 8 bits. If it's less than or equal
-        /// to 512, then it's 9 bits. If it's less than or equal to 1023, then it's 10 bits. If it's
-        /// less than or equal to 2047, then it's 11 bits. If it's less than or equal to 4095, then it's
-        /// 12 bits. If it's less than or equal to 8191, then it's 13 bits. If it's less than or equal
-        /// to 16383, then it's 14 bits. If it's less than or equal to 32767, then it's 15 bits. If it's
-        /// less than or equal to 65535, then it's 16 bits
-        /// 
-        /// @param bt The number of bits per pixel.
-        /// 
-        /// @return The number of bits per pixel.
+
+        /// <summary>
+        /// The function "GetBitsPerPixel" returns the number of bits per pixel based on the given input
+        /// value "bt".
+        /// </summary>
+        /// <param name="bt">The parameter "bt" represents the number of bits in a color value.</param>
+        /// <returns>
+        /// The method is returning the number of bits per pixel based on the input parameter "bt".
+        /// </returns>
         public static int GetBitsPerPixel(int bt)
         {
             if (bt <= 255)
@@ -6302,11 +7271,14 @@ namespace BioGTK
             else
                 return 16;
         }
-        /// It returns the maximum value of a bit.
-        /// 
-        /// @param bt bit depth
-        /// 
-        /// @return The maximum value of a bit.
+
+        /// <summary>
+        /// The function returns the maximum value that can be represented by a given number of bits.
+        /// </summary>
+        /// <param name="bt">The parameter "bt" represents the number of bits.</param>
+        /// <returns>
+        /// The method returns the maximum value that can be represented by a given number of bits.
+        /// </returns>
         public static int GetBitMaxValue(int bt)
         {
             if (bt == 8)
@@ -6328,15 +7300,19 @@ namespace BioGTK
             else
                 return 65535;
         }
-        /// If the bits per pixel is 8, then the pixel format is either 8bppIndexed, 24bppRgb, or
-        /// 32bppArgb. If the bits per pixel is 16, then the pixel format is either 16bppGrayScale or
-        /// 48bppRgb
-        /// 
-        /// @param rgbChannelCount The number of channels in the image. For example, a grayscale image
-        /// has 1 channel, a color image has 3 channels (red, green, blue).
-        /// @param bitsPerPixel 8 or 16
-        /// 
-        /// @return The PixelFormat of the image.
+
+        /// <summary>
+        /// The function returns the appropriate PixelFormat based on the number of RGB channels and
+        /// bits per pixel.
+        /// </summary>
+        /// <param name="rgbChannelCount">The number of color channels in the pixel format. This can be
+        /// either 1 (grayscale) or 3 (RGB).</param>
+        /// <param name="bitsPerPixel">The bitsPerPixel parameter represents the number of bits used to
+        /// represent each pixel in the image. It determines the color depth or the number of colors
+        /// that can be represented in the image.</param>
+        /// <returns>
+        /// The method returns a PixelFormat value based on the input parameters.
+        /// </returns>
         public static PixelFormat GetPixelFormat(int rgbChannelCount, int bitsPerPixel)
         {
             if (bitsPerPixel == 8)
@@ -6357,6 +7333,19 @@ namespace BioGTK
             }
             throw new NotSupportedException("Not supported pixel format.");
         }
+        /// <summary>
+        /// The function `GetPixelFormat` returns the appropriate `PixelFormat` based on the number of
+        /// RGB channels and the pixel type.
+        /// </summary>
+        /// <param name="rgbChannelCount">The `rgbChannelCount` parameter represents the number of
+        /// channels in the image. It can be either 1 (for grayscale images) or 3 (for RGB color
+        /// images).</param>
+        /// <param name="px">The parameter "px" is of type ome.xml.model.enums.PixelType, which is an
+        /// enumeration representing different pixel types. It can have values like INT8, UINT8, INT16,
+        /// UINT16, etc.</param>
+        /// <returns>
+        /// The method returns a PixelFormat value based on the input parameters.
+        /// </returns>
         public static PixelFormat GetPixelFormat(int rgbChannelCount, ome.xml.model.enums.PixelType px)
         {
             if (rgbChannelCount == 1)
@@ -6375,13 +7364,22 @@ namespace BioGTK
             }
             throw new NotSupportedException("Not supported pixel format.");
         }
-        /// It opens a file, checks if it's tiled, if it is, it opens it as a tiled image, if not, it
-        /// opens it as a normal image
-        /// 
-        /// @param file the file path
-        /// @param tab open in new tab
-        /// @param addToImages add to images list.
-        /// @return An array of BioImage objects.
+
+        /// <summary>
+        /// The function `OpenOMESeries` opens an OME series file, retrieves metadata, and returns an
+        /// array of BioImage objects.
+        /// </summary>
+        /// <param name="file">The file path of the OME series to be opened.</param>
+        /// <param name="tab">The "tab" parameter is a boolean value that determines whether the opened
+        /// image should be displayed in a new tab or not. If set to true, the image will be displayed
+        /// in a new tab; if set to false, the image will be displayed in the current tab.</param>
+        /// <param name="addToImages">The `addToImages` parameter is a boolean value that determines
+        /// whether the opened BioImage should be added to the collection of images. If set to `true`,
+        /// the BioImage will be added to the collection; if set to `false`, it will not be
+        /// added.</param>
+        /// <returns>
+        /// The method is returning an array of BioImage objects.
+        /// </returns>
         public static BioImage[] OpenOMESeries(string file, bool tab, bool addToImages)
         {
             //We wait incase OME has not initialized yet.
@@ -6433,18 +7431,25 @@ namespace BioGTK
             }
             return bs;
         }
-        /// It opens a file in a new thread.
-        /// 
-        /// @param file The file to open
+
+        /// <summary>
+        /// The OpenAsync function opens a file in a separate thread.
+        /// </summary>
+        /// <param name="file">The "file" parameter is a string that represents the file that needs to
+        /// be opened asynchronously.</param>
         public static void OpenAsync(string file)
         {
             Thread t = new Thread(OpenThread);
             t.Name = file;
             t.Start();
         }
-        /// It opens a file asynchronously
-        /// 
-        /// @param files The file(s) to open.
+
+        /// <summary>
+        /// The function OpenAsync takes an array of file names as input and opens each file
+        /// asynchronously.
+        /// </summary>
+        /// <param name="files">The parameter "files" is an array of strings that represents the file
+        /// names that need to be opened.</param>
         public static void OpenAsync(string[] files)
         {
             foreach (string file in files)
@@ -6452,18 +7457,25 @@ namespace BioGTK
                 OpenAsync(file);
             }
         }
-        /// It opens a file in a new thread.
-        /// 
-        /// @param file The file to open
+
+        /// <summary>
+        /// The AddAsync function creates a new thread and starts it, passing in the file name as the
+        /// thread's name.
+        /// </summary>
+        /// <param name="file">The file parameter is a string that represents the file that will be
+        /// opened asynchronously.</param>
         public static void AddAsync(string file)
         {
             Thread t = new Thread(OpenThread);
             t.Name = file;
             t.Start();
         }
-        /// It opens a file asynchronously
-        /// 
-        /// @param files The file(s) to open.
+
+        /// <summary>
+        /// The function `AddAsync` takes an array of file names and asynchronously opens each file.
+        /// </summary>
+        /// <param name="files">The parameter "files" is an array of strings that represents the file
+        /// names that need to be processed.</param>
         public static void AddAsync(string[] files)
         {
             foreach (string file in files)
@@ -6471,16 +7483,22 @@ namespace BioGTK
                 OpenAsync(file);
             }
         }
-        /// It opens a file
-        /// 
-        /// @param file The file to open.
+
+        /// <summary>
+        /// The function "Open" opens a file.
+        /// </summary>
+        /// <param name="file">The "file" parameter is a string that represents the file path or file
+        /// name that you want to open.</param>
         public static void Open(string file)
         {
             OpenFile(file);
         }
-        /// It opens a file
-        /// 
-        /// @param files The files to open.
+
+        /// <summary>
+        /// The function "Open" takes an array of file names as input and opens each file.
+        /// </summary>
+        /// <param name="files">An array of strings representing the file names that need to be
+        /// opened.</param>
         public static void Open(string[] files)
         {
             foreach (string file in files)
@@ -6488,11 +7506,20 @@ namespace BioGTK
                 Open(file);
             }
         }
-        /// It takes a list of files, opens them, and then combines them into a single BioImage object
-        /// 
-        /// @param files an array of file paths
-        /// 
-        /// @return A BioImage object.
+
+        /// <summary>
+        /// The function "ImagesToStack" takes an array of file paths, opens each file, and combines
+        /// them into a single BioImage stack.
+        /// </summary>
+        /// <param name="files">An array of file paths to the images that need to be converted into a
+        /// stack.</param>
+        /// <param name="tab">The "tab" parameter is a boolean value that determines whether the image
+        /// files are in tab-delimited format or not. If it is set to true, it means the image files are
+        /// in tab-delimited format. If it is set to false, it means the image files are not in
+        /// tab-del</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage ImagesToStack(string[] files, bool tab)
         {
             BioImage[] bs = new BioImage[files.Length];
@@ -6529,35 +7556,48 @@ namespace BioGTK
             b.Volume = new VolumeD(bs[0].Volume.Location, new Point3D(bs[0].SizeX * bs[0].PhysicalSizeX, bs[0].SizeY * bs[0].PhysicalSizeY, (z + 1) * bs[0].PhysicalSizeZ));
             return b;
         }
-        /// The function takes a BioImage object, opens the file, and returns a updated BioImage object
-        /// 
-        /// @param BioImage This is the class that contains the image data.
+        /// <summary>
+        /// The function "Update" takes a BioImage object as a parameter and updates it by opening the
+        /// file specified in the object's "file" property.
+        /// </summary>
+        /// <param name="BioImage">The BioImage class is a data structure that represents an image file
+        /// with associated metadata. It likely contains properties such as the file path, image
+        /// dimensions, and other relevant information about the image.</param>
         public static void Update(BioImage b)
         {
             b = OpenFile(b.file);
         }
-        /// > Update() is a function that calls the Update() function of the parent class
+        /// The Update function calls the Update method on the current object.
+        /// </summary>
         public void Update()
         {
             Update(this);
         }
         /* Creating a list of strings called openfile. */
         private static List<string> openfile = new List<string>();
-        /// The function OpenThread() is a private static function that takes no parameters. It creates
-        /// a string variable called file and assigns it the value of the current thread's name. It then
-        /// calls the function OpenFile() and passes it the file variable
+        /// <summary>
+        /// The function "OpenThread" opens a file with the name of the current thread.
+        /// </summary>
         private static void OpenThread()
         {
             OpenFile(Thread.CurrentThread.Name);
         }
+        /// <summary>
+        /// The AddThread function opens a file with the name of the current thread.
+        /// </summary>
         private static void AddThread()
         {
             OpenFile(Thread.CurrentThread.Name, false);
         }
-        /// It adds the file and ID to a list, then starts a new thread to save the file
-        /// 
-        /// @param file The file to save to
-        /// @param ID The ID of the file
+
+        /// <summary>
+        /// The SaveAsync function adds a file and ID to two separate lists, and then starts a new
+        /// thread to call the Save function.
+        /// </summary>
+        /// <param name="file">The file parameter is a string that represents the file name or path
+        /// where the data will be saved.</param>
+        /// <param name="ID">The ID parameter is a string that represents the unique identifier for the
+        /// file being saved.</param>
         public static void SaveAsync(string file, string ID)
         {
             saveid.Add(file);
@@ -6565,17 +7605,23 @@ namespace BioGTK
             Thread t = new Thread(Save);
             t.Start();
         }
-        /// It takes a file and an ID and saves the file to the ID
-        /// 
-        /// @param file The file to save the data to.
-        /// @param ID The ID of the user
+        /// <summary>
+        /// The function "Save" saves a file with a given ID.
+        /// </summary>
+        /// <param name="file">The file parameter is a string that represents the file path or file name
+        /// where the data will be saved.</param>
+        /// <param name="ID">The ID parameter is a string that represents the unique identifier for the
+        /// file being saved.</param>
         public static void Save(string file, string ID)
         {
             SaveFile(file, ID);
         }
         private static List<string> savefile = new List<string>();
         private static List<string> saveid = new List<string>();
-        /// It saves all the files in the savefile list to the saveid list.
+        /// <summary>
+        /// The Save function saves a list of files asynchronously and removes them from the savefile
+        /// and saveid lists once they have been saved.
+        /// </summary>
         private static void Save()
         {
             List<string> sts = new List<string>();
@@ -6592,10 +7638,16 @@ namespace BioGTK
         }
 
         private static List<string> openOMEfile = new List<string>();
-        /// It takes a string array of file paths, adds them to a list, and starts a new thread to open
-        /// the files
-        /// 
-        /// @param file The file path to the OME file.
+        /// <summary>
+        /// The function "OpenOMEThread" opens a list of files in a separate thread if the OMESupport
+        /// function returns true.
+        /// </summary>
+        /// <param name="file">The "file" parameter is an array of strings that represents the file
+        /// paths of the OME files that need to be opened.</param>
+        /// <returns>
+        /// If the OMESupport() method returns false, then nothing is being returned. The method will
+        /// simply exit and no further code will be executed.
+        /// </returns>
         public static void OpenOMEThread(string[] file)
         {
             if (!OMESupport())
@@ -6604,7 +7656,14 @@ namespace BioGTK
             Thread t = new Thread(OpenOME);
             t.Start();
         }
-        /// It opens the OME file.
+        /// <summary>
+        /// The function "OpenOME" checks if OME support is available, and if so, opens each file in the
+        /// "openOMEfile" list.
+        /// </summary>
+        /// <returns>
+        /// If the OMESupport() method returns false, then nothing is being returned. The method will
+        /// simply exit and no further code will be executed.
+        /// </returns>
         private static void OpenOME()
         {
             if (!OMESupport())
@@ -6615,23 +7674,20 @@ namespace BioGTK
             }
             openOMEfile.Clear();
         }
-        /// It creates a new thread and starts it. 
-        /// 
-        /// The thread is a function called SaveOME. 
-        /// 
-        /// The function SaveOME uses the global variables saveOMEID and saveOMEfile. 
-        /// 
-        /// The global variables saveOMEID and saveOMEfile are set in the function SaveOMEThread. 
-        /// 
-        /// The function SaveOMEThread takes two parameters: file and ID. 
-        /// 
-        /// The function SaveOMEThread sets the global variables saveOMEID and saveOMEfile to the values
-        /// of the parameters file and ID. 
-        /// 
-        /// The function SaveOMEThread then creates a new thread and starts it. 
-        /// 
-        /// @param file The file to save to
-        /// @param ID The ID of the OME file to save.
+
+        /// <summary>
+        /// The function "SaveOMEThread" saves an OME thread to a file in a separate thread.
+        /// </summary>
+        /// <param name="file">The "file" parameter is a string that represents the file path or file
+        /// name where the data will be saved. It specifies the location where the data will be
+        /// stored.</param>
+        /// <param name="ID">The ID parameter is a string that represents the identifier for the OME
+        /// (Object Management Environment) thread that needs to be saved.</param>
+        /// <returns>
+        /// If the condition `!OMESupport()` is true, then nothing is being returned as the method will
+        /// exit early with a `return` statement. If the condition is false, then nothing is being
+        /// returned as the method has a `void` return type.
+        /// </returns>
         public static void SaveOMEThread(string file, string ID)
         {
             if (!OMESupport())
@@ -6643,13 +7699,26 @@ namespace BioGTK
         }
         private static string saveOMEfile;
         private static string saveOMEID;
-        /// It takes the file name and the ID of the OME and saves it to the file
+
+        /// <summary>
+        /// The function "SaveOME" is a private static method that saves an OME file with a specified
+        /// file name and ID.
+        /// </summary>
         private static void SaveOME()
         {
             SaveOME(saveOMEfile, saveOMEID);
         }
         public static bool OmeSupport = false;
         static bool supportDialog = false;
+        /// <summary>
+        /// The function determines if the current operating system and architecture support OME (One
+        /// More Thing) and returns a boolean value indicating the support.
+        /// </summary>
+        /// <returns>
+        /// The method is returning a boolean value. If the condition `RuntimeInformation.OSArchitecture
+        /// == Architecture.Arm64 && isMacOS` is true, then it returns `false`. Otherwise, it returns
+        /// `true`.
+        /// </returns>
         public static bool OMESupport()
         {
             bool isMacOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
@@ -6665,6 +7734,16 @@ namespace BioGTK
             }
         }
         static NetVips.Image netim;
+        /// <summary>
+        /// The function checks if a given file is supported by the Vips library and returns true if it
+        /// is, false otherwise.
+        /// </summary>
+        /// <param name="file">The "file" parameter is a string that represents the file path of the
+        /// TIFF image that you want to load using the NetVips library.</param>
+        /// <returns>
+        /// The method is returning a boolean value. If the try block is executed successfully, it will
+        /// return true. If an exception is caught, it will return false.
+        /// </returns>
         public static bool VipsSupport(string file)
         {
             try
@@ -6692,11 +7771,14 @@ namespace BioGTK
         public const char NewLine = '\n';
         public const string columns = "ROIID,ROINAME,TYPE,ID,SHAPEINDEX,TEXT,S,C,Z,T,X,Y,W,H,POINTS,STROKECOLOR,STROKECOLORW,FILLCOLOR,FONTSIZE\n";
 
-        /// > Open the file, get the image description field, and return it as a string
-        /// 
-        /// @param file the path to the file
-        /// 
-        /// @return The image description of the tiff file.
+        /// <summary>
+        /// The OpenXML function opens a TIFF file and returns the value of the IMAGEDESCRIPTION field.
+        /// </summary>
+        /// <param name="file">The "file" parameter is a string that represents the file path of the
+        /// TIFF image file that you want to open and extract information from.</param>
+        /// <returns>
+        /// The method is returning a string value.
+        /// </returns>
         public static string OpenXML(string file)
         {
             if (!file.EndsWith(".tif"))
@@ -6706,12 +7788,6 @@ namespace BioGTK
             return f[0].ToString();
         }
 
-        /// It reads the OME-XML file and converts the ROIs to a list of ROI objects
-        /// 
-        /// @param file the path to the OME-TIFF file
-        /// @param series the series number of the image you want to open
-        /// 
-        /// @return A list of ROI objects.
         public static List<ROI> OpenOMEROIs(string file, int series)
         {
             if (!OMESupport())
@@ -7057,11 +8133,14 @@ namespace BioGTK
             imageReader.close();
             return Annotations;
         }
-        /// It takes a list of ROI objects and returns a string of all the ROI objects in the list
-        /// 
-        /// @param Annotations List of ROI objects
-        /// 
-        /// @return A string of the ROI's
+
+        /// <summary>
+        /// The function takes a list of ROI objects and converts them to a string representation.
+        /// </summary>
+        /// <param name="Annotations">Annotations is a List of ROI objects.</param>
+        /// <returns>
+        /// The method is returning a string representation of a list of ROI objects.
+        /// </returns>
         public static string ROIsToString(List<ROI> Annotations)
         {
             string s = "";
@@ -7071,12 +8150,17 @@ namespace BioGTK
             }
             return s;
         }
-        /// This function takes an ROI object and returns a string that contains all the information
-        /// about the ROI
-        /// 
-        /// @param ROI The ROI object
-        /// 
-        /// @return A string
+
+        /// <summary>
+        /// The function "ROIToString" converts a ROI object into a string representation.
+        /// </summary>
+        /// <param name="ROI">The ROI parameter is an object of type ROI. It contains information about
+        /// a region of interest, such as its ID, name, type, coordinates, shape index, text, series,
+        /// color, stroke width, fill color, and font size.</param>
+        /// <returns>
+        /// The method is returning a string that represents the properties of an ROI (Region of
+        /// Interest) object.
+        /// </returns>
         public static string ROIToString(ROI an)
         {
             PointD[] points = an.GetPoints();
@@ -7097,11 +8181,16 @@ namespace BioGTK
                 an.W.ToString(CultureInfo.InvariantCulture) + ',' + an.H.ToString(CultureInfo.InvariantCulture) + ',' + sep.ToString() + pts + sep.ToString() + ',' + sColor + ',' + an.strokeWidth.ToString(CultureInfo.InvariantCulture) + ',' + bColor + ',' + an.fontSize.ToString(CultureInfo.InvariantCulture) + ',' + NewLine;
             return line;
         }
-        /// It takes a string and returns an ROI object
-        /// 
-        /// @param sts the string that contains the ROI data
-        /// 
-        /// @return A ROI object.
+        /// <summary>
+        /// The function `StringToROI` takes a string as input and parses it to create an instance of
+        /// the `ROI` class.
+        /// </summary>
+        /// <param name="sts">The parameter "sts" is a string that represents a line of data containing
+        /// comma or tab-separated values. It is used to extract the values and assign them to the
+        /// properties of the ROI object.</param>
+        /// <returns>
+        /// The method is returning an object of type ROI.
+        /// </returns>
         public static ROI StringToROI(string sts)
         {
             //Works with either comma or tab separated values.
@@ -7257,21 +8346,30 @@ namespace BioGTK
 
             return an;
         }
-        /// This function takes a list of ROIs and writes them to a CSV file
-        /// 
-        /// @param filename the name of the file to be saved
-        /// @param Annotations List of ROI objects
+
+        /// <summary>
+        /// The function exports a list of ROI annotations to a CSV file.
+        /// </summary>
+        /// <param name="filename">The filename parameter is a string that represents the name of the
+        /// file that will be created or overwritten with the exported data.</param>
+        /// <param name="Annotations">The "Annotations" parameter is a List of ROI objects. Each ROI
+        /// object represents a region of interest in an image or a video frame.</param>
         public static void ExportROIsCSV(string filename, List<ROI> Annotations)
         {
             string con = columns;
             con += ROIsToString(Annotations);
             File.WriteAllText(filename, con);
         }
-        /// It reads the CSV file and converts each line into a ROI object
-        /// 
-        /// @param filename The path to the CSV file.
-        /// 
-        /// @return A list of ROI objects.
+
+        /// <summary>
+        /// The function ImportROIsCSV reads a CSV file containing ROI data and returns a list of ROI
+        /// objects.
+        /// </summary>
+        /// <param name="filename">The filename parameter is a string that represents the name or path
+        /// of the CSV file that contains the ROI data.</param>
+        /// <returns>
+        /// The method is returning a List of ROI objects.
+        /// </returns>
         public static List<ROI> ImportROIsCSV(string filename)
         {
             List<ROI> list = new List<ROI>();
@@ -7285,13 +8383,18 @@ namespace BioGTK
             }
             return list;
         }
-        /// ExportROIFolder(path, filename)
-        /// 
-        /// This function takes a folder path and a filename as input and exports all the ROIs in the
-        /// folder as CSV files
-        /// 
-        /// @param path the path to the folder containing the OMERO ROI files
-        /// @param filename the name of the file you want to export
+
+        /// <summary>
+        /// The function exports a folder of ROI files to CSV format.
+        /// </summary>
+        /// <param name="path">The path parameter is the directory path where the ROIs (Region of
+        /// Interest) files are located.</param>
+        /// <param name="filename">The `filename` parameter is a string that represents the name of the
+        /// file that will be exported.</param>
+        /// <returns>
+        /// If the OMESupport() method returns false, then nothing is being returned. The method will
+        /// exit and no further code will be executed.
+        /// </returns>
         public static void ExportROIFolder(string path, string filename)
         {
             if (!OMESupport())
@@ -7309,31 +8412,18 @@ namespace BioGTK
 
         private static BioImage bstats = null;
         private static bool update = false;
-        /// It takes a BioImage object, and calculates the mean histogram for each channel, and for the
-        /// entire image. 
-        /// 
-        /// The BioImage object is a class that contains a list of buffers, each of which contains a
-        /// byte array of pixel data. 
-        /// 
-        /// The function also calculates the mean histogram for each buffer, and stores it in the
-        /// buffer's stats property. 
-        /// 
-        /// The function also calculates the mean histogram for each channel, and stores it in the
-        /// channel's stats property. 
-        /// 
-        /// The function also calculates the mean histogram for the entire image, and stores it in the
-        /// image's statistics property. 
-        /// 
-        /// The mean histogram is calculated by adding up the histograms of each buffer, and then
-        /// dividing by the number of buffers. 
-        /// 
-        /// The histogram is calculated by looping through the byte array of pixel data, and
-        /// incrementing the value of the histogram at the index of the pixel value. 
-        /// 
-        /// The histogram
-        /// 
-        /// @param BioImage This is the image object that contains the image data.
-        /// @param updateImageStats if true, the image stats will be updated.
+
+        /// <summary>
+        /// The AutoThreshold function calculates statistics and histograms for each channel of a
+        /// BioImage object and assigns them to the corresponding channel's stats property.
+        /// </summary>
+        /// <param name="BioImage">The BioImage parameter represents an image object that contains
+        /// multiple image buffers and channels. It is used to perform thresholding operations on the
+        /// image data.</param>
+        /// <param name="updateImageStats">The parameter "updateImageStats" is a boolean value that
+        /// determines whether the image statistics should be updated or not. If it is set to true, the
+        /// image statistics will be updated for each buffer. If it is set to false, the image
+        /// statistics will only be updated if they are null.</param>
         public static void AutoThreshold(BioImage b, bool updateImageStats)
         {
             bstats = b;
@@ -7402,31 +8492,48 @@ namespace BioGTK
             b.statistics = statistics;
 
         }
-        /// It takes the current image, and finds the best threshold value for it
+
+        /// <summary>
+        /// The function AutoThreshold is a C# method that takes in two parameters, bstats and update,
+        /// and calls another method with the same name and parameters.
+        /// </summary>
         public static void AutoThreshold()
         {
             AutoThreshold(bstats, update);
         }
-        /// It creates a new thread that calls the AutoThreshold function
-        /// 
-        /// @param BioImage This is a class that holds the image data and some other information.
+
+        /// <summary>
+        /// The function AutoThresholdThread starts a new thread to run the AutoThreshold function on a
+        /// BioImage object.
+        /// </summary>
+        /// <param name="BioImage">The BioImage parameter is an object that represents an image in a
+        /// biological context. It likely contains information about the image, such as its dimensions,
+        /// pixel values, and any associated metadata.</param>
         public static void AutoThresholdThread(BioImage b)
         {
             bstats = b;
             Thread th = new Thread(AutoThreshold);
             th.Start();
         }
-        /// The function finds the focus of a given BioImage at a specific channel and time by
-        /// calculating the focus quality of each Z-plane and returning the coordinate with the highest
-        /// focus quality.
-        /// 
-        /// @param BioImage A BioImage object that contains the image data.
-        /// @param Channel The channel of the BioImage to analyze. A BioImage can have multiple
-        /// channels, each representing a different fluorescent label or imaging modality.
-        /// @param Time The time point at which the focus is being calculated.
-        /// 
-        /// @return an integer value which represents the coordinate of the image with the highest focus
-        /// quality in a given channel and time.
+
+        /// <summary>
+        /// The function FindFocus takes a BioImage object, a channel number, and a time value as input,
+        /// and returns the coordinate of the image with the highest focus quality in the specified
+        /// channel and time.
+        /// </summary>
+        /// <param name="BioImage">The BioImage parameter represents an image object that contains
+        /// multiple channels and time points. It has a property called Buffers, which is a 3D array
+        /// that stores the pixel values of the image. The Coords property is a 3D array that stores the
+        /// coordinates of each pixel in the image</param>
+        /// <param name="Channel">The "Channel" parameter represents the specific channel of the
+        /// BioImage that you want to analyze. It is used to access the corresponding buffer in the
+        /// BioImage's "Buffers" array.</param>
+        /// <param name="Time">The "Time" parameter represents the time point or frame number in a
+        /// time-lapse sequence.</param>
+        /// <returns>
+        /// The method is returning the index of the buffer with the highest focus quality in the given
+        /// BioImage.
+        /// </returns>
         public static int FindFocus(BioImage im, int Channel, int Time)
         {
             long mf = 0;
@@ -7445,13 +8552,15 @@ namespace BioGTK
             }
             return fr;
         }
+
+        /// <summary>
         /// The function calculates the focus quality of a given bitmap image.
-        /// 
-        /// @param Bitmap A class representing a bitmap image, which contains information about the
-        /// image's size, pixel data, and color channels.
-        /// 
-        /// @return The method is returning a long value which represents the calculated focus quality
-        /// of the input Bitmap image.
+        /// </summary>
+        /// <param name="Bitmap">The parameter `b` is a Bitmap object, which represents an
+        /// image.</param>
+        /// <returns>
+        /// The method CalculateFocusQuality returns a long value.
+        /// </returns>
         static long CalculateFocusQuality(Bitmap b)
         {
             if (b.RGBChannelsCount == 1)
@@ -7482,8 +8591,11 @@ namespace BioGTK
                 return sumOfSquares * b.SizeX * b.SizeY - sum * sum;
             }
         }
-        /// It disposes of all the buffers and channels in the image, removes the image from the Images
-        /// list, and then forces the garbage collector to run
+
+        /// <summary>
+        /// The Dispose function is used to release resources, such as buffers and channels, and remove
+        /// the image from the Images collection.
+        /// </summary>
         public void Dispose()
         {
             for (int i = 0; i < Buffers.Count; i++)
@@ -7495,23 +8607,32 @@ namespace BioGTK
                 Channels[i].Dispose();
             }
             Images.RemoveImage(this);
-            //GC.Collect();
         }
-        /// This function returns the filename of the object, and the location of the object in the 3D
-        /// space
-        /// 
-        /// @return The filename, and the location of the volume.
+
+        /// <summary>
+        /// The ToString function returns a string representation of the Filename and Volume Location.
+        /// </summary>
+        /// <returns>
+        /// The method is returning a string representation of an object. The returned string consists
+        /// of the Filename, followed by the Volume's Location coordinates in the format "(X, Y, Z)".
+        /// </returns>
         public override string ToString()
         {
             return Filename.ToString() + ", (" + Volume.Location.X + ", " + Volume.Location.Y + ", " + Volume.Location.Z + ")";
         }
 
-        /// This function divides each pixel in the image by a constant value
-        /// 
-        /// @param BioImage a class that contains a list of buffers (which are 2D arrays of floats)
-        /// @param b the value to divide by
-        /// 
-        /// @return The image is being returned.
+        
+        /// <summary>
+        /// The above function overloads the division operator (/) for the BioImage class, allowing
+        /// division of each element in the BioImage's buffers by a float value.
+        /// </summary>
+        /// <param name="BioImage">BioImage is a class that represents an image. It contains a list of
+        /// buffers, which are used to store the pixel data of the image.</param>
+        /// <param name="b">The parameter "b" is a float value that is used to divide each element in
+        /// the buffers of the BioImage object "a".</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage operator /(BioImage a, float b)
         {
             for (int i = 0; i < a.Buffers.Count; i++)
@@ -7521,12 +8642,18 @@ namespace BioGTK
             return a;
         }
 
-        /// This function adds a constant value to each pixel in the image
-        /// 
-        /// @param BioImage a class that contains a list of buffers (float[])
-        /// @param b the value to add to the image
-        /// 
-        /// @return The image itself.
+        
+        /// <summary>
+        /// The function overloads the "+" operator for the BioImage class, allowing it to add a float
+        /// value to each element in its list of buffers.
+        /// </summary>
+        /// <param name="BioImage">BioImage is a class that represents an image. It contains a list of
+        /// buffers, which are used to store pixel data.</param>
+        /// <param name="b">The parameter "b" is a float value that is being added to each element in
+        /// the BioImage's Buffers list.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage operator +(BioImage a, float b)
         {
             for (int i = 0; i < a.Buffers.Count; i++)
@@ -7535,12 +8662,17 @@ namespace BioGTK
             }
             return a;
         }
-        /// Subtracts a scalar value from each pixel in the image
-        /// 
-        /// @param BioImage a class that contains a list of buffers (which are 2D arrays of floats)
-        /// @param b the value to subtract from the image
-        /// 
-        /// @return The BioImage object is being returned.
+        /// <summary>
+        /// The above function overloads the subtraction operator for the BioImage class, subtracting a
+        /// float value from each element in the Buffers list.
+        /// </summary>
+        /// <param name="BioImage">BioImage is a class that represents an image. It contains a list of
+        /// buffers, which are used to store the pixel values of the image.</param>
+        /// <param name="b">The parameter "b" is a float value that is subtracted from each element in
+        /// the BioImage's Buffers list.</param>
+        /// <returns>
+        /// The BioImage object is being returned.
+        /// </returns>
         public static BioImage operator -(BioImage a, float b)
         {
             for (int i = 0; i < a.Buffers.Count; i++)
@@ -7550,12 +8682,19 @@ namespace BioGTK
             return a;
         }
 
-        /// This function divides each pixel in the image by the value of the color
-        /// 
-        /// @param BioImage a class that contains a list of ColorS objects.
-        /// @param ColorS a struct that contains a byte for each color channel (R, G, B, A)
-        /// 
-        /// @return A BioImage object.
+        /// <summary>
+        /// The function divides each buffer in a BioImage object by a ColorS object and returns the
+        /// modified BioImage object.
+        /// </summary>
+        /// <param name="BioImage">BioImage is a class that represents an image. It contains a list of
+        /// buffers, which are used to store pixel data for different color channels or image
+        /// layers.</param>
+        /// <param name="ColorS">ColorS is a data type that represents a color in the RGB color space.
+        /// It typically contains three components: red, green, and blue, each represented by a
+        /// floating-point value between 0 and 1.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage operator /(BioImage a, ColorS b)
         {
             for (int i = 0; i < a.Buffers.Count; i++)
@@ -7564,12 +8703,20 @@ namespace BioGTK
             }
             return a;
         }
-        /// This function takes a BioImage object and a ColorS object and returns a BioImage object
-        /// 
-        /// @param BioImage a class that contains a list of ColorS objects.
-        /// @param ColorS a struct that contains a byte for each color channel (R, G, B, A)
-        /// 
-        /// @return A BioImage object
+
+        /// <summary>
+        /// The function multiplies each buffer in a BioImage object by a ColorS object and returns the
+        /// modified BioImage object.
+        /// </summary>
+        /// <param name="BioImage">BioImage is a class that represents an image. It contains a list of
+        /// buffers, which are used to store pixel data for different color channels or image
+        /// layers.</param>
+        /// <param name="ColorS">ColorS is a data type that represents a color in the RGB color space.
+        /// It typically contains three components: red, green, and blue, each represented by a
+        /// floating-point value between 0 and 1.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage operator *(BioImage a, ColorS b)
         {
             for (int i = 0; i < a.Buffers.Count; i++)
@@ -7578,13 +8725,20 @@ namespace BioGTK
             }
             return a;
         }
-        /// It takes a BioImage object and a ColorS object and adds the ColorS object to each buffer in
-        /// the BioImage object
-        /// 
-        /// @param BioImage a class that contains a list of ColorS objects.
-        /// @param ColorS a struct that contains a byte for each color channel (R, G, B, A)
-        /// 
-        /// @return A BioImage object
+
+        /// <summary>
+        /// The function overloads the "+" operator to add a ColorS object to each buffer in a BioImage
+        /// object.
+        /// </summary>
+        /// <param name="BioImage">BioImage is a class that represents an image. It contains a list of
+        /// buffers, which are used to store pixel data for different color channels or image
+        /// layers.</param>
+        /// <param name="ColorS">ColorS is a class or struct representing a color in an image. It likely
+        /// contains properties or fields for the red, green, blue, and alpha values of the
+        /// color.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage operator +(BioImage a, ColorS b)
         {
             for (int i = 0; i < a.Buffers.Count; i++)
@@ -7593,12 +8747,19 @@ namespace BioGTK
             }
             return a;
         }
-        /// The function subtracts a color from each pixel in the image
-        /// 
-        /// @param BioImage a class that contains a list of ColorS objects.
-        /// @param ColorS a struct that contains a byte for each color channel (R, G, B, A)
-        /// 
-        /// @return The image itself.
+
+        /// <summary>
+        /// The function subtracts a ColorS object from each element in a BioImage object's Buffers
+        /// list.
+        /// </summary>
+        /// <param name="BioImage">BioImage is a class that represents an image. It contains a list of
+        /// buffers, which are arrays of pixels that make up the image.</param>
+        /// <param name="ColorS">ColorS is a data type that represents a color in the RGB color space.
+        /// It typically contains three components: red, green, and blue, each represented by a
+        /// floating-point value between 0 and 1.</param>
+        /// <returns>
+        /// The method is returning a BioImage object.
+        /// </returns>
         public static BioImage operator -(BioImage a, ColorS b)
         {
             for (int i = 0; i < a.Buffers.Count; i++)

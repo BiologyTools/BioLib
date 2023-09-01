@@ -16,13 +16,17 @@ namespace BioGTK
         public static string ImageJPath;
         public static List<Process> processes = new List<Process>();
         private static Random rng = new Random();
-
-        /// It runs a macro in ImageJ
-        /// 
-        /// @param file the path to the macro file
-        /// @param param The parameter to pass to the macro.
-        /// 
-        /// @return The macro is being returned.
+        /// <summary>
+        /// The function "RunMacro" runs a macro file with specified parameters using the ImageJ
+        /// software.
+        /// </summary>
+        /// <param name="file">The "file" parameter is a string that represents the path to the macro
+        /// file that you want to run. It should include the file extension (e.g., ".ijm" for ImageJ
+        /// macro files).</param>
+        /// <param name="param">The "param" parameter is a string that represents the additional
+        /// parameters or arguments that you want to pass to the macro file specified by the "file"
+        /// parameter. These parameters can be used by the macro file to modify its behavior or perform
+        /// specific actions.</param>
         public static void RunMacro(string file, string param)
         {
             file.Replace("/", "\\");
@@ -33,13 +37,21 @@ namespace BioGTK
             processes.Add(pr);
             //Recorder.AddLine("ImageJ.RunMacro(" + file + "," + '"' + param + '"' + ");");
         }
-        /// It runs a macro in ImageJ
-        /// 
-        /// @param con The macro code
-        /// @param param The parameters to pass to the macro.
-        /// @param headless Whether or not to run ImageJ in headless mode.
-        /// 
-        /// @return Nothing.
+
+        /// <summary>
+        /// The function `RunString` executes an ImageJ macro script with the given parameters, either
+        /// in headless mode or with a graphical interface.
+        /// </summary>
+        /// <param name="con">The "con" parameter is a string that represents the content of a file. It
+        /// will be written to a temporary file and used as input for the ImageJ macro.</param>
+        /// <param name="param">The "param" parameter is a string that represents the additional
+        /// arguments or parameters that you want to pass to the ImageJ application when running the
+        /// macro. These arguments can be used to customize the behavior of the macro or provide input
+        /// data to it.</param>
+        /// <param name="headless">The "headless" parameter is a boolean value that determines whether
+        /// the ImageJ process should run in headless mode or not. Headless mode means that the ImageJ
+        /// interface will not be displayed, and the process will run in the background without any user
+        /// interaction. If the "headless" parameter</param>
         public static void RunString(string con, string param, bool headless)
         {
             Process pr = new Process();
@@ -82,16 +94,35 @@ namespace BioGTK
             } while (!pr.HasExited);
             File.Delete(p);
         }
-        /// It runs a macro on the current image, saves the result as a new image, and then opens the
-        /// new image in a new tab
-        /// @param bi The BioImage to run the macro on.
-        /// @param con The ImageJ macro to run on the image.
-        /// @param headless Whether to run ImageJ in headless mode.
-        /// @param onTab If true, the imacro will be run on tab. If false, the macro will be run on selected image.
-        /// @param bioformats If true, the image is opened using the bioformats plugin. If false, the
-        /// image is opened using the default imagej open command.
-        /// 
-        /// @return The image is being returned as a new tab.
+
+        /// <summary>
+        /// The function "RunOnImage" takes a BioImage object, a string of commands, an index, and
+        /// several boolean parameters, and performs various operations on the image.
+        /// </summary>
+        /// <param name="BioImage">The BioImage object represents an image file. It contains information
+        /// about the image file such as the file path, filename, and ID.</param>
+        /// <param name="con">The "con" parameter is a string that represents the ImageJ macro code that
+        /// you want to run on the image. It is passed as an argument to the "run" function in the
+        /// ImageJ macro language.</param>
+        /// <param name="index">The index parameter is used to specify the index of the image series to
+        /// be processed. It is used when opening multi-series images, such as multi-channel or
+        /// time-lapse images, where each series represents a different set of images. By specifying the
+        /// index, you can select a specific series to be processed</param>
+        /// <param name="headless">The "headless" parameter is a boolean value that determines whether
+        /// the image processing should be performed in headless mode. Headless mode means that the
+        /// processing is done without any user interface or graphical display.</param>
+        /// <param name="onTab">The "onTab" parameter determines whether the image processing should be
+        /// performed on the current tab or on a new tab. If it is set to true, the processing will be
+        /// done on the current tab. If it is set to false, a new tab will be created for the processed
+        /// image.</param>
+        /// <param name="bioformats">A boolean flag indicating whether to use Bio-Formats for importing
+        /// and exporting the image. If set to true, Bio-Formats will be used. If set to false, the
+        /// image will be opened and saved using the default ImageJ functions.</param>
+        /// <param name="resultInNewTab">A boolean value indicating whether the result should be
+        /// displayed in a new tab or not.</param>
+        /// <returns>
+        /// The method does not return any value. It is a void method.
+        /// </returns>
         public static void RunOnImage(BioImage bi,string con, int index, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
         {
             if (OperatingSystem.IsMacOS())
@@ -161,14 +192,40 @@ namespace BioGTK
             //Recorder.AddLine("ImageJ.RunOnImage(\"" + con + "\"," + headless + "," + onTab + "," + bioformats + "," + resultInNewTab + ");");
         }
 
+        /// <summary>
+        /// The function "RunOnImage" takes in a BioImage object, a string, and several boolean values
+        /// as parameters and executes a specific action based on those parameters.
+        /// </summary>
+        /// <param name="BioImage">The BioImage parameter is an object that represents an image in a
+        /// bioinformatics context. It likely contains information about the image, such as its
+        /// dimensions, pixel values, and metadata.</param>
+        /// <param name="con">The "con" parameter is a string that represents the command to be executed
+        /// on the image. It could be any valid ImageJ command or macro.</param>
+        /// <param name="headless">The "headless" parameter is a boolean value that determines whether
+        /// the image processing operation should be performed in headless mode. Headless mode means
+        /// that the operation will be performed without any graphical user interface (GUI) being
+        /// displayed.</param>
+        /// <param name="onTab">The "onTab" parameter determines whether the image processing should be
+        /// performed on the current active tab or on a new tab. If "onTab" is set to true, the
+        /// processing will be performed on the current active tab. If "onTab" is set to false, a new
+        /// tab will</param>
+        /// <param name="bioformats">The "bioformats" parameter is a boolean value that determines
+        /// whether to use the Bio-Formats plugin for opening the image. If set to true, the Bio-Formats
+        /// plugin will be used to open the image, allowing for support of various file formats. If set
+        /// to false, the default image opening</param>
+        /// <param name="resultInNewTab">A boolean value indicating whether the result should be
+        /// displayed in a new tab or not.</param>
         public static void RunOnImage(BioImage b, string con, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
         {
             RunOnImage(b, con,0,headless,onTab,bioformats,resultInNewTab);
             //Recorder.AddLine("ImageJ.RunOnImage(\"" + con + "\"," + 0 + "," + headless + "," + onTab + "," + bioformats + "," + resultInNewTab + ");");
         }
-        /// This function is used to initialize the path of the ImageJ.exe file
-        /// 
-        /// @param path The path to the ImageJ executable.
+
+        /// <summary>
+        /// The Initialize function sets the ImageJPath variable to the specified path.
+        /// </summary>
+        /// <param name="path">The path parameter is a string that represents the file path where the
+        /// ImageJ software is located.</param>
         public static void Initialize(string path)
         {
             ImageJPath = path;
@@ -264,7 +321,8 @@ namespace BioGTK
                 this.path = path;
             }
 
-            /** Constructs an RoiDecoder using a byte array. */
+            /* The above code is defining a constructor for a class called RoiDecoder in C#. The
+            constructor takes in two parameters: a byte array called bytes and a string called name. */
             public RoiDecoder(byte[] bytes, string name)
             {
                 ins = new MemoryStream(bytes);
@@ -272,7 +330,18 @@ namespace BioGTK
                 this.size = bytes.Length;
             }
 
-            /** Opens the BioGTK.ROI at the specified path. Returns null if there is an error. */
+            /// <summary>
+            /// The function "open" takes a file path and a BioImage object as input, decodes the ROI
+            /// from the file at the given path, and returns the ROI.
+            /// </summary>
+            /// <param name="path">The path parameter is a string that represents the file path of the
+            /// ROI file that you want to open.</param>
+            /// <param name="BioImage">The BioImage parameter is an object that represents an image in a
+            /// biological context. It likely contains information about the image, such as its
+            /// dimensions, pixel values, and any associated metadata.</param>
+            /// <returns>
+            /// The method is returning an instance of the BioGTK.ROI class.
+            /// </returns>
             public static BioGTK.ROI open(string path, BioImage image)
             {
                 BioGTK.ROI roi = null;
@@ -281,7 +350,15 @@ namespace BioGTK
                 return roi;
             }
 
-            /** Returns the ROI. */
+            /// <summary>
+            /// The function `getRoi` reads and parses an ImageJ ROI file and returns a `BioGTK.ROI`
+            /// object representing the region of interest.
+            /// </summary>
+            /// <param name="BioImage">The `BioImage` parameter represents an image object in the BioGTK
+            /// library.</param>
+            /// <returns>
+            /// The method is returning an instance of the BioGTK.ROI class.
+            /// </returns>
             public BioGTK.ROI getRoi(BioImage bi)
             {
                 BioGTK.ROI roi = new BioGTK.ROI();
@@ -598,6 +675,21 @@ namespace BioGTK
                 
             }
             */
+            /// <summary>
+            /// The function "getStrokeWidthAndColor" sets the stroke width and color properties of a
+            /// BioGTK.ROI object based on values retrieved from a data source.
+            /// </summary>
+            /// <param name="roi">The "roi" parameter is an object of type BioGTK.ROI, which represents
+            /// a region of interest. It likely contains properties such as "strokeWidth",
+            /// "strokeColor", and "fillColor" that need to be set based on the values obtained from
+            /// other methods.</param>
+            /// <param name="hdr2Offset">The `hdr2Offset` parameter is an integer value that represents
+            /// the offset in bytes from the start of the `BioGTK.ROI` object to the location of the
+            /// stroke width value in the object's header.</param>
+            /// <param name="scaleStrokeWidth">The parameter "scaleStrokeWidth" is a boolean variable
+            /// that determines whether the stroke width should be scaled or not. If it is set to true,
+            /// the stroke width will be scaled according to some predefined rules. If it is set to
+            /// false, the stroke width will not be scaled.</param>
             void getStrokeWidthAndColor(BioGTK.ROI roi, int hdr2Offset, bool scaleStrokeWidth)
             {
                 double strokeWidth = getShort(STROKE_WIDTH);
@@ -653,6 +745,17 @@ namespace BioGTK
                 return roi;
             }
 	        */
+            /// <summary>
+            /// The function `getTextRoi` extracts information from a BioGTK.ROI object and assigns it
+            /// to various properties of the object.
+            /// </summary>
+            /// <param name="roi">The `roi` parameter is an object of type `BioGTK.ROI`, which
+            /// represents a region of interest in an image. It contains information about the bounding
+            /// box, text, font style, and other properties of the region.</param>
+            /// <param name="version">The version parameter is an integer that represents the version of
+            /// the software being used. It is used to determine whether to read the angle value or not.
+            /// If the version is greater than or equal to 225, the angle value is read from the header;
+            /// otherwise, it is set to 0.</param>
             void getTextRoi(BioGTK.ROI roi, int version)
             {
                 AForge.Rectangle r = roi.BoundingBox.ToRectangleInt();
@@ -696,6 +799,12 @@ namespace BioGTK
                 */
             }
 
+            /// <summary>
+            /// The function `getRoiName` retrieves the name of a region of interest (ROI) from a file.
+            /// </summary>
+            /// <returns>
+            /// a string, which is the name of the ROI (Region of Interest).
+            /// </returns>
             string getRoiName()
             {
                 string fileName = name;
@@ -714,6 +823,14 @@ namespace BioGTK
                 return new string(namem);
             }
 
+            /// <summary>
+            /// The function "getRoiProps" retrieves ROI properties from a specific offset in a given
+            /// data structure.
+            /// </summary>
+            /// <returns>
+            /// The method is returning a string that represents the ROI (Region of Interest)
+            /// properties.
+            /// </returns>
             string getRoiProps()
             {
                 int hdr2Offset = getInt(HEADER2_OFFSET);
@@ -731,6 +848,14 @@ namespace BioGTK
                 return new string(props);
             }
 
+            /// <summary>
+            /// The function "getPointCounters" returns an array of integers representing point
+            /// counters, based on a given input value.
+            /// </summary>
+            /// <param name="n">The parameter "n" represents the number of counters to retrieve.</param>
+            /// <returns>
+            /// The method is returning an array of integers.
+            /// </returns>
             int[] getPointCounters(int n)
             {
                 int hdr2Offset = getInt(HEADER2_OFFSET);
@@ -748,11 +873,29 @@ namespace BioGTK
             }
 
 
+            /// <summary>
+            /// The function "getByte" returns the value of the byte at the specified index in the
+            /// "data" array.
+            /// </summary>
+            /// <param name="bas">The parameter "bas" is an integer that represents the base index of
+            /// the data array.</param>
+            /// <returns>
+            /// the value of the byte at the specified index in the "data" array.
+            /// </returns>
             int getByte(int bas)
             {
                 return data[bas] & 255;
             }
 
+            /// <summary>
+            /// The function "getShort" takes an integer "bas" as input and returns a short value by
+            /// combining two bytes from a data array.
+            /// </summary>
+            /// <param name="bas">The parameter "bas" is an integer that represents the base index of
+            /// the data array.</param>
+            /// <returns>
+            /// an integer value.
+            /// </returns>
             int getShort(int bas)
             {
                 int b0 = data[bas] & 255;
@@ -763,6 +906,15 @@ namespace BioGTK
                 return n;
             }
 
+            /// <summary>
+            /// The function "getUnsignedShort" takes an integer "bas" as input and returns the unsigned
+            /// short value obtained by combining two bytes from the "data" array.
+            /// </summary>
+            /// <param name="bas">The parameter "bas" is an integer that represents the base index of
+            /// the data array.</param>
+            /// <returns>
+            /// an unsigned short value.
+            /// </returns>
             int getUnsignedShort(int bas)
             {
                 int b0 = data[bas] & 255;
@@ -770,6 +922,15 @@ namespace BioGTK
                 return (b0 << 8) + b1;
             }
 
+            /// <summary>
+            /// The function takes an index as input and returns an integer value by combining four
+            /// bytes from a data array.
+            /// </summary>
+            /// <param name="bas">The parameter "bas" is an integer that represents the base index of
+            /// the data array.</param>
+            /// <returns>
+            /// an integer value.
+            /// </returns>
             int getInt(int bas)
             {
                 int b0 = data[bas] & 255;
@@ -779,12 +940,31 @@ namespace BioGTK
                 return ((b0 << 24) + (b1 << 16) + (b2 << 8) + b3);
             }
 
+            /// <summary>
+            /// The function "getFloat" converts an integer to a floating-point number.
+            /// </summary>
+            /// <param name="bas">The parameter "bas" is an integer value that is used as the base for
+            /// converting the integer value to a floating-point value.</param>
+            /// <returns>
+            /// a float value.
+            /// </returns>
             float getFloat(int bas)
             {
                 return BitConverter.Int32BitsToSingle(getInt(bas));
             }
 
-            /** Opens an ROI from a byte array. */
+            /// <summary>
+            /// The function "openFromByteArray" takes a BioImage object and a byte array as input, and
+            /// returns a BioGTK.ROI object by decoding the byte array using a RoiDecoder.
+            /// </summary>
+            /// <param name="BioImage">The BioImage parameter is an object of type BioImage, which is
+            /// likely a class representing an image in a biological context. It could contain
+            /// properties and methods related to image processing and analysis.</param>
+            /// <param name="bytes">The "bytes" parameter is a byte array that contains the data of a
+            /// serialized BioGTK.ROI object.</param>
+            /// <returns>
+            /// The method is returning an instance of the BioGTK.ROI class.
+            /// </returns>
             public static BioGTK.ROI openFromByteArray(BioImage bi,byte[] bytes)
             {
                 BioGTK.ROI roi = null;
@@ -804,6 +984,17 @@ namespace BioGTK
 
         }
 
+        /// <summary>
+        /// The function `GetImageJType` takes in a `ROI` object and returns an integer representing the
+        /// type of the ROI in ImageJ.
+        /// </summary>
+        /// <param name="ROI">The ROI parameter is an object of type ROI, which represents a region of
+        /// interest in an image. It contains information about the type of ROI, such as rectangle,
+        /// point, line, polygon, etc. The GetImageJType method is used to convert the ROI type into an
+        /// integer value that corresponds</param>
+        /// <returns>
+        /// The method is returning an integer value that represents the ImageJ type of the given ROI.
+        /// </returns>
         static int GetImageJType(ROI roi)
         {
             //private int polygon = 0, rect = 1, oval = 2, line = 3, freeline = 4, polyline = 5, noRoi = 6, freehand = 7,
@@ -830,6 +1021,20 @@ namespace BioGTK
             }
         }
 
+        /// <summary>
+        /// The function "GetPointsXY" takes a BioImage and ROI as input and returns the x and y
+        /// coordinates of the points in the ROI.
+        /// </summary>
+        /// <param name="BioImage">The BioImage parameter is an object that represents an image in a
+        /// biological context. It likely contains information about the image, such as pixel values,
+        /// dimensions, and metadata.</param>
+        /// <param name="ROI">ROI is an object that represents a region of interest in an image. It
+        /// contains a list of points (PointsD) that define the boundary of the region.</param>
+        /// <param name="xp">An output parameter that will contain the x-coordinates of the points in
+        /// the ROI.</param>
+        /// <param name="yp">The `yp` parameter is an output parameter of type `int[]`. It is used to
+        /// store the Y-coordinates of the points in the `roi` object after converting them to image
+        /// space using the `bi` object.</param>
         static void GetPointsXY(BioImage bi,ROI roi, out int[] xp, out int[] yp)
         {
             int[] x = new int[roi.PointsD.Count];
@@ -845,17 +1050,56 @@ namespace BioGTK
 
         }
 
+        /// <summary>
+        /// The function "GetXY" takes a BioImage and ROI as input and returns the X and Y coordinates
+        /// of the ROI in the image space.
+        /// </summary>
+        /// <param name="BioImage">The BioImage parameter is an object that represents an image in a
+        /// biological context. It likely contains information about the image, such as pixel data,
+        /// dimensions, and metadata.</param>
+        /// <param name="ROI">The ROI parameter is an object of type ROI, which represents a region of
+        /// interest in an image. It contains properties such as X and Y, which represent the
+        /// coordinates of the top-left corner of the ROI.</param>
+        /// <param name="x">An output parameter that will store the X-coordinate of the ROI in the image
+        /// space.</param>
+        /// <param name="y">The "y" parameter is an output parameter of type float. It is used to store
+        /// the y-coordinate of a point in image space.</param>
         static void GetXY(BioImage bi, ROI roi,out float x, out float y)
         {
             PointD pd = bi.ToImageSpace(new PointD(roi.X,roi.Y));
             x = (float)pd.X;
             y = (float)pd.Y;
         }
+        /// <summary>
+        /// The function "GetWH" takes a BioImage and ROI as input parameters and returns the width and
+        /// height of the ROI in terms of image size.
+        /// </summary>
+        /// <param name="BioImage">BioImage is a class that represents an image in a biological context.
+        /// It likely contains information about the image's size, resolution, and other
+        /// properties.</param>
+        /// <param name="ROI">The ROI (Region of Interest) is a rectangular area within the BioImage
+        /// (bi) that represents a specific region or object of interest. It has properties such as
+        /// width (W) and height (H) that define its size.</param>
+        /// <param name="w">The "w" parameter is an output parameter that will store the width of the
+        /// ROI in the image.</param>
+        /// <param name="h">The 'h' parameter is an output parameter of type float. It is used to store
+        /// the height of the ROI (Region of Interest) in the image.</param>
         static void GetWH(BioImage bi, ROI roi, out float w, out float h)
         {
             w = (float)bi.ToImageSizeX(roi.W);
             h = (float)bi.ToImageSizeY(roi.H);
         }
+        /// <summary>
+        /// The function rightMove takes an integer value and a position as input, and returns the value
+        /// after performing a right shift operation by the specified position.
+        /// </summary>
+        /// <param name="value">The value is an integer that represents the number you want to perform a
+        /// right move on.</param>
+        /// <param name="pos">The "pos" parameter represents the number of positions to move the bits to
+        /// the right.</param>
+        /// <returns>
+        /// the value after performing a right shift operation.
+        /// </returns>
         static int rightMove(int value, int pos)
         {
             if (pos != 0)
@@ -897,7 +1141,22 @@ namespace BioGTK
                 this.f = f;
             }
 
-            /** Saves the specified ROI as a file, returning 'true' if successful. */
+            /// <summary>
+            /// The save function saves a BioImage and ROI to a specified path using a RoiEncoder.
+            /// </summary>
+            /// <param name="BioImage">The BioImage parameter is an object that represents an image or a
+            /// collection of images along with associated metadata. It may contain information such as
+            /// pixel data, image dimensions, color space, and other properties specific to the image
+            /// format being used.</param>
+            /// <param name="ROI">The ROI parameter is an object that represents a region of interest in
+            /// the BioImage. It contains information about the coordinates and dimensions of the
+            /// region.</param>
+            /// <param name="String">The "String" parameter in the save method represents the path where
+            /// the ROI (Region of Interest) will be saved. It is the file path where the ROI data will
+            /// be written to.</param>
+            /// <returns>
+            /// The method is returning a boolean value.
+            /// </returns>
             public static bool save(BioImage bi, ROI roi, String path)
             {
                 RoiEncoder re = new RoiEncoder(path);
@@ -912,7 +1171,16 @@ namespace BioGTK
                 return true;
             }
 
-            /** Save the Roi to the file of stream. */
+            /// <summary>
+            /// The write function writes a BioImage and ROI to a file, creating a new file if it
+            /// doesn't exist, and closing the file afterwards.
+            /// </summary>
+            /// <param name="BioImage">The BioImage parameter represents an image or data structure that
+            /// contains biological image data. It could be an object that holds information about the
+            /// image, such as pixel values, dimensions, and metadata.</param>
+            /// <param name="ROI">The ROI parameter represents a region of interest in the BioImage. It
+            /// is used to specify a specific area or region within the image that needs to be
+            /// written.</param>
             public void write(BioImage bi, ROI roi)
             {
                 if (f != null) 
@@ -947,6 +1215,20 @@ namespace BioGTK
                 return bytes;
             }
             */
+            /// <summary>
+            /// The function "write" saves the information of a region of interest (ROI) in a bioimage
+            /// to a file stream.
+            /// </summary>
+            /// <param name="BioImage">The BioImage parameter represents an image object that contains
+            /// the image data and metadata.</param>
+            /// <param name="ROI">The "ROI" parameter represents a region of interest in an image. It
+            /// contains information about the shape, position, and properties of the region.</param>
+            /// <param name="FileStream">FileStream is a class that represents a stream of bytes to be
+            /// written to a file. It is used to write the data of the BioImage and ROI objects to a
+            /// file.</param>
+            /// <returns>
+            /// The code snippet does not have a return statement, so nothing is being returned.
+            /// </returns>
             void write(BioImage bi, ROI roi, FileStream f)
             {
                 RectangleD r = roi.Rect;
@@ -1209,6 +1491,13 @@ namespace BioGTK
                 f.Write(data);
             }
 
+            /// <summary>
+            /// The function saves the stroke width and color of a region of interest (ROI) in a
+            /// specific format.
+            /// </summary>
+            /// <param name="ROI">The ROI parameter is an object that represents a region of interest.
+            /// It contains information about the stroke width, stroke color, and fill color of the
+            /// region.</param>
             void saveStrokeWidthAndColor(ROI roi)
             {
                 //BasicStroke stroke = roi.getStroke();
@@ -1222,6 +1511,26 @@ namespace BioGTK
                 putInt(RoiDecoder.FILL_COLOR, 0);
             }
 
+            /// <summary>
+            /// The function `saveShapeRoi` saves the shape region of interest (ROI) in a BioImage to a
+            /// file stream in a specific format.
+            /// </summary>
+            /// <param name="BioImage">The BioImage parameter is an object that represents an image in a
+            /// biological context. It likely contains information about the image, such as pixel data,
+            /// dimensions, and metadata.</param>
+            /// <param name="ROI">The ROI parameter represents the region of interest in an image. It
+            /// contains information about the position and size of the ROI.</param>
+            /// <param name="type">The "type" parameter is an integer that represents the type of the
+            /// ROI. It is used to specify the shape of the ROI, such as rectangle, ellipse, polygon,
+            /// etc.</param>
+            /// <param name="FileStream">FileStream is a class in C# that represents a stream of bytes
+            /// to read from or write to a file. It is used to handle file operations such as reading,
+            /// writing, and seeking within a file. In the given code, the FileStream object "f" is used
+            /// to write the data to a</param>
+            /// <param name="options">The "options" parameter is an integer that represents various
+            /// options for saving the shape ROI. The specific options and their meanings are not
+            /// provided in the code snippet, so you would need to refer to the documentation or the
+            /// rest of the code to determine the possible values and their effects.</param>
             void saveShapeRoi(BioImage bi, ROI roi, int type, FileStream f, int options)
             {
                 //float[] shapeArray = ((ShapeRoi)roi).getShapeAsArray();
@@ -1283,6 +1592,13 @@ namespace BioGTK
                 putShort(RoiDecoder.OPTIONS, options);
             }
             */
+            /// <summary>
+            /// The function `saveTextRoi` saves the properties of a text region of interest (ROI) into
+            /// a byte array.
+            /// </summary>
+            /// <param name="ROI">The `ROI` parameter is an object that represents a region of interest.
+            /// It contains information about the font, size, style, text, and other properties of the
+            /// region of interest.</param>
             void saveTextRoi(ROI roi)
             {
                 //Font font = roi.getCurrentFont();
@@ -1334,6 +1650,17 @@ namespace BioGTK
                 return options;
             }
             */
+            /// <summary>
+            /// The function "putHeader2" is used to set various properties of a Region of Interest
+            /// (ROI) object, such as its position, label color, font size, stroke width, and group.
+            /// </summary>
+            /// <param name="ROI">The ROI parameter is an object of type ROI, which represents a region
+            /// of interest in an image. It contains information about the position and size of the ROI,
+            /// as well as other properties such as the stroke color, stroke width, and font
+            /// size.</param>
+            /// <param name="hdr2Offset">The `hdr2Offset` parameter is an integer that represents the
+            /// offset position in the header where the information for the second header should be
+            /// stored.</param>
             void putHeader2(ROI roi, int hdr2Offset)
             {
                 //ij.IJ.log("putHeader2: "+hdr2Offset+" "+roiNameSize+"  "+roiName);
@@ -1362,6 +1689,17 @@ namespace BioGTK
                 putByte(hdr2Offset + RoiDecoder.GROUP, roi.serie);//roi.getGroup());
             }
 
+            /// <summary>
+            /// The function "putName" takes a ROI object and an offset value, and sets the name and
+            /// length of the ROI in the header.
+            /// </summary>
+            /// <param name="ROI">The ROI parameter is of type ROI, which is likely a custom class
+            /// representing a region of interest in an image. It could contain information such as the
+            /// coordinates, size, and properties of the region.</param>
+            /// <param name="hdr2Offset">The `hdr2Offset` parameter is an integer value representing the
+            /// offset of the header 2 in a data structure or file. It is used to calculate the offset
+            /// for storing the name of the ROI (Region of Interest) in the data structure or
+            /// file.</param>
             void putName(ROI roi, int hdr2Offset)
             {
                 int offset = hdr2Offset + HEADER2_SIZE;
@@ -1372,6 +1710,15 @@ namespace BioGTK
                     putShort(offset + i * 2, roiName.ElementAt(i));
             }
 
+            /// <summary>
+            /// The function "putProps" takes a ROI object and an offset value, and sets the properties
+            /// of the ROI object in memory.
+            /// </summary>
+            /// <param name="ROI">The ROI parameter is an object of type ROI. It is used to pass
+            /// information about a region of interest.</param>
+            /// <param name="hdr2Offset">The `hdr2Offset` parameter is an integer value representing the
+            /// offset of the header2 in memory. It is used to calculate the offset for storing the ROI
+            /// properties.</param>
             void putProps(ROI roi, int hdr2Offset)
             {
                 int offset = hdr2Offset + HEADER2_SIZE + roiNameSize;
@@ -1382,6 +1729,16 @@ namespace BioGTK
                     putShort(offset + i * 2, roiProps.ElementAt(i));
             }
 
+            /// <summary>
+            /// The function "putPointCounters" updates the counters in a region of interest (ROI) by
+            /// copying the values from an array to a specific offset in memory.
+            /// </summary>
+            /// <param name="ROI">The ROI parameter is an object of type ROI, which likely represents a
+            /// region of interest in an image. It may contain information such as the coordinates,
+            /// size, and properties of the region.</param>
+            /// <param name="hdr2Offset">The `hdr2Offset` parameter is the offset value for the second
+            /// header in the data structure. It is used to calculate the offset for storing the point
+            /// counters.</param>
             void putPointCounters(ROI roi, int hdr2Offset)
             {
                 int offset = hdr2Offset + HEADER2_SIZE + roiNameSize + roiPropsSize;
@@ -1391,11 +1748,27 @@ namespace BioGTK
                 countersSize = 0;
             }
 
+            /// <summary>
+            /// The function "putByte" assigns a byte value to a specific index in an array.
+            /// </summary>
+            /// <param name="bas">The parameter "bas" is an integer that represents the base address or
+            /// index of the array "data" where the byte value will be stored.</param>
+            /// <param name="v">The parameter "v" is an integer value that represents the value to be
+            /// stored in the byte array.</param>
             void putByte(int bas, int v)
             {
                 data[bas] = (byte)v;
             }
 
+            /// <summary>
+            /// The function "putShort" takes two integer parameters, "bas" and "v", and stores the
+            /// value of "v" in the "data" array at index "bas" and "bas + 1" after performing a right
+            /// shift operation on "v" by 8 bits.
+            /// </summary>
+            /// <param name="bas">The parameter "bas" represents the base index in the "data" array
+            /// where the short value will be stored.</param>
+            /// <param name="v">The parameter "v" is an integer value that represents the value to be
+            /// stored in the data array.</param>
             void putShort(int bas, int v)
             {
                 //data[bas] = (byte)(v >>> 8);
@@ -1404,6 +1777,14 @@ namespace BioGTK
                 data[bas + 1] = (byte)v;
             }
 
+            /// <summary>
+            /// The function "putFloat" takes an integer and a float as input and converts the float
+            /// into its binary representation, storing it in a byte array.
+            /// </summary>
+            /// <param name="bas">The parameter "bas" represents the base index in the "data" array
+            /// where the float value will be stored.</param>
+            /// <param name="v">The parameter "v" is a float value that needs to be converted and stored
+            /// in the "data" array.</param>
             void putFloat(int bas, float v)
             {
                 int tmp = BitConverter.SingleToInt32Bits(v);//Float.floatToIntBits(v);
@@ -1413,6 +1794,14 @@ namespace BioGTK
                 data[bas + 3] = (byte)tmp;
             }
 
+            /// <summary>
+            /// The function "putInt" takes two integer parameters and stores the bytes of the second
+            /// integer in a byte array starting at the specified index in big-endian order.
+            /// </summary>
+            /// <param name="bas">The parameter "bas" represents the base index in the "data" array
+            /// where the integer value will be stored.</param>
+            /// <param name="i">The parameter "i" is an integer value that needs to be stored in the
+            /// "data" array.</param>
             void putInt(int bas, int i)
             {
                 data[bas] = (byte)(i >> 24);
