@@ -9,7 +9,7 @@ using CSScripting;
 using Gtk;
 using AForge;
 
-namespace BioGTK
+namespace BioLib
 {
     public static class ImageJ
     {
@@ -342,9 +342,9 @@ namespace BioGTK
             /// <returns>
             /// The method is returning an instance of the BioGTK.ROI class.
             /// </returns>
-            public static BioGTK.ROI open(string path, BioImage image)
+            public static BioLib.ROI open(string path, BioImage image)
             {
-                BioGTK.ROI roi = null;
+                BioLib.ROI roi = null;
                 RoiDecoder rd = new RoiDecoder(path);
                 roi = rd.getRoi(image);
                 return roi;
@@ -359,9 +359,9 @@ namespace BioGTK
             /// <returns>
             /// The method is returning an instance of the BioGTK.ROI class.
             /// </returns>
-            public BioGTK.ROI getRoi(BioImage bi)
+            public BioLib.ROI getRoi(BioImage bi)
             {
-                BioGTK.ROI roi = new BioGTK.ROI();
+                BioLib.ROI roi = new BioLib.ROI();
                 data = File.ReadAllBytes(path);
                 size = data.Length;
                 if (getByte(0) != 73 || getByte(1) != 111)  //"Iout"
@@ -447,18 +447,18 @@ namespace BioGTK
                 {
                     case 1: //Rect
                         if (subPixelRect)
-                            roi = BioGTK.ROI.CreateRectangle(new AForge.ZCT(slice-1, channel - 1, frame - 1), xd, yd, widthd, heightd);
+                            roi = BioLib.ROI.CreateRectangle(new AForge.ZCT(slice-1, channel - 1, frame - 1), xd, yd, widthd, heightd);
                         else
-                            roi = BioGTK.ROI.CreateRectangle(new AForge.ZCT(slice - 1, channel - 1, frame - 1), left, top, width, height);
+                            roi = BioLib.ROI.CreateRectangle(new AForge.ZCT(slice - 1, channel - 1, frame - 1), left, top, width, height);
                         int arcSize = getShort(ROUNDED_RECT_ARC_SIZE);
                         if (arcSize > 0)
                             throw new NotSupportedException("Type rounded rectangle not supported.");
                         break;
                     case 2: //Ellipse
                         if (subPixelRect)
-                            roi = BioGTK.ROI.CreateEllipse(new AForge.ZCT(slice - 1, channel - 1, frame - 1), xd, yd, widthd, heightd);
+                            roi = BioLib.ROI.CreateEllipse(new AForge.ZCT(slice - 1, channel - 1, frame - 1), xd, yd, widthd, heightd);
                         else
-                            roi = BioGTK.ROI.CreateEllipse(new AForge.ZCT(slice - 1, channel - 1, frame - 1), left, top, width, height);
+                            roi = BioLib.ROI.CreateEllipse(new AForge.ZCT(slice - 1, channel - 1, frame - 1), left, top, width, height);
                         break;
                     case 3: //Line
                         float x1 = getFloat(X1);
@@ -690,7 +690,7 @@ namespace BioGTK
             /// that determines whether the stroke width should be scaled or not. If it is set to true,
             /// the stroke width will be scaled according to some predefined rules. If it is set to
             /// false, the stroke width will not be scaled.</param>
-            void getStrokeWidthAndColor(BioGTK.ROI roi, int hdr2Offset, bool scaleStrokeWidth)
+            void getStrokeWidthAndColor(BioLib.ROI roi, int hdr2Offset, bool scaleStrokeWidth)
             {
                 double strokeWidth = getShort(STROKE_WIDTH);
                 if (hdr2Offset > 0)
@@ -756,7 +756,7 @@ namespace BioGTK
             /// the software being used. It is used to determine whether to read the angle value or not.
             /// If the version is greater than or equal to 225, the angle value is read from the header;
             /// otherwise, it is set to 0.</param>
-            void getTextRoi(BioGTK.ROI roi, int version)
+            void getTextRoi(BioLib.ROI roi, int version)
             {
                 AForge.Rectangle r = roi.BoundingBox.ToRectangleInt();
                 int hdrSize = 64;
@@ -965,9 +965,9 @@ namespace BioGTK
             /// <returns>
             /// The method is returning an instance of the BioGTK.ROI class.
             /// </returns>
-            public static BioGTK.ROI openFromByteArray(BioImage bi,byte[] bytes)
+            public static BioLib.ROI openFromByteArray(BioImage bi,byte[] bytes)
             {
-                BioGTK.ROI roi = null;
+                BioLib.ROI roi = null;
                 if (bytes == null || bytes.Length == 0)
                     return roi;
                 try

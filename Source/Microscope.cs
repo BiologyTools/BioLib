@@ -11,7 +11,7 @@ using System.Reflection;
 using System.IO;
 using AForge;
 
-namespace BioGTK
+namespace BioLib
 {
     public class Stage
     {
