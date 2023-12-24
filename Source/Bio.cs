@@ -7359,11 +7359,11 @@ namespace BioLib
                     mutable.Set(GValue.GIntType, "page-height", ss[last].Height);
                 });
                 if (bis[px][0].bitsPerPixel > 8)
-                    mutated.Tiffsave(file, compression, 1, Enums.ForeignTiffPredictor.None, null, true, ss[px].Width, ss[px].Height, true, false, 16,
+                    mutated.Tiffsave(file, compression, 1, Enums.ForeignTiffPredictor.None, null,ss[px].Width, ss[px].Height, true, false, 16,
                     Enums.ForeignTiffResunit.Cm, 1000 * bis[px][0].PhysicalSizeX, 1000 * bis[px][0].PhysicalSizeY, true, null, Enums.RegionShrink.Nearest,
                     compressionLevel, true, Enums.ForeignDzDepth.One, true, false, null, null, ss[px].Height);
                 else
-                    mutated.Tiffsave(file, compression, 1, Enums.ForeignTiffPredictor.None, null, true, ss[px].Width, ss[px].Height, true, false, 8,
+                    mutated.Tiffsave(file, compression, 1, Enums.ForeignTiffPredictor.None, null, ss[px].Width, ss[px].Height, true, false, 8,
                     Enums.ForeignTiffResunit.Cm, 1000 * bis[px][0].PhysicalSizeX, 1000 * bis[px][0].PhysicalSizeY, true, null, Enums.RegionShrink.Nearest,
                     compressionLevel, true, Enums.ForeignDzDepth.One, true, false, null, null, ss[px].Height);
                 s++;
@@ -7740,141 +7740,6 @@ namespace BioLib
         public void Update()
         {
             Update(this);
-        }
-        /* Creating a list of strings called openfile. */
-        private static List<string> openfile = new List<string>();
-        /// <summary>
-        /// The function "OpenThread" opens a file with the name of the current thread.
-        /// </summary>
-        private static void OpenThread()
-        {
-            OpenFile(Thread.CurrentThread.Name);
-        }
-        /// <summary>
-        /// The AddThread function opens a file with the name of the current thread.
-        /// </summary>
-        private static void AddThread()
-        {
-            OpenFile(Thread.CurrentThread.Name, false);
-        }
-
-        /// <summary>
-        /// The SaveAsync function adds a file and ID to two separate lists, and then starts a new
-        /// thread to call the Save function.
-        /// </summary>
-        /// <param name="file">The file parameter is a string that represents the file name or path
-        /// where the data will be saved.</param>
-        /// <param name="ID">The ID parameter is a string that represents the unique identifier for the
-        /// file being saved.</param>
-        public static void SaveAsync(string file, string ID)
-        {
-            saveid.Add(file);
-            savefile.Add(ID);
-            Thread t = new Thread(Save);
-            t.Start();
-        }
-        /// <summary>
-        /// The function "Save" saves a file with a given ID.
-        /// </summary>
-        /// <param name="file">The file parameter is a string that represents the file path or file name
-        /// where the data will be saved.</param>
-        /// <param name="ID">The ID parameter is a string that represents the unique identifier for the
-        /// file being saved.</param>
-        public static void Save(string file, string ID)
-        {
-            SaveFile(file, ID);
-        }
-        private static List<string> savefile = new List<string>();
-        private static List<string> saveid = new List<string>();
-        /// <summary>
-        /// The Save function saves a list of files asynchronously and removes them from the savefile
-        /// and saveid lists once they have been saved.
-        /// </summary>
-        private static void Save()
-        {
-            List<string> sts = new List<string>();
-            for (int i = 0; i < savefile.Count; i++)
-            {
-                SaveAsync(savefile[i], saveid[i]);
-                sts.Add(savefile[i]);
-            }
-            for (int i = 0; i < sts.Count; i++)
-            {
-                savefile.Remove(sts[i]);
-                saveid.Remove(sts[i]);
-            }
-        }
-
-        private static List<string> openOMEfile = new List<string>();
-        /// <summary>
-        /// The function "OpenOMEThread" opens a list of files in a separate thread if the OMESupport
-        /// function returns true.
-        /// </summary>
-        /// <param name="file">The "file" parameter is an array of strings that represents the file
-        /// paths of the OME files that need to be opened.</param>
-        /// <returns>
-        /// If the OMESupport() method returns false, then nothing is being returned. The method will
-        /// simply exit and no further code will be executed.
-        /// </returns>
-        public static void OpenOMEThread(string[] file)
-        {
-            if (!OMESupport())
-                return;
-            openOMEfile.AddRange(file);
-            Thread t = new Thread(OpenOME);
-            t.Start();
-        }
-        /// <summary>
-        /// The function "OpenOME" checks if OME support is available, and if so, opens each file in the
-        /// "openOMEfile" list.
-        /// </summary>
-        /// <returns>
-        /// If the OMESupport() method returns false, then nothing is being returned. The method will
-        /// simply exit and no further code will be executed.
-        /// </returns>
-        private static void OpenOME()
-        {
-            if (!OMESupport())
-                return;
-            foreach (string f in openOMEfile)
-            {
-                OpenOME(f, true);
-            }
-            openOMEfile.Clear();
-        }
-
-        /// <summary>
-        /// The function "SaveOMEThread" saves an OME thread to a file in a separate thread.
-        /// </summary>
-        /// <param name="file">The "file" parameter is a string that represents the file path or file
-        /// name where the data will be saved. It specifies the location where the data will be
-        /// stored.</param>
-        /// <param name="ID">The ID parameter is a string that represents the identifier for the OME
-        /// (Object Management Environment) thread that needs to be saved.</param>
-        /// <returns>
-        /// If the condition `!OMESupport()` is true, then nothing is being returned as the method will
-        /// exit early with a `return` statement. If the condition is false, then nothing is being
-        /// returned as the method has a `void` return type.
-        /// </returns>
-        public static void SaveOMEThread(string file, string ID)
-        {
-            if (!OMESupport())
-                return;
-            saveOMEID = ID;
-            saveOMEfile = file;
-            Thread t = new Thread(SaveOME);
-            t.Start();
-        }
-        private static string saveOMEfile;
-        private static string saveOMEID;
-
-        /// <summary>
-        /// The function "SaveOME" is a private static method that saves an OME file with a specified
-        /// file name and ID.
-        /// </summary>
-        private static void SaveOME()
-        {
-            SaveOME(saveOMEfile, saveOMEID);
         }
         public static bool OmeSupport = false;
         static bool supportDialog = false;
@@ -8759,6 +8624,110 @@ namespace BioLib
                 return sumOfSquares * b.SizeX * b.SizeY - sum * sum;
             }
         }
+
+
+        static string openfile;
+        static bool omes, tab, add;
+        static int serie;
+        static void OpenThread()
+        {
+            OpenFile(openfile, serie, tab, add);
+        }
+        static string savefile, saveid;
+        static bool some;
+        static int sserie;
+        static void SaveThread()
+        {
+            if (omes)
+                SaveOME(savefile, saveid);
+            else
+                SaveFile(savefile, saveid);
+        }
+        /// <summary>
+        /// The SaveAsync function saves data to a file asynchronously.
+        /// </summary>
+        /// <param name="file">The file parameter is a string that represents the file path or name
+        /// where the data will be saved.</param>
+        /// <param name="id">The "id" parameter is a string that represents an identifier for the save
+        /// operation. It could be used to uniquely identify the saved data or to specify a specific
+        /// location or format for the saved file.</param>
+        /// <param name="serie">The "serie" parameter is an integer that represents a series or sequence
+        /// number. It is used as a parameter in the SaveAsync method.</param>
+        /// <param name="ome">The "ome" parameter is a boolean value that determines whether or not to
+        /// perform a specific action in the saving process.</param>
+        public static async Task SaveAsync(string file, string id, int serie, bool ome)
+        {
+            savefile = file;
+            saveid = id;
+            some = ome;
+            await Task.Run(SaveThread);
+        }
+
+        static List<string> sts = new List<string>();
+        static void SaveSeriesThread()
+        {
+            if (omes)
+            {
+                BioImage[] bms = new BioImage[sts.Count];
+                int i = 0;
+                foreach (string st in sts)
+                {
+                    bms[i] = Images.GetImage(st);
+                }
+                SaveOMESeries(bms, savefile, Planes);
+            }
+            else
+                SaveSeries(sts.ToArray(), savefile);
+        }
+        /// <summary>
+        /// The function `SaveSeriesAsync` saves a series of `BioImage` objects to a file asynchronously.
+        /// </summary>
+        /// <param name="imgs">imgs is an array of BioImage objects.</param>
+        /// <param name="file">The "file" parameter is a string that represents the file path where the
+        /// series of BioImages will be saved.</param>
+        /// <param name="ome">The "ome" parameter is a boolean flag that indicates whether the images
+        /// should be saved in OME-TIFF format or not. If "ome" is set to true, the images will be saved
+        /// in OME-TIFF format. If "ome" is set to false, the images will be</param>
+        public static async Task SaveSeriesAsync(BioImage[] imgs, string file, bool ome)
+        {
+            sts.Clear();
+            foreach (BioImage item in imgs)
+            {
+                sts.Add(item.ID);
+            }
+            savefile = file;
+            some = ome;
+            await Task.Run(SaveSeriesThread);
+        }
+        static Enums.ForeignTiffCompression comp;
+        static int compLev = 0;
+        static BioImage[] bms;
+        static void SavePyramidalThread()
+        {
+            SaveOMEPyramidal(bms, savefile, comp, compLev);
+        }
+        /// <summary>
+        /// The function `SavePyramidalAsync` saves an array of `BioImage` objects as a pyramidal TIFF
+        /// file asynchronously.
+        /// </summary>
+        /// <param name="imgs">imgs is an array of BioImage objects.</param>
+        /// <param name="file">The "file" parameter is a string that represents the file path where the
+        /// pyramidal image will be saved.</param>
+        /// <param name="com">The parameter "com" is of type Enums.ForeignTiffCompression, which is an
+        /// enumeration representing different compression options for the TIFF file.</param>
+        /// <param name="compLevel">The `compLevel` parameter is an integer that represents the
+        /// compression level for the TIFF file. It is used to specify the level of compression to be
+        /// applied to the image data when saving the pyramidal image. The higher the compression level,
+        /// the smaller the file size but potentially lower image quality.</param>
+        public static async Task SavePyramidalAsync(BioImage[] imgs, string file, Enums.ForeignTiffCompression com, int compLevel)
+        {
+            bms = imgs;
+            savefile = file;
+            comp = com;
+            compLev = compLevel;
+            await Task.Run(SavePyramidalThread);
+        }
+        private static List<string> openOMEfile = new List<string>();
 
         /// <summary>
         /// The Dispose function is used to release resources, such as buffers and channels, and remove
