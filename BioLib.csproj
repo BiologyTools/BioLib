@@ -11,31 +11,31 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>1.9.0</AssemblyVersion>
-    <FileVersion>1.9.0</FileVersion>
-    <PackageVersion>1.9.0</PackageVersion>
+    <AssemblyVersion>2.0.0</AssemblyVersion>
+    <FileVersion>2.0.0</FileVersion>
+    <PackageVersion>2.0.0</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>Added asynchronous methods, updated Bioformats to 7.1.0</PackageReleaseNotes>
+    <PackageReleaseNotes>QuPath GeoJson ROI support, Bioformats Arm64 Support.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="LICENSE" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="AForgeBio" Version="1.4.3" />
-    <PackageReference Include="BioFormats.NET6" Version="7.1.0.1" />
+    <PackageReference Include="AForgeBio" Version="1.5.0" />
+    <PackageReference Include="BioFormats.NET6" Version="7.1.0.2" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
-    <PackageReference Include="CS-Script" Version="4.8.13" />
+    <PackageReference Include="CS-Script" Version="4.8.14" />
     <PackageReference Include="NetVips" Version="2.4.0" />
-    <PackageReference Include="NetVips.Native" Version="8.15.0" />
-    <PackageReference Include="NetVips.Native.linux-arm64" Version="8.15.0" />
-    <PackageReference Include="NetVips.Native.linux-x64" Version="8.15.0" />
-    <PackageReference Include="NetVips.Native.osx-arm64" Version="8.15.0" />
-    <PackageReference Include="NetVips.Native.osx-x64" Version="8.15.0" />
-    <PackageReference Include="NetVips.Native.win-x64" Version="8.15.0" />
+    <PackageReference Include="NetVips.Native" Version="8.15.1" />
+    <PackageReference Include="NetVips.Native.linux-arm64" Version="8.15.1" />
+    <PackageReference Include="NetVips.Native.linux-x64" Version="8.15.1" />
+    <PackageReference Include="NetVips.Native.osx-arm64" Version="8.15.1" />
+    <PackageReference Include="NetVips.Native.osx-x64" Version="8.15.1" />
+    <PackageReference Include="NetVips.Native.win-x64" Version="8.15.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="NuGet.Build.Tasks.Pack" Version="6.8.0">
       <PrivateAssets>all</PrivateAssets>

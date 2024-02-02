@@ -29,3 +29,5 @@ packages
 *.v2
 *.v2
 *.v2
+.vs/ProjectEvaluation/biolib.metadata.v7.bin
+*.bin
