@@ -18,7 +18,7 @@
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>QuPath GeoJson ROI support, Bioformats Arm64 Support.</PackageReleaseNotes>
+    <PackageReleaseNotes>Well plate support and bug fixes.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
   </PropertyGroup>
   <ItemGroup>
