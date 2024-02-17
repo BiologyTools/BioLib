@@ -27,7 +27,7 @@ BioImage.OpenOME("file",0,false,false,true,0,0,600,600);
 //Once you have opened a tiled image with BioImage.OpenOME you can call the 
 //GetTile(BioImage b, ZCT coord, int serie, int tilex, int tiley, int tileSizeX, int tileSizeY) method
 // to quickly get another tile from different portion of the image. For BioGTK & BioLib
-Bitmap bm = GetTile(b, new ZCT(0,0,0), 0, 100, 100, 600, 600);
+Bitmap bm = BioImage.GetTile(b, new ZCT(0,0,0), 0, 100, 100, 600, 600);
 
 //You can display an image with the ImageView control which can display
 // Pyramidal, Whole-Slide, and Series of images.
