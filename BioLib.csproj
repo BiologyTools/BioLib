@@ -11,14 +11,14 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>2.2.0</AssemblyVersion>
-    <FileVersion>2.2.0</FileVersion>
-    <PackageVersion>2.2.0</PackageVersion>
+    <AssemblyVersion>2.2.1</AssemblyVersion>
+    <FileVersion>2.2.1</FileVersion>
+    <PackageVersion>2.2.1</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>Further Well Plate Support as well as multi pyramid files.</PackageReleaseNotes>
+    <PackageReleaseNotes>Dependency updates.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
   </PropertyGroup>
   <ItemGroup>
@@ -37,11 +37,11 @@
     <PackageReference Include="NetVips.Native.osx-x64" Version="8.15.1" />
     <PackageReference Include="NetVips.Native.win-x64" Version="8.15.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="NuGet.Build.Tasks.Pack" Version="6.8.0">
+    <PackageReference Include="NuGet.Build.Tasks.Pack" Version="6.9.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="OpenSlideGTK" Version="1.3.1" />
+    <PackageReference Include="OpenSlideGTK" Version="1.3.2" />
   </ItemGroup>
   <ItemGroup>
     <None Update="banner.jpg">
