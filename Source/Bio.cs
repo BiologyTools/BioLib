@@ -2183,6 +2183,76 @@ namespace BioLib
     }
     public class BioImage : IDisposable
     {
+        public class WellPlate
+        {
+            public class Well
+            {
+                public string ID { get; set; }
+                public int Index { get; set; }
+                public int Column { get; set; }
+                public int Row { get; set; }
+                public System.Drawing.Color Color { get; set; }
+                public List<Sample> Samples = new List<Sample>();
+                public class Sample
+                {
+                    public string ID { get; set; }
+                    public int Index { get; set; }
+                    public PointD Position { get; set; }
+                    public Timestamp Time { get; set; }
+                }
+            }
+            public List<Well> Wells = new List<Well>();
+
+            public PointD Origin;
+            public string ID;
+            public string Name;
+            public WellPlate(BioImage b)
+            {
+                ID = b.meta.getPlateID(b.series);
+                Name = b.meta.getPlateName(b.series);
+                double x, y;
+                if (b.meta.getPlateWellOriginX(b.series) != null)
+                    x = b.meta.getPlateWellOriginX(b.series).value().doubleValue();
+                else
+                    x = 0;
+                if (b.meta.getPlateWellOriginY(b.series) != null)
+                    y = b.meta.getPlateWellOriginY(b.series).value().doubleValue();
+                else
+                    y = 0;
+                Origin = new PointD(x, y);
+                int ws = b.meta.getWellCount(b.series);
+                for (int i = 0; i < ws; i++)
+                {
+                    Well w = new Well();
+                    w.ID = b.meta.getWellID(b.series, i);
+                    w.Column = b.meta.getWellColumn(b.series, i).getNumberValue().intValue();
+                    w.Row = b.meta.getWellRow(b.series, i).getNumberValue().intValue();
+                    int wsc = b.meta.getWellSampleCount(b.series, i);
+                    for (int s = 0; s < wsc; s++)
+                    {
+                        Well.Sample sa = new Well.Sample();
+                        sa.Time = b.meta.getWellSampleTimepoint(b.series, i, s);
+                        sa.Index = b.meta.getWellSampleIndex(b.series, i, s).getNumberValue().intValue();
+                        double sx, sy;
+                        if (b.meta.getWellSamplePositionX(b.series, i, s) != null)
+                            sx = b.meta.getWellSamplePositionX(b.series, i, s).value().doubleValue();
+                        else sx = 0;
+                        if (b.meta.getWellSamplePositionY(b.series, i, s) != null)
+                            sy = b.meta.getWellSamplePositionY(b.series, i, s).value().doubleValue();
+                        else sy = 0;
+                        sa.Position = new PointD(sx, sy);
+                        sa.ID = b.meta.getWellSampleID(b.series, i, s);
+                        w.Samples.Add(sa);
+                    }
+                    ome.xml.model.primitives.Color c = b.meta.getWellColor(b.series, i);
+                    if (c != null)
+                        w.Color = System.Drawing.Color.FromArgb(c.getAlpha(), c.getRed(), c.getGreen(), c.getBlue());
+                    Wells.Add(w);
+                }
+
+            }
+        }
+        public WellPlate Plate = null;
         public int[,,] Coords;
         private ZCT coordinate;
         public ZCT Coordinate
@@ -4956,7 +5026,7 @@ namespace BioLib
                 int SizeX = image.GetField(TiffTag.IMAGEWIDTH)[0].ToInt();
                 int SizeY = image.GetField(TiffTag.IMAGELENGTH)[0].ToInt();
                 b.bitsPerPixel = image.GetField(TiffTag.BITSPERSAMPLE)[0].ToInt();
-                b.littleEndian = !image.IsBigEndian();
+                b.littleEndian = image.IsBigEndian();
                 int RGBChannelCount = image.GetField(TiffTag.SAMPLESPERPIXEL)[0].ToInt();
                 string desc = "";
 
@@ -6194,6 +6264,7 @@ namespace BioLib
                 if (wells > 0)
                 {
                     b.Type = ImageType.well;
+                    b.Plate = new WellPlate(b);
                     tile = false;
                 }
             }
@@ -6201,7 +6272,7 @@ namespace BioLib
             {
 
             }
-
+            List<Resolution> rss = new List<Resolution>();
             for (int s = 0; s < b.seriesCount; s++)
             {
                 reader.setSeries(s);
@@ -6215,7 +6286,7 @@ namespace BioLib
                         PixelFormat px;
                         try
                         {
-                            px = GetPixelFormat(rgbc, b.meta.getPixelsType(s));
+                            px = GetPixelFormat(rgbc, b.meta.getPixelsType(r));
                         }
                         catch (Exception)
                         {
@@ -6224,30 +6295,30 @@ namespace BioLib
                         res.PixelFormat = px;
                         res.SizeX = reader.getSizeX();
                         res.SizeY = reader.getSizeY();
-                        if (b.meta.getPixelsPhysicalSizeX(s) != null)
+                        if (b.meta.getPixelsPhysicalSizeX(r) != null)
                         {
-                            res.PhysicalSizeX = b.meta.getPixelsPhysicalSizeX(s).value().doubleValue();
+                            res.PhysicalSizeX = b.meta.getPixelsPhysicalSizeX(r).value().doubleValue();
                         }
                         else
                             res.PhysicalSizeX = (96 / 2.54) / 1000;
-                        if (b.meta.getPixelsPhysicalSizeY(s) != null)
+                        if (b.meta.getPixelsPhysicalSizeY(r) != null)
                         {
-                            res.PhysicalSizeY = b.meta.getPixelsPhysicalSizeY(s).value().doubleValue();
+                            res.PhysicalSizeY = b.meta.getPixelsPhysicalSizeY(r).value().doubleValue();
                         }
                         else
                             res.PhysicalSizeY = (96 / 2.54) / 1000;
 
-                        if (b.meta.getStageLabelX(s) != null)
-                            res.StageSizeX = b.meta.getStageLabelX(s).value().doubleValue();
-                        if (b.meta.getStageLabelY(s) != null)
-                            res.StageSizeY = b.meta.getStageLabelY(s).value().doubleValue();
-                        if (b.meta.getStageLabelZ(s) != null)
-                            res.StageSizeZ = b.meta.getStageLabelZ(s).value().doubleValue();
+                        if (b.meta.getStageLabelX(r) != null)
+                            res.StageSizeX = b.meta.getStageLabelX(r).value().doubleValue();
+                        if (b.meta.getStageLabelY(r) != null)
+                            res.StageSizeY = b.meta.getStageLabelY(r).value().doubleValue();
+                        if (b.meta.getStageLabelZ(r) != null)
+                            res.StageSizeZ = b.meta.getStageLabelZ(r).value().doubleValue();
                         else
                             res.StageSizeZ = 1;
-                        if (b.meta.getPixelsPhysicalSizeZ(s) != null)
+                        if (b.meta.getPixelsPhysicalSizeZ(r) != null)
                         {
-                            res.PhysicalSizeZ = b.meta.getPixelsPhysicalSizeZ(s).value().doubleValue();
+                            res.PhysicalSizeZ = b.meta.getPixelsPhysicalSizeZ(r).value().doubleValue();
                         }
                         else
                         {
@@ -6258,19 +6329,61 @@ namespace BioLib
                     {
                         Console.WriteLine("No Stage Coordinates. PhysicalSize:(" + res.PhysicalSizeX + "," + res.PhysicalSizeY + "," + res.PhysicalSizeZ + ")");
                     }
-                    b.Resolutions.Add(res);
+                    rss.Add(res);
                 }
             }
             reader.setSeries(serie);
 
+
             //We need to determine if this image is pyramidal or not.
             //We do this by seeing if the resolutions are downsampled or not.
-            if (b.Resolutions.Count > 1 && b.Type != ImageType.well)
-                if (b.Resolutions[0].PhysicalSizeX < b.Resolutions[1].PhysicalSizeX)
+            if (rss.Count > 1 && b.Type != ImageType.well)
+            {
+                if (rss[0].SizeX > rss[1].SizeX)
                 {
                     b.Type = ImageType.pyramidal;
                     tile = true;
+                    //We need to determine number of pyramids in this image and which belong to the series we are opening.
+                    List<Tuple<int, int>> ims = new List<Tuple<int, int>>();
+                    int? sr = null;
+                    for (int r = 0; r < rss.Count - 1; r++)
+                    {
+                        if (rss[r].SizeX > rss[r + 1].SizeX)
+                        {
+                            if (sr == null)
+                            {
+                                sr = r;
+                                ims.Add(new Tuple<int, int>(r, 0));
+                            }
+                        }
+                        else
+                        {
+                            ims[ims.Count - 1] = new Tuple<int, int>(ims[ims.Count - 1].Item1, r);
+                            sr = null;
+                        }
+                    }
+                    if (ims[serie].Item2 == 0)
+                    {
+                        ims[serie] = new Tuple<int, int>(ims[serie].Item1, rss.Count);
+                    }
+                    for (int r = ims[serie].Item1; r < ims[serie].Item2; r++)
+                    {
+                        b.Resolutions.Add(rss[r]);
+                    }
+                    if (b.Resolutions.Last().PixelFormat == b.Resolutions.First().PixelFormat && rss.Last().PixelFormat != b.Resolutions.Last().PixelFormat)
+                    {
+                        b.Resolutions.Add(rss.Last());
+                        b.Resolutions.Add(rss[rss.Count - 2]);
+                    }
                 }
+                else
+                {
+                    b.Resolutions.AddRange(rss);
+                }
+            }
+            else
+                b.Resolutions.AddRange(rss);
+
 
 
             b.Volume = new VolumeD(new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ), new Point3D(b.PhysicalSizeX * SizeX, b.PhysicalSizeY * SizeY, b.PhysicalSizeZ * SizeZ));
@@ -6608,20 +6721,22 @@ namespace BioLib
             serFiles.AddRange(reader.getSeriesUsedFiles());
 
             b.Buffers = new List<Bitmap>();
-            try
-            {
-                string st = OpenSlideGTK.OpenSlideImage.DetectVendor(file);
-                if (st != null)
+            if (!file.EndsWith("ome.tif"))
+                try
                 {
-                    b.openSlideImage = OpenSlideGTK.OpenSlideImage.Open(file);
-                    b.Type = ImageType.pyramidal;
-                    tile = true;
+                    string st = OpenSlideGTK.OpenSlideImage.DetectVendor(file);
+                    if (st != null)
+                    {
+                        b.openSlideImage = OpenSlideGTK.OpenSlideImage.Open(file);
+                        b.openSlideSource = OpenSlideGTK.SlideSourceBase.Create(file);
+                        b.Type = ImageType.pyramidal;
+                        tile = true;
+                    }
                 }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message.ToString());
-            }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.Message.ToString());
+                }
 
             // read the image data bytes
             int pages = reader.getImageCount();
@@ -6640,8 +6755,11 @@ namespace BioLib
                 }
             else
             {
-                b.Buffers.Add(GetTile(b, new ZCT(z, c, t), serie, tilex, tiley, tileSizeX, tileSizeY));
-                Statistics.CalcStatistics(b.Buffers.Last());
+                for (int p = 0; p < pages; p++)
+                {
+                    b.Buffers.Add(GetTile(b, p, serie, tilex, tiley, tileSizeX, tileSizeY));
+                    Statistics.CalcStatistics(b.Buffers.Last());
+                }
             }
             int pls;
             try
@@ -6716,6 +6834,7 @@ namespace BioLib
         public ImageReader imRead;
         public Tiff tifRead;
         public OpenSlideGTK.OpenSlideImage openSlideImage;
+        public OpenSlideGTK.ISlideSource openSlideSource;
         static Bitmap bm;
         /// It reads a tile from a file, and returns a bitmap
         /// 
@@ -6737,9 +6856,9 @@ namespace BioLib
                 return ExtractRegionFromTiledTiff(b, tilex, tiley, tileSizeX, tileSizeY, serie);
             }
             //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
-            if (b.openSlideImage != null)
+            if (b.openSlideImage != null && !b.file.EndsWith("ome.tif"))
             {
-                return new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), coord, "");
+                return new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
             }
 
             string curfile = reader.getCurrentFile();
@@ -6794,10 +6913,79 @@ namespace BioLib
             {
                 byte[] bytesr = reader.openBytes(b.Coords[coord.Z, coord.C, coord.T], tilex, tiley, sx, sy);
                 bool interleaved = reader.isInterleaved();
-                if (bm != null)
-                    bm.Dispose();
-                bm = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, coord, p, null, littleEndian, interleaved);
-                return bm;
+                return new Bitmap(b.file, sx, sy, PixelFormat, bytesr, coord, p, null, littleEndian, interleaved);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                return null;
+            }
+        }
+        public static Bitmap GetTile(BioImage b, int index, int serie, int tilex, int tiley, int tileSizeX, int tileSizeY)
+        {
+            if ((b.file.EndsWith("ome.tif") && vips) || (b.file.EndsWith(".tif") && vips))
+            {
+                //We can get a tile faster with libvips rather than bioformats.
+                return ExtractRegionFromTiledTiff(b, tilex, tiley, tileSizeX, tileSizeY, serie);
+            }
+            //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
+            if (b.openSlideImage != null && !b.file.EndsWith("ome.tif"))
+            {
+                return new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
+            }
+
+            string curfile = reader.getCurrentFile();
+            if (curfile == null)
+            {
+                b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
+                reader.close();
+                reader.setMetadataStore(b.meta);
+                Console.WriteLine(b.file);
+                reader.setId(b.file);
+            }
+            else
+            {
+                string fi = b.file.Replace("\\", "/");
+                string cf = curfile.Replace("\\", "/");
+                if (cf != fi)
+                {
+                    reader.close();
+                    b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
+                    reader.setMetadataStore(b.meta);
+                    reader.setId(b.file);
+                }
+            }
+            if (reader.getSeries() != serie)
+                reader.setSeries(serie);
+            int SizeX = reader.getSizeX();
+            int SizeY = reader.getSizeY();
+            bool flat = reader.hasFlattenedResolutions();
+            bool littleEndian = reader.isLittleEndian();
+            PixelFormat PixelFormat = b.Resolutions[serie].PixelFormat;
+            if (tilex < 0)
+                tilex = 0;
+            if (tiley < 0)
+                tiley = 0;
+            if (tilex >= SizeX)
+                tilex = SizeX;
+            if (tiley >= SizeY)
+                tiley = SizeY;
+            int sx = tileSizeX;
+            if (tilex + tileSizeX > SizeX)
+                sx -= (tilex + tileSizeX) - (SizeX);
+            int sy = tileSizeY;
+            if (tiley + tileSizeY > SizeY)
+                sy -= (tiley + tileSizeY) - (SizeY);
+            //For some reason calling openBytes with 1x1px area causes an exception. 
+            if (sx <= 1)
+                return null;
+            if (sy <= 1)
+                return null;
+            try
+            {
+                byte[] bytesr = reader.openBytes(index, tilex, tiley, sx, sy);
+                bool interleaved = reader.isInterleaved();
+                return new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved);
             }
             catch (Exception e)
             {
