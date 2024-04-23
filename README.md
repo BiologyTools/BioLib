@@ -29,10 +29,6 @@ BioImage.OpenOME("file",0,false,false,true,0,0,600,600);
 // to quickly get another tile from different portion of the image. For BioGTK & BioLib
 Bitmap bm = BioImage.GetTile(b, new ZCT(0,0,0), 0, 100, 100, 600, 600);
 
-//You can display an image with the ImageView control which can display
-// Pyramidal, Whole-Slide, and Series of images.
-ImageView v = ImageView.Create(b);
-
 //To get the current coordinate of the ImageView you can call GetCoordinate.
 ZCT cord = v.GetCoordinate();
 //or to set the current coordinate
