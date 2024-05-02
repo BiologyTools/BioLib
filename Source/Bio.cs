@@ -1,4 +1,4 @@
-using AForge;
+ï»¿using AForge;
 using AForge.Imaging;
 using AForge.Imaging.Filters;
 using BitMiracle.LibTiff.Classic;
@@ -24,7 +24,9 @@ using loci.formats.@in;
 using Gtk;
 using System.Linq;
 using NetVips;
-using javax.swing.text.html;
+using System.Threading.Tasks;
+using OpenSlideGTK;
+using Bio;
 
 namespace BioLib
 {
@@ -32,15 +34,8 @@ namespace BioLib
     public static class Images
     {
         public static List<BioImage> images = new List<BioImage>();
-        /// <summary>
-        /// The function `GetImage` returns a `BioImage` object from a list of images based on a given
-        /// ID or file name.
-        /// </summary>
-        /// <param name="ids">The parameter "ids" is a string that represents the ID or file name of an
-        /// image.</param>
-        /// <returns>
-        /// The method is returning a BioImage object.
-        /// </returns>
+        /// 
+        /// @param ids The id of the image you want to get.
         public static BioImage GetImage(string ids)
         {
             for (int i = 0; i < images.Count; i++)
@@ -50,60 +45,46 @@ namespace BioLib
             }
             return null;
         }
-
-        /// <summary>
-        /// The function `AddImage` adds a `BioImage` object to a collection of images if it is not
-        /// already present.
-        /// </summary>
-        /// <param name="BioImage">The BioImage parameter is an object that represents an image in a
-        /// biological context. It likely contains properties such as the image file name, ID, and
-        /// possibly other metadata related to the image.</param>
-        /// <param name="newtab">The "newtab" parameter is a boolean value that determines whether the
-        /// image should be added to a new tab or not. If "newtab" is set to true, the image will be
-        /// added to a new tab. If "newtab" is set to false, the image will be added</param>
-        /// <returns>
-        /// If the condition `if (images.Contains(im))` is true, then the method will return and nothing
-        /// will be returned explicitly.
-        /// </returns>
+        /// It adds an image to the list of images
+        /// 
+        /// @param BioImage A class that contains the image data and other information.
         public static void AddImage(BioImage im, bool newtab)
         {
             if (images.Contains(im)) return;
             im.Filename = GetImageName(im.ID);
-            im.ID = im.Filename;
+            int c = GetImageCountByName(im.ID);
+            if(c > 1)
+                im.ID = im.Filename + "-" + c;
+            else
+                im.ID = im.Filename;
             images.Add(im);
-
-            //App.Image = im;
-            //NodeView.viewer.AddTab(im);
+            
         }
-
-        /// <summary>
-        /// The function `GetImageCountByName` returns the count of images with a specific name.
-        /// </summary>
-        /// <param name="s">The parameter "s" is a string that represents the name of an image
-        /// file.</param>
-        /// <returns>
-        /// The method is returning the count of images with the given name.
-        /// </returns>
+        /// It takes a string as an argument, and returns the number of times that string appears in the
+        /// list of images
+        /// 
+        /// @param s The name of the image
+        /// 
+        /// @return The number of images that contain the name of the image.
         public static int GetImageCountByName(string s)
         {
+            string name = Path.GetFileName(s);
+            string ext = Path.GetExtension(s);
+            if(name.Split('-').Length > 2)
+                name = name.Remove(name.LastIndexOf('-'),name.Length - name.LastIndexOf('-'));
             int i = 0;
-            string name = Path.GetFileNameWithoutExtension(s);
             for (int im = 0; im < images.Count; im++)
             {
-                if (images[im].ID == s)
+                if (images[im].ID.Contains(name) && images[im].ID.EndsWith(ext))
                     i++;
             }
             return i;
         }
-
-        /// <summary>
-        /// The GetImageName function generates a unique image name based on the input string.
-        /// </summary>
-        /// <param name="s">The parameter "s" is a string that represents the file path of an
-        /// image.</param>
-        /// <returns>
-        /// The method returns a string that represents the unique name for an image.
-        /// </returns>
+        /// It takes a string, and returns a string
+        /// 
+        /// @param s The path to the image.
+        /// 
+        /// @return The name of the image.
         public static string GetImageName(string s)
         {
             //Here we create a unique ID for an image.
@@ -111,48 +92,29 @@ namespace BioLib
             if (i == 0)
                 return Path.GetFileName(s);
             string name = Path.GetFileNameWithoutExtension(s);
-            string ext = Path.GetExtension(s);
-            int sti = name.LastIndexOf("-");
-            if (sti == -1)
+            if (Path.GetFileNameWithoutExtension(name)!=name)
+                name = Path.GetFileNameWithoutExtension(name);
+            string ext = s.Substring(s.IndexOf('.'),s.Length-s.IndexOf('.'));
+            if(name.Split('-').Length > 2)
             {
-                return name + "-" + i + ext;
-
+                string sts = name.Remove(name.LastIndexOf('-'),name.Length-name.LastIndexOf('-'));
+                return sts + "-" + i + ext;
             }
             else
-            {
-                string stb = name.Substring(0, sti);
-                string sta = name.Substring(sti + 1, name.Length - sti - 1);
-                int ind;
-                if (int.TryParse(sta, out ind))
-                {
-                    return stb + "-" + (ind + 1).ToString() + ext;
-                }
-                else
-                    return name + "-" + i + ext;
-            }
+                return name + "-" + i + ext;
         }
-
-        /// <summary>
-        /// The function "RemoveImage" takes a BioImage object as a parameter and removes the image with
-        /// the corresponding ID.
-        /// </summary>
-        /// <param name="BioImage">The BioImage is a class that represents an image in a biological
-        /// context. It likely contains properties such as ID, name, file path, and other relevant
-        /// information about the image.</param>
+        /// This function removes an image from the table
+        /// 
+        /// @param BioImage This is the image that you want to remove.
         public static void RemoveImage(BioImage im)
         {
             RemoveImage(im.ID);
         }
-
-        /// <summary>
-        /// The RemoveImage function removes an image from a collection and disposes of it.
-        /// </summary>
-        /// <param name="id">The "id" parameter is a string that represents the unique identifier of the
-        /// image that needs to be removed.</param>
-        /// <returns>
-        /// If the `im` object is `null`, then nothing is being returned. The method will simply exit
-        /// and no further code will be executed.
-        /// </returns>
+        /// It removes an image from the table
+        /// 
+        /// @param id The id of the image to remove.
+        /// 
+        /// @return The image is being returned.
         public static void RemoveImage(string id)
         {
             BioImage im = GetImage(id);
@@ -160,17 +122,12 @@ namespace BioLib
                 return;
             images.Remove(im);
             im.Dispose();
-            im = null;
         }
-
-        /// <summary>
-        /// The function `UpdateImage` updates an image in a list of images based on its ID.
-        /// </summary>
-        /// <param name="BioImage">BioImage is a class that represents an image object. It likely has
-        /// properties such as ID, image data, and other relevant information.</param>
-        /// <returns>
-        /// The method is returning nothing (void).
-        /// </returns>
+        /// It updates an image from the table
+        /// 
+        /// @param id The id of the image to update.
+        /// @param im The BioImage to update with.
+        /// @return The image is being returned.
         public static void UpdateImage(BioImage im)
         {
             for (int i = 0; i < images.Count; i++)
@@ -183,7 +140,7 @@ namespace BioLib
             }
         }
     }
-
+    /* A struct that is used to store the resolution of an image. */
     /* A struct that is used to store the resolution of an image. */
     public struct Resolution
     {
@@ -262,8 +219,6 @@ namespace BioLib
                     return 4;
             }
         }
-        /* The above code is defining a property called "SizeInBytes" in C#. This property returns the
-        size of an image in bytes based on its pixel format. */
         public long SizeInBytes
         {
             get
@@ -281,11 +236,6 @@ namespace BioLib
                 throw new NotSupportedException(format + " is not supported.");
             }
         }
-        /* The above code is defining a constructor for a class called "Resolution". The constructor
-        takes in several parameters including the width and height of an image, the number of pixels
-        per unit of physical measurement, the number of bits per pixel, the physical dimensions of
-        the image, and the stage dimensions of the image. The constructor assigns these values to
-        the corresponding properties of the class. */
         public Resolution(int w, int h, int omePx, int bitsPerPixel, double physX, double physY, double physZ, double stageX, double stageY, double stageZ)
         {
             x = w;
@@ -298,10 +248,6 @@ namespace BioLib
             py = physY;
             pz = physZ;
         }
-        /* The above code is defining a constructor for a class called "Resolution". The constructor
-        takes in several parameters including width (w), height (h), pixel format (f), physical
-        dimensions (physX, physY, physZ), and stage dimensions (stageX, stageY, stageZ). The
-        constructor assigns the parameter values to corresponding class variables. */
         public Resolution(int w, int h, PixelFormat f, double physX, double physY, double physZ, double stageX, double stageY, double stageZ)
         {
             x = w;
@@ -335,11 +281,6 @@ namespace BioLib
         public double W { get { return w; } set { w = value; } }
         public double H { get { return h; } set { h = value; } }
 
-        /* The above code is defining a constructor for a class called RectangleD in C#. The
-        constructor takes four parameters: X, Y, W, and H, which represent the x-coordinate,
-        y-coordinate, width, and height of the rectangle, respectively. Inside the constructor, the
-        values of these parameters are assigned to the corresponding instance variables x, y, w, and
-        h. */
         public RectangleD(double X, double Y, double W, double H)
         {
             x = X;
@@ -347,30 +288,16 @@ namespace BioLib
             w = W;
             h = H;
         }
-        /// <summary>
-        /// The function converts the coordinates and dimensions of a rectangle from float to integer
-        /// values.
-        /// </summary>
-        /// <returns>
-        /// The method is returning a new instance of the Rectangle class, with the X, Y, W, and H
-        /// values casted to integers.
-        /// </returns>
         public Rectangle ToRectangleInt()
         {
             return new Rectangle((int)X, (int)Y, (int)W, (int)H);
         }
-
-        /// <summary>
-        /// The function checks if a given rectangle intersects with another rectangle.
-        /// </summary>
-        /// <param name="RectangleD">The RectangleD is a custom data type that represents a rectangle in
-        /// 2D space. It has four properties: X (the x-coordinate of the top-left corner), Y (the
-        /// y-coordinate of the top-left corner), W (the width of the rectangle), and H (the height of
-        /// the</param>
-        /// <returns>
-        /// The method is returning a boolean value. If the rectangles intersect, it returns true. If
-        /// they do not intersect, it returns false.
-        /// </returns>
+        /// If any of the four corners of the rectangle are inside the polygon, then the rectangle
+        /// intersects with the polygon
+        /// 
+        /// @param RectangleD The rectangle that is being checked for intersection.
+        /// 
+        /// @return a boolean value.
         public bool IntersectsWith(RectangleD rect1)
         {
             if (rect1.X + rect1.W < X || X + W < rect1.X ||
@@ -380,32 +307,21 @@ namespace BioLib
             }
             return true;
         }
-
-        /// <summary>
-        /// The function checks if a given point intersects with another point.
-        /// </summary>
-        /// <param name="PointD">The PointD class represents a point in a two-dimensional space. It
-        /// typically has two properties: X and Y, which represent the coordinates of the point on the
-        /// x-axis and y-axis, respectively.</param>
-        /// <returns>
-        /// The method is returning a boolean value.
-        /// </returns>
+        /// > Returns true if the point is inside the rectangle
+        /// 
+        /// @param PointD 
+        /// 
+        /// @return The return value is a boolean value.
         public bool IntersectsWith(PointD p)
         {
             return IntersectsWith(p.X, p.Y);
         }
-
-        /// <summary>
-        /// The function checks if a given point (x, y) intersects with a rectangle defined by its
-        /// top-left corner (X, Y) and its width (W) and height (H).
-        /// </summary>
-        /// <param name="x">The x-coordinate of the point to check for intersection.</param>
-        /// <param name="y">The y parameter represents the y-coordinate of a point.</param>
-        /// <returns>
-        /// The method is returning a boolean value. It returns true if the given coordinates (x, y)
-        /// intersect with the rectangle defined by the X, Y, W, and H properties. Otherwise, it returns
-        /// false.
-        /// </returns>
+        /// If the point is within the rectangle, return true. Otherwise, return false
+        /// 
+        /// @param x The x coordinate of the point to check
+        /// @param y The y coordinate of the point to test.
+        /// 
+        /// @return A boolean value.
         public bool IntersectsWith(double x, double y)
         {
             if (X <= x && (X + W) >= x && Y <= y && (Y + H) >= y)
@@ -413,29 +329,17 @@ namespace BioLib
             else
                 return false;
         }
-
-        /// <summary>
-        /// The function converts the values of X, Y, W, and H into a RectangleF object and returns it.
-        /// </summary>
-        /// <returns>
-        /// The method is returning a new instance of the RectangleF class, with the X, Y, W, and H
-        /// values converted to float.
-        /// </returns>
+        /// It converts a RectangleD to a RectangleF
+        /// 
+        /// @return A RectangleF object.
         public RectangleF ToRectangleF()
         {
             return new RectangleF((float)X, (float)Y, (float)W, (float)H);
         }
-
-        /// <summary>
-        /// The ToString() function returns a string representation of the object's properties, rounded
-        /// to two decimal places.
-        /// </summary>
-        /// <returns>
-        /// The method is returning a string representation of the object's properties, specifically the
-        /// values of X, Y, W, and H. The values are rounded to two decimal places using the
-        /// MidpointRounding.ToZero rounding method. The values are concatenated with commas and spaces
-        /// to form the returned string.
-        /// </returns>
+        /// This function returns a string that contains the values of the X, Y, W, and H properties of
+        /// the object
+        /// 
+        /// @return The X, Y, W, and H values of the rectangle.
         public override string ToString()
         {
             double w = Math.Round(W, 2, MidpointRounding.ToZero);
@@ -584,21 +488,6 @@ namespace BioLib
                 return Points;
             }
         }
-        /// <summary>
-        /// The function "ImagePoints" takes a Resolution object as input and returns an array of PointD
-        /// objects that have been converted to image space using the provided resolution values.
-        /// </summary>
-        /// <param name="Resolution">The "Resolution" parameter is an object that contains information
-        /// about the resolution of an image. It typically includes properties such as the stage size
-        /// (width and height), physical size (width and height), and possibly other properties related
-        /// to the image resolution.</param>
-        /// <returns>
-        /// The method is returning an array of PointD objects.
-        /// </returns>
-        public PointD[] ImagePoints(Resolution res)
-        {
-            return BioImage.ToImageSpace(PointsD, (int)res.StageSizeX, (int)res.StageSizeY, (int)res.PhysicalSizeX, (int)res.PhysicalSizeY);
-        }
         private List<RectangleD> selectBoxs = new List<RectangleD>();
         public List<int> selectedPoints = new List<int>();
         public RectangleD BoundingBox;
@@ -621,15 +510,15 @@ namespace BioLib
         public int shapeIndex = 0;
         public bool closed = false;
         bool selected = false;
-        public bool Selected
-        {
-            get { return selected; }
-            set
-            {
+        public bool Selected 
+        { 
+            get { return selected; } 
+            set 
+            { 
                 if (roiMask != null)
-                    roiMask.Selected = value;
+                roiMask.Selected = value;
                 selected = value;
-            }
+            } 
         }
         public bool subPixel = false;
         public Mask roiMask { get; set; }
@@ -651,24 +540,24 @@ namespace BioLib
             Gdk.Pixbuf pixbuf;
             Gdk.Pixbuf colored;
             bool selected = false;
-            internal bool Selected
-            {
-                get { return selected; }
-                set
-                {
+            internal bool Selected 
+            { 
+                get { return selected; } 
+                set 
+                { 
                     selected = value;
                     if (selected)
                         UpdateColored(Color.Blue);
                     else
                         updateColored = true;
-                }
+                } 
             }
             public bool IsSelected(int x, int y)
             {
                 int ind = y * width + x;
                 if (ind > mask.Length)
                     throw new ArgumentException("Point " + x + "," + y + " is outside the mask.");
-                if (mask[ind] > min)
+                if (mask[ind]>min)
                 {
                     return true;
                 }
@@ -798,9 +687,9 @@ namespace BioLib
             }
             public void Dispose()
             {
-                if (pixbuf != null)
+                if(pixbuf!=null)
                     pixbuf.Dispose();
-                if (colored != null)
+                if(colored!=null)
                     colored.Dispose();
                 mask = null;
             }
@@ -885,7 +774,7 @@ namespace BioLib
         /// @param scale the scale of the image
         /// 
         /// @return A rectangle with the following properties:
-        public RectangleD GetSelectBound(double scaleX, double scaleY)
+        public RectangleD GetSelectBound(double scaleX,double scaleY)
         {
             if (type == Type.Mask)
                 return BoundingBox;
@@ -900,7 +789,21 @@ namespace BioLib
             strokeColor = Color.Yellow;
             BoundingBox = new RectangleD(0, 0, 1, 1);
         }
-
+        /// <summary>
+        /// The function "ImagePoints" takes a Resolution object as input and returns an array of PointD
+        /// objects that have been converted to image space using the provided resolution values.
+        /// </summary>
+        /// <param name="Resolution">The "Resolution" parameter is an object that contains information
+        /// about the resolution of an image. It typically includes properties such as the stage size
+        /// (width and height), physical size (width and height), and possibly other properties related
+        /// to the image resolution.</param>
+        /// <returns>
+        /// The method is returning an array of PointD objects.
+        /// </returns>
+        public PointD[] ImagePoints(Resolution res)
+        {
+            return BioImage.ToImageSpace(PointsD, (int)res.StageSizeX, (int)res.StageSizeY, (int)res.PhysicalSizeX, (int)res.PhysicalSizeY);
+        }
         /// It returns an array of RectangleF objects that are used to draw the selection boxes around
         /// the points of the polygon
         /// 
@@ -1013,16 +916,16 @@ namespace BioLib
             an.closed = true;
             return an;
         }
-        public static ROI CreateMask(ZCT coord, float[] mask, int width, int height, PointD loc, double physicalX, double physicalY)
+        public static ROI CreateMask(ZCT coord, float[] mask,int width,int height,PointD loc, double physicalX, double physicalY)
         {
             ROI an = new ROI();
             an.coord = coord;
             an.type = Type.Mask;
-            an.roiMask = new Mask(mask, width, height, physicalX, physicalY);
+            an.roiMask = new Mask(mask, width, height,physicalX,physicalY);
             an.AddPoint(loc);
             return an;
         }
-        public static ROI CreateMask(ZCT coord, byte[] mask, int width, int height, PointD loc, double physicalX, double physicalY)
+        public static ROI CreateMask(ZCT coord, byte[] mask,int width,int height,PointD loc,double physicalX,double physicalY)
         {
             ROI an = new ROI();
             an.coord = coord;
@@ -1185,7 +1088,7 @@ namespace BioLib
         /// 
         public void UpdateBoundingBox()
         {
-            if (type == Type.Mask)
+            if(type == Type.Mask)
             {
                 double minx = double.MaxValue;
                 double miny = double.MaxValue;
@@ -1239,7 +1142,7 @@ namespace BioLib
         }
         public void Dispose()
         {
-            if (roiMask != null)
+            if(roiMask!=null)
             {
                 roiMask.Dispose();
             }
@@ -1282,15 +1185,11 @@ namespace BioLib
     public static class Filters
     {
         public static int[,] indexs;
-
-        /// <summary>
-        /// The function "GetFilter" returns a filter object from a list of filters based on the given
-        /// name.
-        /// </summary>
-        /// <param name="name">The name of the filter that you want to retrieve.</param>
-        /// <returns>
-        /// The method is returning an object of type Filt.
-        /// </returns>
+        /// It takes a string as an argument and returns a filter object
+        /// 
+        /// @param name The name of the filter.
+        /// 
+        /// @return The value of the key "name" in the dictionary "filters"
         public static Filt GetFilter(string name)
         {
             foreach (Filt item in filters)
@@ -1300,37 +1199,26 @@ namespace BioLib
             }
             return null;
         }
-
-        /// <summary>
-        /// The function "GetFilter" returns a filter based on the given type and index.
-        /// </summary>
-        /// <param name="type">The type parameter is an integer that represents the type of filter. It
-        /// is used to determine which array to access in order to retrieve the filter.</param>
-        /// <param name="index">The index parameter is used to specify the position of the filter within
-        /// the filters array.</param>
-        /// <returns>
-        /// The method is returning a filter object.
-        /// </returns>
+        /// It returns a filter from the filters dictionary, using the indexs array to find the index of
+        /// the filter in the dictionary
+        /// 
+        /// @param type The type of filter you want to get.
+        /// @param index The index of the filter in the list of filters.
+        /// 
+        /// @return The value of the filter at the index of the type and index.
         public static Filt GetFilter(int type, int index)
         {
             return filters[indexs[type, index]];
         }
         public static List<Filt> filters = new List<Filt>();
-
-        /// <summary>
-        /// The Base function applies a filter to a BioImage object and returns the modified image.
-        /// </summary>
-        /// <param name="id">The id parameter is a string that represents the unique identifier of the
-        /// image. It is used to retrieve the image from a collection or database.</param>
-        /// <param name="name">The "name" parameter is a string that represents the name of the filter
-        /// to be applied to the image.</param>
-        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
-        /// filter should be applied to the original image or to a copy of the image. If "inPlace" is
-        /// set to true, the filter will be applied to the original image. If "inPlace" is set to
-        /// false,</param>
-        /// <returns>
-        /// The method is returning a BioImage object.
-        /// </returns>
+        /// It takes an image, applies a filter to it, and returns the filtered image
+        /// 
+        /// @param id The id of the image to apply the filter to.
+        /// @param name The name of the filter.
+        /// @param inPlace If true, the image will be modified in place. If false, a new image will be
+        /// created.
+        /// 
+        /// @return The image that was filtered.
         public static BioImage Base(string id, string name, bool inPlace)
         {
             BioImage img = Images.GetImage(id);
@@ -1349,8 +1237,6 @@ namespace BioLib
                 {
                     Images.AddImage(img, true);
                 }
-                //Recorder.AddLine("Filters.Base(" + '"' + id +
-                //    '"' + "," + '"' + name + '"' + "," + inPlace.ToString().ToLower() + ");");
             }
             catch (Exception e)
             {
@@ -1359,24 +1245,16 @@ namespace BioLib
             }
             return img;
         }
-
-        /// <summary>
-        /// The Base2 function applies a filter to an image, using another image as an overlay, and
-        /// returns the resulting image.
-        /// </summary>
-        /// <param name="id">The parameter "id" is a string that represents the ID of the first
-        /// image.</param>
-        /// <param name="id2">The parameter "id2" is a string that represents the ID of the second
-        /// image.</param>
-        /// <param name="name">The "name" parameter is a string that represents the name of the filter
-        /// to be applied to the images.</param>
-        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
-        /// filter should be applied to the image in-place or create a new image with the filtered
-        /// result. If "inPlace" is set to true, the filter will be applied directly to the input image
-        /// and modify it. If "in</param>
-        /// <returns>
-        /// The method is returning a BioImage object.
-        /// </returns>
+        /// It takes two images, applies a filter to the first image, and then applies the second image
+        /// to the first image
+        /// 
+        /// @param id the image id
+        /// @param id2 The image to be filtered
+        /// @param name The name of the filter.
+        /// @param inPlace If true, the image will be modified in place. If false, a new image will be
+        /// created.
+        /// 
+        /// @return The image that was filtered.
         public static BioImage Base2(string id, string id2, string name, bool inPlace)
         {
             BioImage c2 = Images.GetImage(id);
@@ -1396,8 +1274,6 @@ namespace BioLib
                 {
                     Images.AddImage(img, true);
                 }
-                //Recorder.AddLine("Filters.Base2(" + '"' + id + '"' + "," +
-                //   '"' + id2 + '"' + "," + '"' + name + '"' + "," + inPlace.ToString().ToLower() + ");");
                 return img;
             }
             catch (Exception e)
@@ -1407,22 +1283,14 @@ namespace BioLib
             }
             return img;
         }
-
-        /// <summary>
-        /// The function takes an image ID, filter name, and a boolean indicating whether to apply the
-        /// filter in place or create a copy, and applies the filter to the image.
-        /// </summary>
-        /// <param name="id">The "id" parameter is a string that represents the unique identifier of the
-        /// image. It is used to retrieve the image from the Images collection.</param>
-        /// <param name="name">The "name" parameter is a string that represents the name of the filter
-        /// to be applied to the image.</param>
-        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
-        /// filter should be applied in place or create a new copy of the image. If "inPlace" is true,
-        /// the filter will be applied directly to the image buffers. If "inPlace" is false, a copy of
-        /// the</param>
-        /// <returns>
-        /// The method is returning a BioImage object.
-        /// </returns>
+        /// It takes an image, applies a filter to it, and returns the image
+        /// 
+        /// @param id The id of the image to apply the filter to.
+        /// @param name The name of the filter
+        /// @param inPlace If true, the image will be modified in place. If false, a copy of the image
+        /// will be created and modified.
+        /// 
+        /// @return The image that was passed in.
         public static BioImage InPlace(string id, string name, bool inPlace)
         {
             BioImage img = Images.GetImage(id);
@@ -1440,8 +1308,6 @@ namespace BioLib
                 {
                     Images.AddImage(img, true);
                 }
-                //Recorder.AddLine("Filters.InPlace(" + '"' + id +
-                //    '"' + "," + '"' + name + '"' + "," + inPlace.ToString().ToLower() + ");");
                 return img;
             }
             catch (Exception e)
@@ -1451,24 +1317,14 @@ namespace BioLib
             }
             return img;
         }
-
-        /// <summary>
-        /// The function "InPlace2" applies a filter to an image, either in place or by creating a copy,
-        /// and returns the resulting image.
-        /// </summary>
-        /// <param name="id">The parameter "id" is a string that represents the ID of the first
-        /// image.</param>
-        /// <param name="id2">The parameter "id2" is a string that represents the ID of the second
-        /// image.</param>
-        /// <param name="name">The "name" parameter is a string that represents the name of the filter
-        /// to be applied to the images.</param>
-        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
-        /// filter should be applied in place or not. If "inPlace" is true, the filter will be applied
-        /// directly to the input image ("img") without creating a copy. If "inPlace" is false, a copy
-        /// of</param>
-        /// <returns>
-        /// The method is returning a BioImage object.
-        /// </returns>
+        /// This function takes an image, applies a filter to it, and returns the filtered image
+        /// 
+        /// @param id the image id
+        /// @param id2 the image to be filtered
+        /// @param name The name of the filter
+        /// @param inPlace true or false
+        /// 
+        /// @return The image that was passed in.
         public static BioImage InPlace2(string id, string id2, string name, bool inPlace)
         {
             BioImage c2 = Images.GetImage(id);
@@ -1488,8 +1344,6 @@ namespace BioLib
                 {
                     Images.AddImage(img, true);
                 }
-                //Recorder.AddLine("Filters.InPlace2(" + '"' + id + '"' + "," +
-                 //  '"' + id2 + '"' + "," + '"' + name + '"' + "," + inPlace.ToString().ToLower() + ");");
                 return img;
             }
             catch (Exception e)
@@ -1499,23 +1353,14 @@ namespace BioLib
             }
             return img;
         }
-
-        /// <summary>
-        /// The function takes an image ID, filter name, and a boolean flag indicating whether to apply
-        /// the filter in place or create a copy, and applies the filter to the image buffers
-        /// accordingly.
-        /// </summary>
-        /// <param name="id">The id parameter is a string that represents the unique identifier of the
-        /// image. It is used to retrieve the image from the Images collection.</param>
-        /// <param name="name">The "name" parameter is a string that represents the name of the filter
-        /// to be applied to the image.</param>
-        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
-        /// filter should be applied in place or create a new copy of the image. If "inPlace" is true,
-        /// the filter will be applied directly to the image buffers. If "inPlace" is false, a copy of
-        /// the</param>
-        /// <returns>
-        /// The method is returning a BioImage object.
-        /// </returns>
+        /// It takes an image, applies a filter to it, and returns the filtered image
+        /// 
+        /// @param id the id of the image to be filtered
+        /// @param name The name of the filter
+        /// @param inPlace If true, the image is modified in place. If false, a copy of the image is
+        /// created and modified.
+        /// 
+        /// @return The image that was passed in.
         public static BioImage InPlacePartial(string id, string name, bool inPlace)
         {
             BioImage img = Images.GetImage(id);
@@ -1533,8 +1378,6 @@ namespace BioLib
                 {
                     Images.AddImage(img, true);
                 }
-                //Recorder.AddLine("Filters.InPlacePartial(" + '"' + id +
-                //    '"' + "," + '"' + name + '"' + "," + inPlace.ToString().ToLower() + ");");
                 return img;
             }
             catch (Exception e)
@@ -1544,26 +1387,16 @@ namespace BioLib
             }
             return img;
         }
-
-        /// <summary>
-        /// The function resizes a BioImage object using a specified filter and returns the resized
-        /// image.
-        /// </summary>
-        /// <param name="id">The id parameter is a string that represents the unique identifier of the
-        /// image. It is used to retrieve the image from the Images collection.</param>
-        /// <param name="name">The "name" parameter is a string that represents the name of the filter
-        /// to be applied to the image.</param>
-        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
-        /// image should be resized in place or if a new copy of the image should be created. If
-        /// "inPlace" is set to true, the image will be resized directly, modifying the original image.
-        /// If "inPlace" is</param>
-        /// <param name="w">The parameter "w" in the Resize method represents the desired width of the
-        /// resized image.</param>
-        /// <param name="h">The parameter "h" in the code represents the desired height of the resized
-        /// image.</param>
-        /// <returns>
-        /// The method is returning a BioImage object.
-        /// </returns>
+        /// This function takes an image, resizes it, and returns the resized image
+        /// 
+        /// @param id the id of the image to be resized
+        /// @param name The name of the filter to use.
+        /// @param inPlace If true, the image will be modified in place. If false, a new image will be
+        /// created.
+        /// @param w width
+        /// @param h height
+        /// 
+        /// @return The image that was resized.
         public static BioImage Resize(string id, string name, bool inPlace, int w, int h)
         {
             BioImage img = Images.GetImage(id);
@@ -1583,8 +1416,6 @@ namespace BioLib
                 {
                     Images.AddImage(img, true);
                 }
-                //Recorder.AddLine("Filters.Resize(" + '"' + id +
-                //    '"' + "," + '"' + name + '"' + "," + inPlace.ToString().ToLower() + "," + w + "," + h + ");");
             }
             catch (Exception e)
             {
@@ -1593,34 +1424,18 @@ namespace BioLib
             }
             return img;
         }
-
-        /// <summary>
-        /// The function takes an image, rotates it by a specified angle, and returns the rotated image.
-        /// </summary>
-        /// <param name="id">The id parameter is a string that represents the unique identifier of the
-        /// image.</param>
-        /// <param name="name">The "name" parameter is a string that represents the name of the filter
-        /// to be applied to the image.</param>
-        /// <param name="inPlace">The "inPlace" parameter determines whether the rotation should be
-        /// applied to the original image or a copy of it. If "inPlace" is set to true, the rotation
-        /// will be applied to the original image. If "inPlace" is set to false, a copy of the image
-        /// will be</param>
-        /// <param name="angle">The angle parameter is the amount of rotation in degrees that you want
-        /// to apply to the image.</param>
-        /// <param name="a">The parameter "a" represents the alpha value of the fill color. Alpha value
-        /// determines the transparency of the color, with 0 being fully transparent and 255 being fully
-        /// opaque.</param>
-        /// <param name="r">The parameter "r" represents the red component of the fill color. It is an
-        /// integer value ranging from 0 to 255, where 0 represents no red and 255 represents maximum
-        /// red intensity.</param>
-        /// <param name="g">The parameter "g" in the Rotate method represents the green component of the
-        /// fill color used in the rotation operation. It is an integer value ranging from 0 to 255,
-        /// where 0 represents no green and 255 represents maximum green intensity.</param>
-        /// <param name="b">The parameter "b" represents the blue component of the fill color used in
-        /// the rotation operation.</param>
-        /// <returns>
-        /// The method is returning a BioImage object.
-        /// </returns>
+        /// It takes an image, rotates it, and returns the rotated image
+        /// 
+        /// @param id the id of the image to be rotated
+        /// @param name The name of the filter
+        /// @param inPlace whether to apply the filter to the original image or to a copy of it
+        /// @param angle the angle to rotate the image
+        /// @param a alpha
+        /// @param r red
+        /// @param g the image to be rotated
+        /// @param b blue
+        /// 
+        /// @return The image that was rotated.
         public static BioImage Rotate(string id, string name, bool inPlace, float angle, int a, int r, int g, int b)
         {
             BioImage img = Images.GetImage(id);
@@ -1640,9 +1455,6 @@ namespace BioLib
                 {
                     Images.AddImage(img, true);
                 }
-                //Recorder.AddLine("Filters.Rotate(" + '"' + id +
-                //    '"' + "," + '"' + name + '"' + "," + inPlace.ToString().ToLower() + "," + angle.ToString() + "," +
-                //    a + "," + r + "," + g + "," + b + ");");
             }
             catch (Exception e)
             {
@@ -1652,26 +1464,16 @@ namespace BioLib
             return img;
 
         }
-
-        /// <summary>
-        /// The function takes an image ID, a filter name, a boolean indicating whether the
-        /// transformation should be applied in place, and an angle, and applies the specified
-        /// transformation filter to the image.
-        /// </summary>
-        /// <param name="id">The id parameter is a string that represents the unique identifier of the
-        /// bioimage.</param>
-        /// <param name="name">The "name" parameter is a string that represents the name of the
-        /// transformation filter to be applied to the image.</param>
-        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
-        /// transformation should be applied to the original image or a copy of it. If "inPlace" is set
-        /// to true, the transformation will be applied to the original image. If it is set to false, a
-        /// copy of the image</param>
-        /// <param name="angle">The angle parameter is a float value that represents the rotation angle
-        /// in degrees. It is used to specify the amount of rotation to be applied to the image during
-        /// the transformation.</param>
-        /// <returns>
-        /// The method is returning a BioImage object.
-        /// </returns>
+        /// This function takes an image, applies a transformation filter to it, and returns the
+        /// transformed image
+        /// 
+        /// @param id the id of the image to be transformed
+        /// @param name The name of the filter.
+        /// @param inPlace If true, the image will be modified in place. If false, a new image will be
+        /// created.
+        /// @param angle the angle of rotation
+        /// 
+        /// @return The image that was transformed.
         public static BioImage Transformation(string id, string name, bool inPlace, float angle)
         {
             BioImage img = Images.GetImage(id);
@@ -1689,8 +1491,6 @@ namespace BioLib
                 {
                     Images.AddImage(img, true);
                 }
-                //Recorder.AddLine("Filters.Transformation(" + '"' + id +
-                //        '"' + "," + '"' + name + '"' + "," + inPlace.ToString().ToLower() + "," + angle + ");");
             }
             catch (Exception e)
             {
@@ -1699,23 +1499,14 @@ namespace BioLib
             }
             return img;
         }
-
-        /// <summary>
-        /// The function `Copy` takes an image ID, a filter name, and a boolean flag indicating whether
-        /// to perform the operation in place, and returns a copy of the image with the specified filter
-        /// applied.
-        /// </summary>
-        /// <param name="id">The id parameter is a string that represents the unique identifier of the
-        /// bioimage.</param>
-        /// <param name="name">The "name" parameter is a string that represents the name of the filter
-        /// to be applied to the image.</param>
-        /// <param name="inPlace">The "inPlace" parameter is a boolean value that determines whether the
-        /// image processing operation should be performed on the original image or on a copy of the
-        /// image. If "inPlace" is set to true, the operation will be performed on the original image.
-        /// If "inPlace" is set to</param>
-        /// <returns>
-        /// The method is returning a BioImage object.
-        /// </returns>
+        /// It takes an image, applies a filter to it, and returns the filtered image
+        /// 
+        /// @param id the id of the image to be filtered
+        /// @param name The name of the filter to apply
+        /// @param inPlace If true, the image will be modified in place. If false, a copy of the image
+        /// will be created and the copy will be modified.
+        /// 
+        /// @return The image that was copied.
         public static BioImage Copy(string id, string name, bool inPlace)
         {
             BioImage img = Images.GetImage(id);
@@ -1733,8 +1524,6 @@ namespace BioLib
                 {
                     Images.AddImage(img, true);
                 }
-                //Recorder.AddLine("Filters.Copy(" + '"' + id +
-                //        '"' + "," + '"' + name + '"' + "," + inPlace.ToString().ToLower() + ");");
             }
             catch (Exception e)
             {
@@ -1743,23 +1532,15 @@ namespace BioLib
             }
             return img;
         }
-
-        /// <summary>
-        /// The Crop function takes an image ID, coordinates, and dimensions, crops the image based on
-        /// those parameters, applies thresholding and stacking filters, and returns the cropped image.
-        /// </summary>
-        /// <param name="id">The id parameter is a string that represents the identifier of the
-        /// bioimage.</param>
-        /// <param name="x">The x-coordinate of the top-left corner of the crop area.</param>
-        /// <param name="y">The parameter "y" in the Crop method represents the y-coordinate of the
-        /// top-left corner of the rectangle to be cropped from the image.</param>
-        /// <param name="w">The parameter "w" in the Crop method represents the width of the rectangle
-        /// to be cropped from the image.</param>
-        /// <param name="h">The parameter "h" in the Crop method represents the height of the rectangle
-        /// to be cropped from the image.</param>
-        /// <returns>
-        /// The method is returning a BioImage object.
-        /// </returns>
+        /// It takes an image, crops it, and returns the cropped image
+        /// 
+        /// @param id the id of the image to crop
+        /// @param x x coordinate of the top left corner of the rectangle
+        /// @param y y-coordinate of the top-left corner of the rectangle
+        /// @param w width
+        /// @param h height
+        /// 
+        /// @return The cropped image.
         public static BioImage Crop(string id, double x, double y, double w, double h)
         {
             BioImage c = Images.GetImage(id);
@@ -1775,31 +1556,20 @@ namespace BioLib
                 img.StackThreshold(true);
             else
                 img.StackThreshold(false);
-            //Recorder.AddLine("Filters.Crop(" + '"' + id + '"' + "," + x + "," + y + "," + w + "," + h + ");");
-            //App.tabsView.AddTab(img);
             return img;
         }
-
-        /// <summary>
-        /// The Crop function takes an image ID and a rectangle, and returns a cropped version of the
-        /// image.
-        /// </summary>
-        /// <param name="id">The "id" parameter is a string that represents the identifier of the bio
-        /// image that you want to crop.</param>
-        /// <param name="RectangleD">The RectangleD is a class that represents a rectangle with double
-        /// precision coordinates. It has four properties:</param>
-        /// <returns>
-        /// The method is returning a BioImage object.
-        /// </returns>
+        /// This function takes a string and a rectangle and returns a BioImage
+        /// 
+        /// @param id the id of the image to crop
+        /// @param RectangleD 
+        /// 
+        /// @return A BioImage object.
         public static BioImage Crop(string id, RectangleD r)
         {
             return Crop(id, r.X, r.Y, r.W, r.H);
         }
 
-
-        /// <summary>
-        /// The Init() function initializes a list of filters with their corresponding names and types.
-        /// </summary>
+        /// It creates a dictionary of filters and their names
         public static void Init()
         {
             //Base Filters
@@ -2154,13 +1924,9 @@ namespace BioLib
             set { series = value; }
         }
 
-       /// <summary>
-       /// The Copy function creates a new ImageInfo object and copies the values of the properties from
-       /// the current object to the new object.
-       /// </summary>
-       /// <returns>
-       /// The method is returning an instance of the ImageInfo class.
-       /// </returns>
+        /// Copy() is a function that copies the values of the ImageInfo class to a new ImageInfo class
+        /// 
+        /// @return A copy of the ImageInfo object.
         public ImageInfo Copy()
         {
             ImageInfo inf = new ImageInfo();
@@ -2278,14 +2044,23 @@ namespace BioLib
         public List<Resolution> Resolutions = new List<Resolution>();
         public List<AForge.Bitmap> Buffers = new List<AForge.Bitmap>();
         public List<NetVips.Image> vipPages = new List<NetVips.Image>();
-        public int Resolution
+        int level = 0;
+        public int Level
         {
-            get { return resolution; }
-            set
+            get 
             {
-                resolution = value;
-                if (Type == ImageType.well)
+                if (openslideBase != null)
+                    return OpenSlideGTK.TileUtil.GetLevel(openslideBase.Schema.Resolutions, Resolution);
+                else
+                    if (slideBase != null)
+                        return LevelFromResolution(Resolution);
+                return level;
+            }
+            set 
+            { 
+                if(Type == ImageType.well)
                 {
+                    level = value;
                     reader.setId(file);
                     reader.setSeries(value);
                     // read the image data bytes
@@ -2349,8 +2124,18 @@ namespace BioLib
         }
         private int sizeZ, sizeC, sizeT;
         private Statistics statistics;
-        private int resolution = 0;
-
+        private double resolution = 1;
+        public double Resolution 
+        { 
+            get { return resolution; }
+            set 
+            {
+                if (value < 0)
+                    return;
+                resolution = value;
+            } 
+        }
+        
         ImageInfo imageInfo = new ImageInfo();
         /// It copies the BioImage b and returns a new BioImage object.
         /// 
@@ -2457,6 +2242,53 @@ namespace BioLib
             bi.statistics = b.statistics;
             return bi;
         }
+        /// <summary>
+        /// Get the downsampling factor of a given level.
+        /// </summary>
+        /// <param name="level">The desired level.</param>
+        /// <return>
+        /// The downsampling factor for this level.
+        /// </return> 
+        /// <exception cref="OpenSlideException"/>
+        public double GetLevelDownsample(int level)
+        {
+            int originalWidth = Resolutions[0].SizeX; // Width of the original level
+            int nextLevelWidth = Resolutions[level].SizeX; // Width of the next level (downsampled)
+            return (double)originalWidth / (double)nextLevelWidth;
+        }
+        public double[] GetLevelDownsamples()
+        {
+            double[] ds = new double[Resolutions.Count];
+            for (int i = 0; i < Resolutions.Count; i++)
+            {
+                ds[i] = Resolutions[0].PhysicalSizeX * GetLevelDownsample(i);
+            }
+            return ds;
+        }
+        /// <summary>
+        /// Returns the level of a given resolution.
+        /// </summary>
+        /// <param name="Resolution"></param>
+        /// <returns></returns>
+        public int LevelFromResolution(double Resolution)
+        {
+            double[] ds = GetLevelDownsamples();
+            for (int i = 0; i < ds.Length; i++)
+            {
+                if (ds[i] > Resolution)
+                    return i - 1;
+            }
+            return Resolutions.Count-1;
+        }
+        /// <summary>
+        /// Get Unit Per Pixel for pyramidal images.
+        /// </summary>
+        /// <param name="level"></param>
+        /// <returns></returns>
+        public double GetUnitPerPixel(int level)
+        {
+            return Resolutions[0].PhysicalSizeX * GetLevelDownsample(level);
+        }
         public string ID
         {
             get { return id; }
@@ -2471,35 +2303,45 @@ namespace BioLib
         }
         public double PhysicalSizeX
         {
-            get { return Resolutions[Resolution].PhysicalSizeX; }
+            get { return Resolutions[Level].PhysicalSizeX; }
         }
         public double PhysicalSizeY
         {
-            get { return Resolutions[Resolution].PhysicalSizeY; }
+            get { return Resolutions[Level].PhysicalSizeY; }
         }
         public double PhysicalSizeZ
         {
-            get { return Resolutions[Resolution].PhysicalSizeZ; }
+            get { return Resolutions[Level].PhysicalSizeZ; }
         }
         public double StageSizeX
         {
             get
             {
-                return Resolutions[Resolution].StageSizeX;
+                return Resolutions[Level].StageSizeX;
             }
             set { imageInfo.StageSizeX = value; }
         }
         public double StageSizeY
         {
-            get { return Resolutions[Resolution].StageSizeY; }
+            get { return Resolutions[Level].StageSizeY; }
             set { imageInfo.StageSizeY = value; }
         }
         public double StageSizeZ
         {
-            get { return Resolutions[Resolution].StageSizeZ; }
+            get { return Resolutions[Level].StageSizeZ; }
             set { imageInfo.StageSizeZ = value; }
         }
-
+        Size s = new Size(1920, 1080);
+        public Size PyramidalSize { get { return s; } set { s = value; } }
+        PointD pyramidalOrigin = new PointD(0, 0);
+        public PointD PyramidalOrigin
+        {
+            get { return pyramidalOrigin; }
+            set
+            {
+                pyramidalOrigin = value;
+            }
+        }
         public int series
         {
             get
@@ -2513,6 +2355,10 @@ namespace BioLib
         }
 
         static bool initialized = false;
+        OpenSlideBase openslideBase;
+        public OpenSlideBase OpenSlideBase { get { return openslideBase; } }
+        SlideBase slideBase;
+        public SlideBase SlideBase { get { return slideBase; } }
         public Channel RChannel
         {
             get
@@ -2722,7 +2568,7 @@ namespace BioLib
             get { return sizeT; }
         }
         public static bool Planes = false;
-        public object Tag { get; set; }
+        public object Tag { get;set; }
         public IntRange RRange
         {
             get
@@ -2793,7 +2639,6 @@ namespace BioLib
             }
         }
         public string file;
-        public static double progressValue = 0;
         public static string status;
         public static string progFile;
         public static bool Initialized
@@ -2945,6 +2790,7 @@ namespace BioLib
                     }
                     Channels[c].BitsPerPixel = 16;
                 }
+                bitsPerPixel = 16;
             }
             else if (Buffers[0].PixelFormat == PixelFormat.Format24bppRgb)
             {
@@ -3131,7 +2977,7 @@ namespace BioLib
                         bs[0] = new Bitmap(ID, SizeX, SizeY, Buffers[i].PixelFormat, Buffers[i].Bytes, new ZCT(Buffers[i].Coordinate.Z, 0, Buffers[i].Coordinate.T), i, Buffers[i].Plane);
                         bs[1] = new Bitmap(ID, SizeX, SizeY, Buffers[i + 1].PixelFormat, Buffers[i + 1].Bytes, new ZCT(Buffers[i + 1].Coordinate.Z, 0, Buffers[i + 1].Coordinate.T), i + 1, Buffers[i + 1].Plane);
                         if (Channels.Count > 2)
-                            bs[2] = new Bitmap(ID, SizeX, SizeY, Buffers[i + 2].PixelFormat, Buffers[i + 2].Bytes, new ZCT(Buffers[i].Coordinate.Z, 0, Buffers[i + 2].Coordinate.T), i + 2, Buffers[i].Plane);
+                            bs[2] = new Bitmap(ID, SizeX, SizeY, Buffers[i+2].PixelFormat, Buffers[i+2].Bytes, new ZCT(Buffers[i].Coordinate.Z, 0, Buffers[i+2].Coordinate.T), i+2, Buffers[i].Plane);
                         Bitmap bbs = Bitmap.RGB16To48(bs);
                         for (int b = 0; b < 3; b++)
                         {
@@ -3204,8 +3050,8 @@ namespace BioLib
             AutoThreshold(this, false);
             StackThreshold(true);
         }
-        public int? MacroResolution { get; set; }
-        public int? LabelResolution { get; set; }
+        public int? MacroResolution { get;set; }
+        public int? LabelResolution { get;set; }
         void SetLabelMacroResolutions()
         {
             int i = 0;
@@ -3485,34 +3331,6 @@ namespace BioLib
             pp.Y = (float)((p.Y - StageSizeY) / PhysicalSizeY);
             return pp;
         }
-        /// <summary>
-        /// The function takes a list of points in stage space and converts them to image space using
-        /// the provided stage and physical size parameters.
-        /// </summary>
-        /// <param name="p">A list of PointD objects representing points in stage space.</param>
-        /// <param name="stageSizeX">The width of the stage or canvas in pixels.</param>
-        /// <param name="stageSizeY">The stageSizeY parameter represents the size of the stage or canvas
-        /// in the Y-axis direction. It is used to calculate the Y-coordinate of each point in the p
-        /// list in image space.</param>
-        /// <param name="physicalSizeX">The physical size of the X-axis in the image space.</param>
-        /// <param name="physicalSizeY">The physical size of the Y-axis in the coordinate system of the
-        /// stage or image.</param>
-        /// <returns>
-        /// The method is returning an array of PointD objects.
-        /// </returns>
-        public static PointD[] ToImageSpace(List<PointD> p, int stageSizeX, int stageSizeY, int physicalSizeX, int physicalSizeY)
-        {
-            PointD[] ps = new PointD[p.Count];
-            for (int i = 0; i < p.Count; i++)
-            {
-                PointD pp = new PointD();
-                pp.X = ((p[i].X - stageSizeX) / physicalSizeX);
-                pp.Y = ((p[i].Y - stageSizeY) / physicalSizeY);
-                ps[i] = pp;
-            }
-            return ps;
-        }
-
         /// Convert a list of points from stage space to image space
         /// 
         /// @param p List of points in stage space
@@ -3573,8 +3391,8 @@ namespace BioLib
             PointD pp = new PointD();
             if (isPyramidal)
             {
-                pp.X = ((p.X * Resolutions[resolution].PhysicalSizeX) + Volume.Location.X);
-                pp.Y = ((p.Y * Resolutions[resolution].PhysicalSizeY) + Volume.Location.Y);
+                pp.X = ((p.X * Resolutions[Level].PhysicalSizeX) + Volume.Location.X);
+                pp.Y = ((p.Y * Resolutions[Level].PhysicalSizeY) + Volume.Location.Y);
                 return pp;
             }
             else
@@ -4043,7 +3861,6 @@ namespace BioLib
                     bms[c] = b;
                 }
             }
-
             Statistics.ClearCalcBuffer();
             return bms;
         }
@@ -4102,26 +3919,6 @@ namespace BioLib
         /// The stridex is the width of the image in bytes. 
         /// 
         /// The stridey is the height of the image in bytes. 
-        /// 
-        /// The stridex and stridey are the same for a square image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The stridex and stridey are different for a rectangular image. 
-        /// 
-        /// The
         /// 
         /// @param ix x coordinate of the pixel
         /// @param iy The y coordinate of the pixel
@@ -4687,12 +4484,109 @@ namespace BioLib
                 initialized = true;
         }
 
+        private static List<Resolution> GetResolutions()
+        {
+            List<Resolution> rss = new List<Resolution>();
+            int seriesCount = reader.getSeriesCount();
+            for (int s = 0; s < seriesCount; s++)
+            {
+                reader.setSeries(s);
+                IMetadata meta = (IMetadata)reader.getMetadataStore();
+                for (int r = 0; r < reader.getResolutionCount(); r++)
+                {
+                    Resolution res = new Resolution();
+                    try
+                    {
+                        int rgbc = reader.getRGBChannelCount();
+                        int bps = reader.getBitsPerPixel();
+                        PixelFormat px;
+                        try
+                        {
+                            px = GetPixelFormat(rgbc, meta.getPixelsType(r));
+                        }
+                        catch (Exception)
+                        {
+                            px = GetPixelFormat(rgbc, bps);
+                        }
+                        res.PixelFormat = px;
+                        res.SizeX = reader.getSizeX();
+                        res.SizeY = reader.getSizeY();
+                        if (meta.getPixelsPhysicalSizeX(r) != null)
+                        {
+                            res.PhysicalSizeX = meta.getPixelsPhysicalSizeX(r).value().doubleValue();
+                        }
+                        else
+                            res.PhysicalSizeX = (96 / 2.54) / 1000;
+                        if (meta.getPixelsPhysicalSizeY(r) != null)
+                        {
+                            res.PhysicalSizeY = meta.getPixelsPhysicalSizeY(r).value().doubleValue();
+                        }
+                        else
+                            res.PhysicalSizeY = (96 / 2.54) / 1000;
+
+                        if (meta.getStageLabelX(r) != null)
+                            res.StageSizeX = meta.getStageLabelX(r).value().doubleValue();
+                        if (meta.getStageLabelY(r) != null)
+                            res.StageSizeY = meta.getStageLabelY(r).value().doubleValue();
+                        if (meta.getStageLabelZ(r) != null)
+                            res.StageSizeZ = meta.getStageLabelZ(r).value().doubleValue();
+                        else
+                            res.StageSizeZ = 1;
+                        if (meta.getPixelsPhysicalSizeZ(r) != null)
+                        {
+                            res.PhysicalSizeZ = meta.getPixelsPhysicalSizeZ(r).value().doubleValue();
+                        }
+                        else
+                        {
+                            res.PhysicalSizeZ = 1;
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine("No Stage Coordinates. PhysicalSize:(" + res.PhysicalSizeX + "," + res.PhysicalSizeY + "," + res.PhysicalSizeZ + ")");
+                    }
+                    rss.Add(res);
+                }
+            }
+            return rss;
+        }
+        private static int GetPyramidCount()
+        {
+            List<Resolution> rss = GetResolutions();
+            //We need to determine if this image is pyramidal or not.
+            //We do this by seeing if the resolutions are downsampled or not.
+            //We also need to determine number of pyramids in this image and which belong to the series we are opening.
+            List<Tuple<int, int>> prs = new List<Tuple<int, int>>();
+            int? sr = null;
+            for (int r = 0; r < rss.Count - 1; r++)
+            {
+                if (rss[r].SizeX > rss[r + 1].SizeX && rss[r].PixelFormat == rss[r + 1].PixelFormat)
+                {
+                    if (sr == null)
+                    {
+                        sr = r;
+                        prs.Add(new Tuple<int, int>(r, 0));
+                    }
+                }
+                else
+                {
+                    if (rss[prs[prs.Count - 1].Item1].PixelFormat == rss[r].PixelFormat)
+                        prs[prs.Count - 1] = new Tuple<int, int>(prs[prs.Count - 1].Item1, r);
+                    sr = null;
+                }
+            }
+            return prs.Count;
+        }
         public static int GetSeriesCount(string file)
         {
             reader.setId(file);
             int i = reader.getSeriesCount();
+            int prs = GetPyramidCount();
             reader.close();
-            return i;
+            if (prs > 0)
+                return prs;
+            else
+                return i;
         }
         /// This function takes a string array of file names and a string ID and saves the files to the
         /// database
@@ -4798,14 +4692,12 @@ namespace BioLib
                                 offset += stride;
                             }
                             image.WriteDirectory();
-                            progressValue = (float)im / (float)b.ImageCount;
                             im++;
                         }
                     }
                 }
             }
             image.Dispose();
-
         }
         /// It opens a tiff file, reads the number of pages, reads the number of channels, and then
         /// reads each page into a BioImage object.
@@ -4996,14 +4888,13 @@ namespace BioLib
             bool tiled = IsTiffTiled(file);
             Console.WriteLine("IsTiled=" + tiled.ToString());
             tile = tiled;
-
+            
             Stopwatch st = new Stopwatch();
             st.Start();
             status = "Opening Image";
             progFile = file;
-            progressValue = 0;
             BioImage b = new BioImage(file);
-            if (tiled && file.EndsWith(".tif") && !file.EndsWith(".ome.tif"))
+            if(tiled && file.EndsWith(".tif") && !file.EndsWith(".ome.tif"))
             {
                 //To open this we need libvips
                 vips = VipsSupport(b.file);
@@ -5222,7 +5113,6 @@ namespace BioLib
                         Bitmap inf = new Bitmap(file, SizeX, SizeY, b.Resolutions[series].PixelFormat, bytes, new ZCT(0, 0, 0), p, null, b.littleEndian, inter);
                         b.Buffers.Add(inf);
                         Statistics.CalcStatistics(inf);
-                        progressValue = (float)p / (float)(series + 1) * pages;
                     }
                 }
                 image.Close();
@@ -5233,7 +5123,7 @@ namespace BioLib
                 Gdk.Pixbuf pf = new Gdk.Pixbuf(file);
                 b.littleEndian = BitConverter.IsLittleEndian;
                 PixelFormat px = GetPixelFormat(pf.NChannels, pf.BitsPerSample);
-                b.Resolutions.Add(new Resolution(pf.Width, pf.Height, px, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 0, 0, 0));
+                b.Resolutions.Add(new Resolution(pf.Width, pf.Height,px,96 * (1/2.54) / 1000, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000,0,0,0));
                 b.bitsPerPixel = pf.BitsPerSample;
                 b.Buffers.Add(new Bitmap(pf.Width, pf.Height, pf.Width * pf.NChannels, px, pf.Pixels));
                 b.Buffers.Last().ID = Bitmap.CreateID(file, 0);
@@ -5389,12 +5279,15 @@ namespace BioLib
             if (File.Exists(f))
                 File.Delete(f);
             loci.formats.meta.IMetadata omexml = service.createOMEXMLMetadata();
-            progressValue = 0;
             status = "Saving OME Image Metadata.";
             for (int fi = 0; fi < files.Length; fi++)
             {
                 int serie = fi;
                 BioImage b = files[fi];
+                if (b.isPyramidal)
+                {
+                    b = OpenOME(b.file, b.Level, false, false, true,0, 0,1080, 1920);
+                }
                 // create OME-XML metadata store
 
                 omexml.setImageID("Image:" + serie, serie);
@@ -5732,7 +5625,6 @@ namespace BioLib
                 writer.setSeries(i);
                 for (int bu = 0; bu < b.Buffers.Count; bu++)
                 {
-                    progressValue = (float)bu / (float)b.Buffers.Count;
                     byte[] bts = b.Buffers[bu].GetSaveBytes(BitConverter.IsLittleEndian);
                     writer.saveBytes(bu, bts);
                 }
@@ -5801,7 +5693,7 @@ namespace BioLib
             Dictionary<double, Point3D> max = new Dictionary<double, Point3D>();
             for (int i = 0; i < bms.Length; i++)
             {
-                Resolution res = bms[i].Resolutions[bms[i].Resolution];
+                Resolution res = bms[i].Resolutions[bms[i].Level];
                 if (bis.ContainsKey(res.PhysicalSizeX))
                 {
                     bis[res.PhysicalSizeX].Add(bms[i]);
@@ -5864,7 +5756,7 @@ namespace BioLib
                 met +=
                 "<Image ID=\"Image:" + ib + "\">" +
                 "<Pixels BigEndian=\"" + endian + "\" DimensionOrder= \"XYCZT\" ID= \"Pixels:0\" Interleaved=\"true\" " +
-                "PhysicalSizeX=\"" + bis[px][s].PhysicalSizeX + "\" PhysicalSizeXUnit=\"µm\" PhysicalSizeY=\"" + bis[px][s].PhysicalSizeY + "\" PhysicalSizeYUnit=\"µm\" SignificantBits=\"" + bis[px][s].bitsPerPixel + "\" " +
+                "PhysicalSizeX=\"" + bis[px][s].PhysicalSizeX + "\" PhysicalSizeXUnit=\"Âµm\" PhysicalSizeY=\"" + bis[px][s].PhysicalSizeY + "\" PhysicalSizeYUnit=\"Âµm\" SignificantBits=\"" + bis[px][s].bitsPerPixel + "\" " +
                 "SizeC = \"" + c + "\" SizeT = \"" + bis[px][s].SizeT + "\" SizeX =\"" + ss[px].Width +
                 "\" SizeY= \"" + ss[px].Height + "\" SizeZ=\"" + bis[px][s].SizeZ;
                 if (bis[px][s].bitsPerPixel > 8) met += "\" Type= \"uint16\">";
@@ -6029,7 +5921,7 @@ namespace BioLib
             {
                 Console.WriteLine(e.Message);
             }
-
+            
         }
         /// The function ExtractRegionFromTiledTiff takes a BioImage object, coordinates, width, height,
         /// and resolution as input, and returns a Bitmap object representing the extracted region from
@@ -6110,7 +6002,7 @@ namespace BioLib
         /// @param tileSizeY The tileSizeY parameter is the height of each tile in pixels when tiling
         /// the images. <summary>
         /// The function "OpenOME" opens a bioimage file, with options to specify the series, whether to
-        public static BioImage OpenOME(string file, int serie, bool tab, bool addToImages, bool tile, int tilex, int tiley, int tileSizeX, int tileSizeY)
+        public static BioImage OpenOME(string file, int serie, bool tab, bool addToImages, bool tile, int tilex, int tiley, int tileSizeX, int tileSizeY, bool useOpenSlide = true)
         {
             if (file == null || file == "")
                 throw new InvalidDataException("File is empty or null");
@@ -6120,11 +6012,11 @@ namespace BioLib
                 Thread.Sleep(10);
             } while (!initialized);
             Console.WriteLine("OpenOME " + file);
+            reader = new ImageReader();
             if (tileSizeX == 0)
                 tileSizeX = 1920;
             if (tileSizeY == 0)
                 tileSizeY = 1080;
-            progressValue = 0;
             progFile = file;
             BioImage b = new BioImage(file);
             b.Type = ImageType.stack;
@@ -6139,9 +6031,17 @@ namespace BioLib
             {
                 reader.close();
                 reader.setMetadataStore(b.meta);
-                reader.setId(f);
+                try
+                {
+                    reader.setId(f);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.Message);
+                    return null;
+                }
             }
-
+            
             //status = "Reading OME Metadata.";
             reader.setSeries(serie);
             int RGBChannelCount = reader.getRGBChannelCount();
@@ -6257,11 +6157,11 @@ namespace BioLib
             b.Coords = new int[b.SizeZ, b.SizeC, b.SizeT];
 
             int resc = reader.getResolutionCount();
-
+            
             try
             {
                 int wells = b.meta.getWellCount(0);
-                if (wells > 0)
+                if(wells>0)
                 {
                     b.Type = ImageType.well;
                     b.Plate = new WellPlate(b);
@@ -6334,7 +6234,9 @@ namespace BioLib
             }
             reader.setSeries(serie);
 
-
+            int pyramidCount = 0;
+            int pyramidResolutions = 0;
+            List<Tuple<int, int>> prs = new List<Tuple<int, int>>();
             //We need to determine if this image is pyramidal or not.
             //We do this by seeing if the resolutions are downsampled or not.
             if (rss.Count > 1 && b.Type != ImageType.well)
@@ -6344,36 +6246,37 @@ namespace BioLib
                     b.Type = ImageType.pyramidal;
                     tile = true;
                     //We need to determine number of pyramids in this image and which belong to the series we are opening.
-                    List<Tuple<int, int>> ims = new List<Tuple<int, int>>();
                     int? sr = null;
                     for (int r = 0; r < rss.Count - 1; r++)
                     {
-                        if (rss[r].SizeX > rss[r + 1].SizeX)
+                        if (rss[r].SizeX > rss[r + 1].SizeX && rss[r].PixelFormat == rss[r + 1].PixelFormat)
                         {
                             if (sr == null)
                             {
                                 sr = r;
-                                ims.Add(new Tuple<int, int>(r, 0));
+                                prs.Add(new Tuple<int, int>(r, 0));
                             }
                         }
                         else
                         {
-                            ims[ims.Count - 1] = new Tuple<int, int>(ims[ims.Count - 1].Item1, r);
+                            if(rss[prs[prs.Count - 1].Item1].PixelFormat == rss[r].PixelFormat)
+                            prs[prs.Count - 1] = new Tuple<int, int>(prs[prs.Count - 1].Item1, r);
                             sr = null;
                         }
                     }
-                    if (ims[serie].Item2 == 0)
+                    pyramidCount = prs.Count;
+                    for (int p = 0; p < prs.Count; p++)
                     {
-                        ims[serie] = new Tuple<int, int>(ims[serie].Item1, rss.Count);
+                        pyramidResolutions += (prs[p].Item2 - prs[p].Item1)+1;
                     }
-                    for (int r = ims[serie].Item1; r < ims[serie].Item2; r++)
+
+                    if (prs[serie].Item2 == 0)
+                    {
+                        prs[serie] = new Tuple<int, int>(prs[serie].Item1, rss.Count);
+                    }
+                    for (int r = prs[serie].Item1; r < prs[serie].Item2; r++)
                     {
                         b.Resolutions.Add(rss[r]);
-                    }
-                    if (b.Resolutions.Last().PixelFormat == b.Resolutions.First().PixelFormat && rss.Last().PixelFormat != b.Resolutions.Last().PixelFormat)
-                    {
-                        b.Resolutions.Add(rss.Last());
-                        b.Resolutions.Add(rss[rss.Count - 2]);
                     }
                 }
                 else
@@ -6383,8 +6286,13 @@ namespace BioLib
             }
             else
                 b.Resolutions.AddRange(rss);
-
-
+            
+            //If we have 2 resolutions that we're not added they are the label & macro resolutions so we add them to the image.
+            if(rss.Count - pyramidResolutions  == 2)
+            {
+                b.Resolutions.Add(rss[rss.Count - 2]);
+                b.Resolutions.Add(rss[rss.Count - 1]);
+            }
 
             b.Volume = new VolumeD(new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ), new Point3D(b.PhysicalSizeX * SizeX, b.PhysicalSizeY * SizeY, b.PhysicalSizeZ * SizeZ));
             int rc = b.meta.getROICount();
@@ -6683,7 +6591,7 @@ namespace BioLib
                     {
                         byte[] bts = b.meta.getMaskBinData(im, sc);
                         bool end = b.meta.getMaskBinDataBigEndian(im, sc).booleanValue();
-                        an = ROI.CreateMask(co, bts, b.Resolutions[0].SizeX, b.Resolutions[0].SizeY, new PointD(b.StageSizeX, b.StageSizeY), b.PhysicalSizeX, b.PhysicalSizeY);
+                        an = ROI.CreateMask(co, bts, b.Resolutions[0].SizeX, b.Resolutions[0].SizeY,new PointD(b.StageSizeX,b.StageSizeY),b.PhysicalSizeX,b.PhysicalSizeY); 
                         an.Text = b.meta.getMaskText(im, sc);
                         an.id = b.meta.getMaskID(im, sc);
                         ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getMaskTheZ(im, sc);
@@ -6721,23 +6629,26 @@ namespace BioLib
             serFiles.AddRange(reader.getSeriesUsedFiles());
 
             b.Buffers = new List<Bitmap>();
-            if (!file.EndsWith("ome.tif"))
-                try
+            if(b.Type == ImageType.pyramidal)
+            try
+            {
+                string st = OpenSlideImage.DetectVendor(file);
+                if (st != null && !file.EndsWith("ome.tif") && useOpenSlide)
                 {
-                    string st = OpenSlideGTK.OpenSlideImage.DetectVendor(file);
-                    if (st != null)
-                    {
-                        b.openSlideImage = OpenSlideGTK.OpenSlideImage.Open(file);
-                        b.openSlideSource = OpenSlideGTK.SlideSourceBase.Create(file);
-                        b.Type = ImageType.pyramidal;
-                        tile = true;
-                    }
+                    b.openSlideImage = OpenSlideImage.Open(file);
+                    b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file);
                 }
-                catch (Exception e)
+                else
                 {
-                    Console.WriteLine(e.Message.ToString());
+                    b.slideBase = new SlideBase(b,SlideImage.Open(b));
                 }
-
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message.ToString());
+                b.slideBase = new SlideBase(b, SlideImage.Open(b));
+            }
+            
             // read the image data bytes
             int pages = reader.getImageCount();
             bool inter = reader.isInterleaved();
@@ -6745,16 +6656,51 @@ namespace BioLib
             int c = 0;
             int t = 0;
             if (!tile)
-                for (int p = 0; p < pages; p++)
+            {
+                try
                 {
-                    Bitmap bf;
-                    progressValue = (float)p / (float)pages;
-                    byte[] bytes = reader.openBytes(p);
-                    bf = new Bitmap(file, SizeX, SizeY, PixelFormat, bytes, new ZCT(z, c, t), p, null, b.littleEndian, inter);
-                    b.Buffers.Add(bf);
+                    for (int p = 0; p < pages; p++)
+                    {
+                        Bitmap bf;
+                        byte[] bytes = reader.openBytes(p);
+                        bf = new Bitmap(file, SizeX, SizeY, PixelFormat, bytes, new ZCT(z, c, t), p, null, b.littleEndian, inter);
+                        b.Buffers.Add(bf);
+                    }
                 }
+                catch (Exception)
+                {
+                    //If we failed to read an entire plane it is likely too large so we open as pyramidal.
+                    b.Type = ImageType.pyramidal;
+                    try
+                    {
+                        string st = OpenSlideImage.DetectVendor(file);
+                        if (st != null && !file.EndsWith("ome.tif") && useOpenSlide)
+                        {
+                            b.openSlideImage = OpenSlideImage.Open(file);
+                            b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file);
+                        }
+                        else
+                        {
+                            b.slideBase = new SlideBase(b, SlideImage.Open(b));
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.Message.ToString());
+                        b.slideBase = new SlideBase(b, SlideImage.Open(b));
+                    }
+                    b.imRead = reader;
+                    for (int p = 0; p < pages; p++)
+                    {
+                        b.Buffers.Add(GetTile(b, p, serie, tilex, tiley, tileSizeX, tileSizeY));
+                        Statistics.CalcStatistics(b.Buffers.Last());
+                    }
+                }
+                
+            }
             else
             {
+                b.imRead = reader;
                 for (int p = 0; p < pages; p++)
                 {
                     b.Buffers.Add(GetTile(b, p, serie, tilex, tiley, tileSizeX, tileSizeY));
@@ -6804,37 +6750,39 @@ namespace BioLib
             {
                 Thread.Sleep(50);
             } while (b.Buffers[b.Buffers.Count - 1].Stats == null);
+            b.SetLabelMacroResolutions();
             Statistics.ClearCalcBuffer();
             AutoThreshold(b, true);
             if (b.bitsPerPixel > 8)
                 b.StackThreshold(true);
             else
                 b.StackThreshold(false);
+            if (!tile)
+            {
+                //We use a try block to close the reader as sometimes this will cause an error.
+                bool stop = false;
+                do
+                {
+                    try
+                    {
+                        reader.close();
+                        stop = true;
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.Message);
+                    }
+                } while (!stop);
+            }
             if (addToImages)
                 Images.AddImage(b, tab);
-            //We use a try block to close the reader as sometimes this will cause an error.
-            bool stop = false;
-            do
-            {
-                try
-                {
-                    reader.close();
-                    stop = true;
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.Message);
-                }
-            } while (!stop);
             b.Loading = false;
-            b.SetLabelMacroResolutions();
             Console.WriteLine("Opening complete " + file);
             return b;
         }
         public ImageReader imRead;
         public Tiff tifRead;
-        public OpenSlideGTK.OpenSlideImage openSlideImage;
-        public OpenSlideGTK.ISlideSource openSlideSource;
+        public OpenSlideImage openSlideImage;
         static Bitmap bm;
         /// It reads a tile from a file, and returns a bitmap
         /// 
@@ -6861,14 +6809,14 @@ namespace BioLib
                 return new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
             }
 
-            string curfile = reader.getCurrentFile();
+            string curfile = b.imRead.getCurrentFile();
             if (curfile == null)
             {
                 b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
-                reader.close();
-                reader.setMetadataStore(b.meta);
+                b.imRead.close();
+                b.imRead.setMetadataStore(b.meta);
                 Console.WriteLine(b.file);
-                reader.setId(b.file);
+                b.imRead.setId(b.file);
             }
             else
             {
@@ -6876,20 +6824,21 @@ namespace BioLib
                 string cf = curfile.Replace("\\", "/");
                 if (cf != fi)
                 {
-                    reader.close();
+                    b.imRead.close();
                     b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
-                    reader.setMetadataStore(b.meta);
-                    reader.setId(b.file);
+                    b.imRead.setMetadataStore(b.meta);
+                    b.imRead.setId(b.file);
                 }
             }
-            if (reader.getSeries() != serie)
-                reader.setSeries(serie);
-            int SizeX = reader.getSizeX();
-            int SizeY = reader.getSizeY();
-            bool flat = reader.hasFlattenedResolutions();
+            if (b.imRead.getSeries() != serie)
+                b.imRead.setSeries(serie);
+            int SizeX = b.imRead.getSizeX();
+            int SizeY = b.imRead.getSizeY();
+            bool flat = b.imRead.hasFlattenedResolutions();
             int p = b.Coords[coord.Z, coord.C, coord.T];
-            bool littleEndian = reader.isLittleEndian();
+            bool littleEndian = b.imRead.isLittleEndian();
             PixelFormat PixelFormat = b.Resolutions[serie].PixelFormat;
+            bool interleaved = b.imRead.isInterleaved();
             if (tilex < 0)
                 tilex = 0;
             if (tiley < 0)
@@ -6911,8 +6860,7 @@ namespace BioLib
                 return null;
             try
             {
-                byte[] bytesr = reader.openBytes(b.Coords[coord.Z, coord.C, coord.T], tilex, tiley, sx, sy);
-                bool interleaved = reader.isInterleaved();
+                byte[] bytesr = b.imRead.openBytes(b.Coords[coord.Z, coord.C, coord.T], tilex, tiley, sx, sy);
                 return new Bitmap(b.file, sx, sy, PixelFormat, bytesr, coord, p, null, littleEndian, interleaved);
             }
             catch (Exception e)
@@ -6934,14 +6882,14 @@ namespace BioLib
                 return new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
             }
 
-            string curfile = reader.getCurrentFile();
+            string curfile = b.imRead.getCurrentFile();
             if (curfile == null)
             {
                 b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
-                reader.close();
-                reader.setMetadataStore(b.meta);
+                b.imRead.close();
+                b.imRead.setMetadataStore(b.meta);
                 Console.WriteLine(b.file);
-                reader.setId(b.file);
+                b.imRead.setId(b.file);
             }
             else
             {
@@ -6949,18 +6897,19 @@ namespace BioLib
                 string cf = curfile.Replace("\\", "/");
                 if (cf != fi)
                 {
-                    reader.close();
+                    b.imRead.close();
                     b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
-                    reader.setMetadataStore(b.meta);
-                    reader.setId(b.file);
+                    b.imRead.setMetadataStore(b.meta);
+                    b.imRead.setId(b.file);
                 }
             }
-            if (reader.getSeries() != serie)
-                reader.setSeries(serie);
-            int SizeX = reader.getSizeX();
-            int SizeY = reader.getSizeY();
-            bool flat = reader.hasFlattenedResolutions();
-            bool littleEndian = reader.isLittleEndian();
+            if (b.imRead.getSeries() != serie)
+                b.imRead.setSeries(serie);
+            int SizeX = b.imRead.getSizeX();
+            int SizeY = b.imRead.getSizeY();
+            bool flat = b.imRead.hasFlattenedResolutions();
+            bool littleEndian = b.imRead.isLittleEndian();
+            bool interleaved = b.imRead.isInterleaved();
             PixelFormat PixelFormat = b.Resolutions[serie].PixelFormat;
             if (tilex < 0)
                 tilex = 0;
@@ -6983,8 +6932,7 @@ namespace BioLib
                 return null;
             try
             {
-                byte[] bytesr = reader.openBytes(index, tilex, tiley, sx, sy);
-                bool interleaved = reader.isInterleaved();
+                byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
                 return new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved);
             }
             catch (Exception e)
@@ -7082,6 +7030,33 @@ namespace BioLib
                 return 32767;
             else
                 return 65535;
+        }
+        /// <summary>
+        /// The function takes a list of points in stage space and converts them to image space using
+        /// the provided stage and physical size parameters.
+        /// </summary>
+        /// <param name="p">A list of PointD objects representing points in stage space.</param>
+        /// <param name="stageSizeX">The width of the stage or canvas in pixels.</param>
+        /// <param name="stageSizeY">The stageSizeY parameter represents the size of the stage or canvas
+        /// in the Y-axis direction. It is used to calculate the Y-coordinate of each point in the p
+        /// list in image space.</param>
+        /// <param name="physicalSizeX">The physical size of the X-axis in the image space.</param>
+        /// <param name="physicalSizeY">The physical size of the Y-axis in the coordinate system of the
+        /// stage or image.</param>
+        /// <returns>
+        /// The method is returning an array of PointD objects.
+        /// </returns>
+        public static PointD[] ToImageSpace(List<PointD> p, int stageSizeX, int stageSizeY, int physicalSizeX, int physicalSizeY)
+        {
+            PointD[] ps = new PointD[p.Count];
+            for (int i = 0; i < p.Count; i++)
+            {
+                PointD pp = new PointD();
+                pp.X = ((p[i].X - stageSizeX) / physicalSizeX);
+                pp.Y = ((p[i].Y - stageSizeY) / physicalSizeY);
+                ps[i] = pp;
+            }
+            return ps;
         }
         /// If the bits per pixel is 8, then the pixel format is either 8bppIndexed, 24bppRgb, or
         /// 32bppArgb. If the bits per pixel is 16, then the pixel format is either 16bppGrayScale or
@@ -7203,7 +7178,7 @@ namespace BioLib
         {
             foreach (string file in files)
             {
-                await OpenAsync(file, OME, tab, images, 0);
+                await OpenAsync(file, OME, tab, images,0);
             }
         }
         /// It opens a file
@@ -7271,18 +7246,60 @@ namespace BioLib
         {
             b = OpenFile(b.file);
         }
+        /// <summary>
+        /// Updates the Buffers based on current pyramidal origin and resolution.
+        /// </summary>
+        public async void UpdateBuffersPyramidal()
+        {
+            for (int i = 0; i < Buffers.Count; i++)
+            {
+                Buffers[i].Dispose();
+            }
+            Buffers.Clear();
+            for (int i = 0; i < imagesPerSeries; i++)
+            {
+                if (openSlideImage != null)
+                {
+                    byte[] bts = openslideBase.GetSlice(new OpenSlideGTK.SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution));
+                    Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
+                }
+                else
+                {
+                    start:
+                    byte[] bts = await slideBase.GetSlice(new SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution,Coordinate));
+                    if(bts == null)
+                    {
+                        if(PyramidalOrigin.X == 0 && PyramidalOrigin.Y == 0)
+                        {
+                            Resolution = 1;
+                        }
+                        pyramidalOrigin = new PointD(0, 0);
+                        goto start;
+                    }
+                    Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
+                }
+            }
+            BioImage.AutoThreshold(this, true);
+            if (bitsPerPixel > 8)
+                StackThreshold(true);
+            else
+                StackThreshold(false);
+        }
         /// > Update() is a function that calls the Update() function of the parent class
         public void Update()
         {
             Update(this);
         }
-
+        
         static string openfile;
         static bool omes, tab, add;
         static int serie;
         static void OpenThread()
         {
-            OpenFile(openfile, serie, tab, add);
+            if(omes)
+                OpenOME(openfile,serie,tab,add,false,0,0,0,0);
+            else
+                OpenFile(openfile, serie, tab, add);
         }
         static string savefile, saveid;
         static bool some;
@@ -7330,15 +7347,15 @@ namespace BioLib
             else
                 SaveSeries(sts.ToArray(), savefile);
         }
-        /// <summary>
-        /// The function `SaveSeriesAsync` saves a series of `BioImage` objects to a file asynchronously.
-        /// </summary>
-        /// <param name="imgs">imgs is an array of BioImage objects.</param>
-        /// <param name="file">The "file" parameter is a string that represents the file path where the
-        /// series of BioImages will be saved.</param>
-        /// <param name="ome">The "ome" parameter is a boolean flag that indicates whether the images
-        /// should be saved in OME-TIFF format or not. If "ome" is set to true, the images will be saved
-        /// in OME-TIFF format. If "ome" is set to false, the images will be</param>
+       /// <summary>
+       /// The function `SaveSeriesAsync` saves a series of `BioImage` objects to a file asynchronously.
+       /// </summary>
+       /// <param name="imgs">imgs is an array of BioImage objects.</param>
+       /// <param name="file">The "file" parameter is a string that represents the file path where the
+       /// series of BioImages will be saved.</param>
+       /// <param name="ome">The "ome" parameter is a boolean flag that indicates whether the images
+       /// should be saved in OME-TIFF format or not. If "ome" is set to true, the images will be saved
+       /// in OME-TIFF format. If "ome" is set to false, the images will be</param>
         public static async Task SaveSeriesAsync(BioImage[] imgs, string file, bool ome)
         {
             sts.Clear();
@@ -7351,7 +7368,7 @@ namespace BioLib
             await Task.Run(SaveSeriesThread);
         }
         static Enums.ForeignTiffCompression comp;
-        static int compLev = 0;
+        static int compLev= 0;
         static BioImage[] bms;
         static void SavePyramidalThread()
         {
@@ -7790,7 +7807,7 @@ namespace BioLib
                     {
                         byte[] bts = meta.getMaskBinData(im, sc);
                         bool end = meta.getMaskBinDataBigEndian(im, sc).booleanValue();
-                        an = ROI.CreateMask(co, bts, SizeX, SizeY, new PointD(stageSizeX, stageSizeY), physicalSizeX, physicalSizeY);
+                        an = ROI.CreateMask(co, bts, SizeX, SizeY, new PointD(stageSizeX, stageSizeY),physicalSizeX,physicalSizeY);
                         an.Text = meta.getMaskText(im, sc);
                         an.id = meta.getMaskID(im, sc);
                         ome.xml.model.primitives.NonNegativeInteger nz = meta.getMaskTheZ(im, sc);
@@ -8140,11 +8157,11 @@ namespace BioLib
                     for (int t = 0; t < b.SizeT; t++)
                     {
                         int ind;
-                        if (b.Channels.Count > b.SizeC)
+                        if(b.Channels.Count > b.SizeC)
                         {
                             ind = b.Coords[z, 0, t];
                         }
-                        else
+                        else 
                             ind = b.Coords[z, c, t];
                         if (b.Buffers[ind].RGBChannelsCount == 1)
                             sts[0].AddStatistics(b.Buffers[ind].Stats[0]);
@@ -8390,4 +8407,5 @@ namespace BioLib
             return a;
         }
     }
+
 }

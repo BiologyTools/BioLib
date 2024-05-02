@@ -1344,7 +1344,7 @@ namespace BioLib
                         */
                     if (roi.PointsD.Count == 4)
                     {
-                        PointD[] pts = roi.ImagePoints(bi.Resolutions[bi.Resolution]);
+                        PointD[] pts = roi.ImagePoints(bi.Resolutions[bi.Level]);
                         putFloat(RoiDecoder.XD, (float)pts[0].X);
                         putFloat(RoiDecoder.YD, (float)pts[0].Y);
                         //putFloat(RoiDecoder.WIDTHD, p.xpoints[1] - roi.PointsD[0]);
@@ -1386,7 +1386,7 @@ namespace BioLib
 
                 if(type == line) //(roi instanceof Line) 
                 {
-                    PointD[] pts = roi.ImagePoints(bi.Resolutions[bi.Resolution]);
+                    PointD[] pts = roi.ImagePoints(bi.Resolutions[bi.Level]);
                     //Line line = (Line)roi;
                     putFloat(RoiDecoder.X1, (float)pts[0].X);
                     putFloat(RoiDecoder.Y1, (float)pts[0].Y);
