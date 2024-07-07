@@ -11,15 +11,16 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>2.4.0</AssemblyVersion>
-    <FileVersion>2.4.0</FileVersion>
-    <PackageVersion>2.4.0</PackageVersion>
+    <AssemblyVersion>2.4.1</AssemblyVersion>
+    <FileVersion>2.4.1</FileVersion>
+    <PackageVersion>2.4.1</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>.NET8 and dependency updates.</PackageReleaseNotes>
+    <PackageReleaseNotes>Bug fixes and dependency updates.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
+    <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="LICENSE" />
@@ -28,7 +29,7 @@
     <PackageReference Include="AForgeBio" Version="1.6.0" />
     <PackageReference Include="BioFormats.NET8" Version="7.3.0.1" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
-    <PackageReference Include="CS-Script" Version="4.8.14" />
+    <PackageReference Include="CS-Script" Version="4.8.16" />
     <PackageReference Include="NetVips" Version="2.4.1" />
     <PackageReference Include="NetVips.Native" Version="8.15.2" />
     <PackageReference Include="NetVips.Native.linux-arm64" Version="8.15.2" />

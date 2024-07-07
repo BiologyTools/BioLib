@@ -27,6 +27,7 @@ using NetVips;
 using System.Threading.Tasks;
 using OpenSlideGTK;
 using Bio;
+using javax.swing.text.html;
 
 namespace BioLib
 {
@@ -268,87 +269,6 @@ namespace BioLib
         {
             return "(" + x + ", " + y + ") " + format.ToString() + " " + (SizeInBytes / 1000) + " KB";
         }
-    }
-    /* Declaring a struct named RectangleD. */
-    public struct RectangleD
-    {
-        private double x;
-        private double y;
-        private double w;
-        private double h;
-        public double X { get { return x; } set { x = value; } }
-        public double Y { get { return y; } set { y = value; } }
-        public double W { get { return w; } set { w = value; } }
-        public double H { get { return h; } set { h = value; } }
-
-        public RectangleD(double X, double Y, double W, double H)
-        {
-            x = X;
-            y = Y;
-            w = W;
-            h = H;
-        }
-        public Rectangle ToRectangleInt()
-        {
-            return new Rectangle((int)X, (int)Y, (int)W, (int)H);
-        }
-        /// If any of the four corners of the rectangle are inside the polygon, then the rectangle
-        /// intersects with the polygon
-        /// 
-        /// @param RectangleD The rectangle that is being checked for intersection.
-        /// 
-        /// @return a boolean value.
-        public bool IntersectsWith(RectangleD rect1)
-        {
-            if (rect1.X + rect1.W < X || X + W < rect1.X ||
-        rect1.Y + rect1.H < Y || Y + H < rect1.Y)
-            {
-                return false;
-            }
-            return true;
-        }
-        /// > Returns true if the point is inside the rectangle
-        /// 
-        /// @param PointD 
-        /// 
-        /// @return The return value is a boolean value.
-        public bool IntersectsWith(PointD p)
-        {
-            return IntersectsWith(p.X, p.Y);
-        }
-        /// If the point is within the rectangle, return true. Otherwise, return false
-        /// 
-        /// @param x The x coordinate of the point to check
-        /// @param y The y coordinate of the point to test.
-        /// 
-        /// @return A boolean value.
-        public bool IntersectsWith(double x, double y)
-        {
-            if (X <= x && (X + W) >= x && Y <= y && (Y + H) >= y)
-                return true;
-            else
-                return false;
-        }
-        /// It converts a RectangleD to a RectangleF
-        /// 
-        /// @return A RectangleF object.
-        public RectangleF ToRectangleF()
-        {
-            return new RectangleF((float)X, (float)Y, (float)W, (float)H);
-        }
-        /// This function returns a string that contains the values of the X, Y, W, and H properties of
-        /// the object
-        /// 
-        /// @return The X, Y, W, and H values of the rectangle.
-        public override string ToString()
-        {
-            double w = Math.Round(W, 2, MidpointRounding.ToZero);
-            double h = Math.Round(H, 2, MidpointRounding.ToZero);
-            double x = Math.Round(X, 2, MidpointRounding.ToZero);
-            double y = Math.Round(Y, 2, MidpointRounding.ToZero);
-            return x + ", " + y + ", " + w + ", " + h;
-        }
-
     }
 
     /* The ROI class is a class that contains a list of points, a bounding box, and a type */
@@ -5655,7 +5575,7 @@ namespace BioLib
         /// <returns>
         /// The method is returning the number of color bands for a given pixel format.
         /// </returns>
-        private static int GetBands(PixelFormat format)
+        public static int GetBands(PixelFormat format)
         {
             switch (format)
             {
@@ -8241,7 +8161,7 @@ namespace BioLib
         /// 
         /// @return The method is returning a long value which represents the calculated focus quality
         /// of the input Bitmap image.
-        static long CalculateFocusQuality(Bitmap b)
+        public static long CalculateFocusQuality(Bitmap b)
         {
             if (b.RGBChannelsCount == 1)
             {
