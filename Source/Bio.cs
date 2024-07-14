@@ -35,6 +35,23 @@ namespace BioLib
     public static class Images
     {
         public static List<BioImage> images = new List<BioImage>();
+        public delegate void ImageAddedEventHandler(object sender, EventArgs e);
+        // Declare the event
+        public static event ImageAddedEventHandler AddedEvent;
+
+        // Method to raise the event
+        static void OnMyEvent(EventArgs e)
+        {
+            // Raise the event
+            AddedEvent.Invoke(null, e);
+        }
+
+        // Example method that triggers the event
+        public static void TriggerEvent()
+        {
+            OnMyEvent(EventArgs.Empty);
+        }
+
         /// 
         /// @param ids The id of the image you want to get.
         public static BioImage GetImage(string ids)
@@ -54,12 +71,12 @@ namespace BioLib
             if (images.Contains(im)) return;
             im.Filename = GetImageName(im.ID);
             int c = GetImageCountByName(im.ID);
-            if(c > 1)
+            if (c > 1)
                 im.ID = im.Filename + "-" + c;
             else
                 im.ID = im.Filename;
             images.Add(im);
-            
+
         }
         /// It takes a string as an argument, and returns the number of times that string appears in the
         /// list of images
@@ -71,8 +88,8 @@ namespace BioLib
         {
             string name = Path.GetFileName(s);
             string ext = Path.GetExtension(s);
-            if(name.Split('-').Length > 2)
-                name = name.Remove(name.LastIndexOf('-'),name.Length - name.LastIndexOf('-'));
+            if (name.Split('-').Length > 2)
+                name = name.Remove(name.LastIndexOf('-'), name.Length - name.LastIndexOf('-'));
             int i = 0;
             for (int im = 0; im < images.Count; im++)
             {
@@ -93,12 +110,12 @@ namespace BioLib
             if (i == 0)
                 return Path.GetFileName(s);
             string name = Path.GetFileNameWithoutExtension(s);
-            if (Path.GetFileNameWithoutExtension(name)!=name)
+            if (Path.GetFileNameWithoutExtension(name) != name)
                 name = Path.GetFileNameWithoutExtension(name);
-            string ext = s.Substring(s.IndexOf('.'),s.Length-s.IndexOf('.'));
-            if(name.Split('-').Length > 2)
+            string ext = s.Substring(s.IndexOf('.'), s.Length - s.IndexOf('.'));
+            if (name.Split('-').Length > 2)
             {
-                string sts = name.Remove(name.LastIndexOf('-'),name.Length-name.LastIndexOf('-'));
+                string sts = name.Remove(name.LastIndexOf('-'), name.Length - name.LastIndexOf('-'));
                 return sts + "-" + i + ext;
             }
             else
@@ -6206,14 +6223,16 @@ namespace BioLib
             }
             else
                 b.Resolutions.AddRange(rss);
-            
             //If we have 2 resolutions that we're not added they are the label & macro resolutions so we add them to the image.
             if(rss.Count - pyramidResolutions  == 2)
             {
                 b.Resolutions.Add(rss[rss.Count - 2]);
                 b.Resolutions.Add(rss[rss.Count - 1]);
             }
-
+            if(b.Resolutions.Count > 1 && b.Type == ImageType.pyramidal)
+            {
+                tile = true;
+            }
             b.Volume = new VolumeD(new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ), new Point3D(b.PhysicalSizeX * SizeX, b.PhysicalSizeY * SizeY, b.PhysicalSizeZ * SizeZ));
             int rc = b.meta.getROICount();
             for (int im = 0; im < rc; im++)
@@ -6549,26 +6568,28 @@ namespace BioLib
             serFiles.AddRange(reader.getSeriesUsedFiles());
 
             b.Buffers = new List<Bitmap>();
-            if(b.Type == ImageType.pyramidal)
-            try
+            if (b.Type == ImageType.pyramidal)
             {
-                string st = OpenSlideImage.DetectVendor(file);
-                if (st != null && !file.EndsWith("ome.tif") && useOpenSlide)
+                try
                 {
-                    b.openSlideImage = OpenSlideImage.Open(file);
-                    b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file);
+                    string st = OpenSlideImage.DetectVendor(file);
+                    if (st != null && !file.EndsWith("ome.tif") && useOpenSlide)
+                    {
+                        b.openSlideImage = OpenSlideImage.Open(file);
+                        b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file);
+                    }
+                    else
+                    {
+                        b.slideBase = new SlideBase(b, SlideImage.Open(b));
+                    }
                 }
-                else
+                catch (Exception e)
                 {
-                    b.slideBase = new SlideBase(b,SlideImage.Open(b));
+                    Console.WriteLine(e.Message.ToString());
+                    b.slideBase = new SlideBase(b, SlideImage.Open(b));
                 }
+                tile = true;
             }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message.ToString());
-                b.slideBase = new SlideBase(b, SlideImage.Open(b));
-            }
-            
             // read the image data bytes
             int pages = reader.getImageCount();
             bool inter = reader.isInterleaved();
@@ -7171,6 +7192,8 @@ namespace BioLib
         /// </summary>
         public async void UpdateBuffersPyramidal()
         {
+            if (Type != ImageType.pyramidal)
+                return;
             for (int i = 0; i < Buffers.Count; i++)
             {
                 Buffers[i].Dispose();
@@ -8326,6 +8349,5 @@ namespace BioLib
             }
             return a;
         }
-    }
-
+        }
 }
