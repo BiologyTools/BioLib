@@ -18,7 +18,7 @@
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>Updated BioFormats to 7.3.1.</PackageReleaseNotes>
+    <PackageReleaseNotes>Support for different stack dimension order's.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
@@ -26,7 +26,6 @@
     <Content Include="LICENSE" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="AForgeBio" Version="1.6.0" />
     <PackageReference Include="BioFormats.NET8" Version="7.3.1.1" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
     <PackageReference Include="CS-Script" Version="4.8.17" />
@@ -42,7 +41,10 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="OpenSlideGTK" Version="1.6.0" />
+    <PackageReference Include="OpenSlideGTK" Version="1.7.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared\AForgeBio\AForgeBio\AForgeBio\AForgeBio.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="banner.jpg">
