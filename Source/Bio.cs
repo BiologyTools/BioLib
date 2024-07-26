@@ -71,6 +71,7 @@ namespace BioLib
             string ext = Path.GetExtension(im.ID);
             if (ext == "")
                 im.ID += "ome.tif";
+            im.Filename = im.ID;
             if (images.Contains(im)) return;
             im.Filename = GetImageName(im.ID);
             int c = GetImageCountByName(im.ID);
@@ -2108,7 +2109,7 @@ namespace BioLib
             bi.filename = b.filename;
             bi.Resolutions = b.Resolutions;
             bi.statistics = b.statistics;
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), b, rois);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, rois);
             return bi;
         }
         /// Copy a BioImage object.
@@ -5108,7 +5109,7 @@ namespace BioLib
             st.Stop();
             b.loadTimeMS = st.ElapsedMilliseconds;
             Console.WriteLine("BioImage loaded " + b.ToString());
-            BioLib.Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), file, series, tab, addToImages, tile, tileX, tileY, tileSizeX, tileSizeY);
+            BioLib.Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, series, tab, addToImages, tile, tileX, tileY, tileSizeX, tileSizeY);
             return b;
         }
         /// > The function checks if the image is a Tiff image and if it is, it checks if the image is a
@@ -5572,7 +5573,7 @@ namespace BioLib
                 }
             }
             writer.close();
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), files, f, planes);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, files, f, planes);
         }
         /// <summary>
         /// The function "GetBands" returns the number of color bands for a given pixel format in the
@@ -6694,7 +6695,7 @@ namespace BioLib
             if (addToImages)
                 Images.AddImage(b, tab);
             b.Loading = false;
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),b, file, serie, tab, addToImages, tile, tilex, tiley, tileSizeX, tileSizeY, true);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),false, file, serie, tab, addToImages, tile, tilex, tiley, tileSizeX, tileSizeY, true);
             return b;
         }
         
@@ -6887,7 +6888,7 @@ namespace BioLib
                 new Point3D(w * PhysicalSizeX, w * PhysicalSizeY, SizeZ * PhysicalSizeZ));
             bm.Resolutions.Add(new Resolution(w, w, bm.Buffers[0].PixelFormat, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ, StageSizeX, StageSizeY, StageSizeZ));
             bm.Resolutions.RemoveAt(0);
-            Recorder.AddLine("BioLib.Images.GetImage(\"" + id + "\").GetRegion("+ x + "," + y + "," + w + "," + h + ");");
+            Recorder.AddLine("BioLib.Images.GetImage(\"" + bm.ID + "\").GetRegion("+ x + "," + y + "," + w + "," + h + ");",false);
             return bm;
         }
         /// This function sets the minimum and maximum values of the image to the minimum and maximum
@@ -6922,7 +6923,7 @@ namespace BioLib
                 }
                 bitsPerPixel = 8;
             }
-            Recorder.AddLine("BioLib.Images.GetImage(\"" + id + "\").StackThreshold(" + bit16.ToString().ToLower() + ");");
+            Recorder.AddLine("BioLib.Images.GetImage(\"" + id + "\").StackThreshold(" + bit16.ToString().ToLower() + ");", true);
         }
         /// > If the number is less than or equal to 255, then it's 8 bits. If it's less than or equal
         /// to 512, then it's 9 bits. If it's less than or equal to 1023, then it's 10 bits. If it's
@@ -7187,7 +7188,7 @@ namespace BioLib
             }
             b.UpdateCoords(z + 1, c + 1, t + 1);
             b.Volume = new VolumeD(bs[0].Volume.Location, new Point3D(bs[0].SizeX * bs[0].PhysicalSizeX, bs[0].SizeY * bs[0].PhysicalSizeY, (z + 1) * bs[0].PhysicalSizeZ));
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), files, tab);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, files, tab);
             return b;
         }
         /// The function takes a BioImage object, opens the file, and returns a updated BioImage object
@@ -7264,7 +7265,7 @@ namespace BioLib
                     Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
                 }
             }
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), x, y,w,h,resolution);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), true, x, y,w,h,resolution);
             return Buffers.ToArray();
         }
         /// > Update() is a function that calls the Update() function of the parent class
@@ -7439,7 +7440,7 @@ namespace BioLib
                 return null;
             Tiff image = Tiff.Open(file, "r");
             FieldValue[] f = image.GetField(TiffTag.IMAGEDESCRIPTION);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), file);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file);
             return f[0].ToString();
         }
         /// It reads the OME-XML file and converts the ROIs to a list of ROI objects
@@ -7824,7 +7825,7 @@ namespace BioLib
             }
 
             imageReader.close();
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), file, series);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, series);
             return Annotations;
         }
         /// It takes a list of ROI objects and returns a string of all the ROI objects in the list
@@ -8036,7 +8037,7 @@ namespace BioLib
             string con = columns;
             con += ROIsToString(Annotations);
             File.WriteAllText(filename, con);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), filename, Annotations);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false,filename, Annotations);
         }
         /// It reads the CSV file and converts each line into a ROI object
         /// 
@@ -8054,7 +8055,7 @@ namespace BioLib
             {
                 list.Add(StringToROI(sts[i]));
             }
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), filename);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, filename);
             return list;
         }
         /// ExportROIFolder(path, filename)
@@ -8075,7 +8076,7 @@ namespace BioLib
                 ExportROIsCSV(path + "//" + ff + "-" + i.ToString() + ".csv", annotations);
                 i++;
             }
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), path, filename);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, path, filename);
         }
 
         private static BioImage bstats = null;
@@ -8176,7 +8177,7 @@ namespace BioLib
             }
             statistics.MeanHistogram();
             b.statistics = statistics;
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), b, updateImageStats);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), true, b, updateImageStats);
         }
         /// It takes the current image, and finds the best threshold value for it
         public static void AutoThreshold()
@@ -8220,7 +8221,7 @@ namespace BioLib
                 }
             }
 
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),im, Channel, Time);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),false, im, Channel, Time);
             return fr;
         }
         /// The function calculates the focus quality of a given bitmap image.
@@ -8257,7 +8258,7 @@ namespace BioLib
                         sum += p;
                         sumOfSquares += p * p;
                     }
-                Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),b);
+                Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),true,b);
                 return sumOfSquares * b.SizeX * b.SizeY - sum * sum;
             }
         }

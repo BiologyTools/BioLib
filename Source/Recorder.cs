@@ -10,77 +10,81 @@ namespace BioLib
 {
     public static class Recorder
     {
+        public static bool Internal = false;
         static List<string> rec = new List<string>();
         public static void Clear()
         {
             rec.Clear();
         }
-        public static void Record(MethodInfo inf, params object[] args)
+        public static void Record(MethodInfo inf, bool isInternal, params object[] args)
         {
-            string code = inf.DeclaringType.FullName + "." + inf.Name + "(";
-            for (int i = 0; i < args.Length; i++)
+            if (!isInternal || Internal)
             {
-                Type t = args[i].GetType();
-                if(args[i] is Array)
+                string code = inf.DeclaringType.FullName + "." + inf.Name + "(";
+                for (int i = 0; i < args.Length; i++)
                 {
-                    Array ar = (Array)args[i];
-                    code += "";
-                    for (int a = 0; a < ar.Length; a++)
+                    Type t = args[i].GetType();
+                    if (args[i] is Array)
                     {
-                        if (t == typeof(string))
+                        Array ar = (Array)args[i];
+                        code += "";
+                        for (int a = 0; a < ar.Length; a++)
                         {
-                            if (i == 0)
-                                code += "new " + t.Name + "[]{\"" + ar.GetValue(a).ToString() + "\"";
+                            if (t == typeof(string))
+                            {
+                                if (i == 0)
+                                    code += "new " + t.Name + "[]{\"" + ar.GetValue(a).ToString() + "\"";
+                                else
+                                    code += ",\"" + ar.GetValue(a).ToString() + "\"";
+                                if (i == ar.Length - 1)
+                                    code += ";";
+                            }
                             else
-                                code += ",\"" + ar.GetValue(a).ToString() + "\"";
-                            if (i == ar.Length - 1)
-                                code += ";";
-                        }
-                        else
-                        if (t == typeof(bool))
-                        {
-                            if (i == 0)
-                                code += "new " + "bool" + "[]{" + ar.GetValue(a).ToString().ToLower();
+                            if (t == typeof(bool))
+                            {
+                                if (i == 0)
+                                    code += "new " + "bool" + "[]{" + ar.GetValue(a).ToString().ToLower();
+                                else
+                                    code += ",\"" + ar.GetValue(a).ToString() + "\"";
+                                if (i == ar.Length - 1)
+                                    code += "}";
+                            }
                             else
-                                code += ",\"" + ar.GetValue(a).ToString() + "\"";
-                            if (i == ar.Length - 1)
-                                code += "}";
-                        }
-                        else
-                        {
-                            if (i == 0)
-                                code += "new " + t.Name + "[]{\"" + ar.GetValue(a).ToString() + "\"";
-                            else
-                                code += "," + ar.GetValue(a).ToString();
-                            if (i == ar.Length - 1)
-                                code += "}";
+                            {
+                                if (i == 0)
+                                    code += "new " + t.Name + "[]{\"" + ar.GetValue(a).ToString() + "\"";
+                                else
+                                    code += "," + ar.GetValue(a).ToString();
+                                if (i == ar.Length - 1)
+                                    code += "}";
+                            }
                         }
                     }
-                }
-                else
-                if(t == typeof(string))
-                {
-                    if (i == 0)
-                        code += "\"" + args[i].ToString() + "\"";
                     else
-                        code += ",\"" + args[i].ToString() + "\"";
-                }
-                else
-                if (t == typeof(bool))
-                {
-                    if (i == 0)
-                        code += args[i].ToString().ToLower();
+                    if (t == typeof(string))
+                    {
+                        if (i == 0)
+                            code += "\"" + args[i].ToString() + "\"";
+                        else
+                            code += ",\"" + args[i].ToString() + "\"";
+                    }
                     else
-                        code += "," + args[i].ToString().ToLower();
+                    if (t == typeof(bool))
+                    {
+                        if (i == 0)
+                            code += args[i].ToString().ToLower();
+                        else
+                            code += "," + args[i].ToString().ToLower();
+                    }
+                    else
+                    if (i == 0)
+                        code += args[i];
+                    else
+                        code += "," + args[i];
                 }
-                else
-                if (i == 0)
-                    code += args[i];
-                else
-                    code += "," + args[i];
+                code += ");";
+                rec.Add(code);
             }
-            code += ");";
-            rec.Add(code);
         }
         public static string[] Lines
         {
@@ -89,9 +93,10 @@ namespace BioLib
                 return rec.ToArray();
             }
         }
-        public static void AddLine(string s)
+        public static void AddLine(string s, bool isInternal)
         {
-            rec.Add(s);
+            if (!isInternal || Internal)
+                rec.Add(s);
         }
         public static MethodInfo GetCurrentMethodInfo()
         {
