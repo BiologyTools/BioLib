@@ -226,6 +226,11 @@ namespace BioLib
             return BioImage.GetTile(BioImage, BioImage.Coordinate, level, (int)x, (int)y, (int)width, (int)height).Bytes;
         }
 
+        public unsafe byte[] ReadRegion(int level, long x, long y, long width, long height, ZCT coord)
+        {
+            return BioImage.GetTile(BioImage, coord, level, (int)x, (int)y, (int)width, (int)height).Bytes;
+        }
+
         /// <summary>
         /// Copy pre-multiplied BGRA data from a whole slide image.
         /// </summary>

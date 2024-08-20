@@ -7,8 +7,8 @@ using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using System.IO;
 using NetVips;
-using System.Drawing.Imaging;
 using AForge;
+using System.Runtime.InteropServices;
 
 namespace BioLib
 {

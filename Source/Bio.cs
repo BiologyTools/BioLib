@@ -27,7 +27,6 @@ using NetVips;
 using System.Threading.Tasks;
 using OpenSlideGTK;
 using System.Reflection;
-using ch.qos.logback.core.util;
 
 namespace BioLib
 {
@@ -2663,13 +2662,7 @@ namespace BioLib
                 To48Bit();
                 To8Bit();
             }
-            //We wait for threshold image statistics calculation
-            do
-            {
-                Thread.Sleep(100);
-            } while (Buffers[Buffers.Count - 1].Stats == null);
-            Statistics.ClearCalcBuffer();
-            AutoThreshold(this, false);
+            AutoThreshold(this, true);
             StackThreshold(false);
             bitsPerPixel = 8;
         }
@@ -2730,13 +2723,8 @@ namespace BioLib
                 To48Bit();
                 To16Bit();
             }
-            //We wait for threshold image statistics calculation
-            do
-            {
-                Thread.Sleep(100);
-            } while (Buffers[Buffers.Count - 1].Stats == null);
             Statistics.ClearCalcBuffer();
-            AutoThreshold(this, false);
+            AutoThreshold(this, true);
             StackThreshold(true);
         }
         /// Converts the image to 24 bit.
@@ -2863,7 +2851,6 @@ namespace BioLib
                     {
                         Bitmap bs = new Bitmap(ID, SizeX, SizeY, Buffers[i].PixelFormat, Buffers[i].Bytes, new ZCT(Buffers[i].Coordinate.Z, 0, Buffers[i].Coordinate.T), i, Buffers[i].Plane);
                         Bitmap bbs = Bitmap.RGB16To48(bs);
-                        Statistics.CalcStatistics(bbs);
                         bs.Dispose();
                         bs = null;
                         bfs.Add(bbs);
@@ -2883,7 +2870,6 @@ namespace BioLib
                                 bs[b].Dispose();
                             bs[b] = null;
                         }
-                        Statistics.CalcStatistics(bbs);
                         bfs.Add(bbs);
                     }
                 GC.Collect();
@@ -2903,7 +2889,6 @@ namespace BioLib
                 for (int i = 0; i < Buffers.Count; i++)
                 {
                     Buffers[i] = AForge.Imaging.Image.Convert8bppTo16bpp(Buffers[i]);
-                    Statistics.CalcStatistics(Buffers[i]);
                 }
                 /*
                 for (int c = 0; c < Channels.Count; c++)
@@ -2929,7 +2914,6 @@ namespace BioLib
                     bf[2] = Buffers[i + 2];
                     Bitmap inf = Bitmap.RGB16To48(bf);
                     buffers.Add(inf);
-                    Statistics.CalcStatistics(inf);
                     for (int b = 0; b < 3; b++)
                     {
                         bf[b].Dispose();
@@ -2939,14 +2923,8 @@ namespace BioLib
                 Buffers = buffers;
                 UpdateCoords(SizeZ, 1, SizeT);
             }
-            //We wait for threshold image statistics calculation
-            do
-            {
-                Thread.Sleep(50);
-            } while (Buffers[Buffers.Count - 1].Stats == null);
-            Statistics.ClearCalcBuffer();
             bitsPerPixel = 16;
-            AutoThreshold(this, false);
+            AutoThreshold(this, true);
             StackThreshold(true);
         }
         public int? MacroResolution { get;set; }
@@ -3019,7 +2997,6 @@ namespace BioLib
                 ZCT co = Buffers[i].Coordinate;
                 UnmanagedImage b = GetFiltered(i, rf, gf, bf);
                 Bitmap inf = new Bitmap(bm.ID, b, co, i);
-                Statistics.CalcStatistics(inf);
                 bm.SetFrameIndex(co.Z, co.C, co.T,i);
                 bm.Buffers.Add(inf);
             }
@@ -3034,13 +3011,7 @@ namespace BioLib
                         item.range[i].Max = 255;
                 }
             }
-            //We wait for threshold image statistics calculation
-            do
-            {
-                Thread.Sleep(50);
-            } while (Buffers[Buffers.Count - 1].Stats == null);
-            AutoThreshold(bm, false);
-            Statistics.ClearCalcBuffer();
+            AutoThreshold(bm, true);
             Images.AddImage(bm, true);
         }
         /// It takes a list of images and assigns them to a 3D array of coordinates
@@ -6214,7 +6185,7 @@ namespace BioLib
             else
                 b.Resolutions.AddRange(rss);
             //If we have 2 resolutions that we're not added they are the label & macro resolutions so we add them to the image.
-            if(rss.Count - pyramidResolutions  == 2)
+            if(rss.Count != pyramidResolutions)
             {
                 b.Resolutions.Add(rss[rss.Count - 2]);
                 b.Resolutions.Add(rss[rss.Count - 1]);
@@ -6720,6 +6691,12 @@ namespace BioLib
         public Tiff tifRead;
         public OpenSlideImage openSlideImage;
         static Bitmap bm;
+        public enum BackEnd
+        {
+            OpenSlide,
+            Bioformats,
+            LibVips,
+        }
         /// It reads a tile from a file, and returns a bitmap
         /// 
         /// @param BioImage This is a class that contains the image file name, the image reader, and the
@@ -6732,77 +6709,80 @@ namespace BioLib
         /// @param tileSizeY the height of the tile
         /// 
         /// @return A Bitmap object.
-        public static Bitmap GetTile(BioImage b, ZCT coord, int serie, int tilex, int tiley, int tileSizeX, int tileSizeY)
+        public static Bitmap GetTile(BioImage b, ZCT coord, int serie, int tilex, int tiley, int tileSizeX, int tileSizeY, BackEnd backend = BackEnd.Bioformats)
         {
-            if ((b.file.EndsWith("ome.tif") && vips) || (b.file.EndsWith(".tif") && vips))
+            if (backend == BackEnd.LibVips || b.file.EndsWith(".tif") && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 //We can get a tile faster with libvips rather than bioformats.
                 return ExtractRegionFromTiledTiff(b, tilex, tiley, tileSizeX, tileSizeY, serie);
             }
-            //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
-            if (b.openSlideImage != null && !b.file.EndsWith("ome.tif"))
+            else
+            if (backend == BackEnd.OpenSlide || b.openslideBase != null)
             {
                 return new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
             }
-
-            string curfile = b.imRead.getCurrentFile();
-            if (curfile == null)
-            {
-                b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
-                b.imRead.close();
-                b.imRead.setMetadataStore(b.meta);
-                Console.WriteLine(b.file);
-                b.imRead.setId(b.file);
-            }
             else
             {
-                string fi = b.file.Replace("\\", "/");
-                string cf = curfile.Replace("\\", "/");
-                if (cf != fi)
+                string curfile = b.imRead.getCurrentFile();
+                if (curfile == null)
                 {
-                    b.imRead.close();
                     b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
+                    b.imRead.close();
                     b.imRead.setMetadataStore(b.meta);
+                    Console.WriteLine(b.file);
                     b.imRead.setId(b.file);
                 }
-            }
-            if (b.imRead.getSeries() != serie)
-                b.imRead.setSeries(serie);
-            int SizeX = b.imRead.getSizeX();
-            int SizeY = b.imRead.getSizeY();
-            bool flat = b.imRead.hasFlattenedResolutions();
-            int p = b.GetFrameIndex(coord.Z, coord.C, coord.T);
-            bool littleEndian = b.imRead.isLittleEndian();
-            PixelFormat PixelFormat = b.Resolutions[serie].PixelFormat;
-            bool interleaved = b.imRead.isInterleaved();
-            if (tilex < 0)
-                tilex = 0;
-            if (tiley < 0)
-                tiley = 0;
-            if (tilex >= SizeX)
-                tilex = SizeX;
-            if (tiley >= SizeY)
-                tiley = SizeY;
-            int sx = tileSizeX;
-            if (tilex + tileSizeX > SizeX)
-                sx -= (tilex + tileSizeX) - (SizeX);
-            int sy = tileSizeY;
-            if (tiley + tileSizeY > SizeY)
-                sy -= (tiley + tileSizeY) - (SizeY);
-            //For some reason calling openBytes with 1x1px area causes an exception. 
-            if (sx <= 1)
-                return null;
-            if (sy <= 1)
-                return null;
-            try
-            {
-                byte[] bytesr = b.imRead.openBytes(b.GetFrameIndex(coord.Z, coord.C, coord.T), tilex, tiley, sx, sy);
-                return new Bitmap(b.file, sx, sy, PixelFormat, bytesr, coord, p, null, littleEndian, interleaved);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-                return null;
+                else
+                {
+                    string fi = b.file.Replace("\\", "/");
+                    string cf = curfile.Replace("\\", "/");
+                    if (cf != fi)
+                    {
+                        b.imRead.close();
+                        b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
+                        b.imRead.setMetadataStore(b.meta);
+                        b.imRead.setId(b.file);
+                    }
+                }
+                if (b.imRead.getSeries() != serie)
+                    b.imRead.setSeries(serie);
+                int SizeX = b.imRead.getSizeX();
+                int SizeY = b.imRead.getSizeY();
+                bool flat = b.imRead.hasFlattenedResolutions();
+                int p = b.GetFrameIndex(coord.Z, coord.C, coord.T);
+                bool littleEndian = b.imRead.isLittleEndian();
+                PixelFormat PixelFormat = b.Resolutions[serie].PixelFormat;
+                bool interleaved = b.imRead.isInterleaved();
+                if (tilex < 0)
+                    tilex = 0;
+                if (tiley < 0)
+                    tiley = 0;
+                if (tilex >= SizeX)
+                    tilex = SizeX;
+                if (tiley >= SizeY)
+                    tiley = SizeY;
+                int sx = tileSizeX;
+                if (tilex + tileSizeX > SizeX)
+                    sx -= (tilex + tileSizeX) - (SizeX);
+                int sy = tileSizeY;
+                if (tiley + tileSizeY > SizeY)
+                    sy -= (tiley + tileSizeY) - (SizeY);
+                //For some reason calling openBytes with 1x1px area causes an exception. 
+                if (sx <= 1)
+                    return null;
+                if (sy <= 1)
+                    return null;
+                try
+                {
+                    byte[] bytesr = b.imRead.openBytes(b.GetFrameIndex(coord.Z, coord.C, coord.T), tilex, tiley, sx, sy);
+                    return new Bitmap(b.file, sx, sy, PixelFormat, bytesr, coord, p, null, littleEndian, interleaved);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.Message);
+                    return null;
+                }
+
             }
         }
         public static Bitmap GetTile(BioImage b, int index, int serie, int tilex, int tiley, int tileSizeX, int tileSizeY)
@@ -6885,8 +6865,8 @@ namespace BioLib
             bm.ID = id + ".ome.tif";
             bm.Filename = id + ".ome.tif";
             bm.Volume = new VolumeD(new Point3D(StageSizeX + (PhysicalSizeX * PyramidalOrigin.X), StageSizeY + (PhysicalSizeY * PyramidalOrigin.Y), StageSizeZ),
-                new Point3D(w * PhysicalSizeX, w * PhysicalSizeY, SizeZ * PhysicalSizeZ));
-            bm.Resolutions.Add(new Resolution(w, w, bm.Buffers[0].PixelFormat, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ, StageSizeX, StageSizeY, StageSizeZ));
+                new Point3D(w * PhysicalSizeX, h * PhysicalSizeY, SizeZ * PhysicalSizeZ));
+            bm.Resolutions.Add(new Resolution(w, h, bm.Buffers[0].PixelFormat, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ, StageSizeX, StageSizeY, StageSizeZ));
             bm.Resolutions.RemoveAt(0);
             Recorder.AddLine("BioLib.Images.GetImage(\"" + bm.ID + "\").GetRegion("+ x + "," + y + "," + w + "," + h + ");",false);
             return bm;
@@ -7203,41 +7183,71 @@ namespace BioLib
         /// </summary>
         public async void UpdateBuffersPyramidal()
         {
-            if (Type != ImageType.pyramidal)
-                return;
-            for (int i = 0; i < Buffers.Count; i++)
+            try
             {
-                Buffers[i].Dispose();
-            }
-            Buffers.Clear();
-            for (int i = 0; i < imagesPerSeries; i++)
-            {
-                if (openSlideImage != null)
+                if (Type != ImageType.pyramidal)
+                    return;
+                for (int i = 0; i < Buffers.Count; i++)
                 {
-                    byte[] bts = openslideBase.GetSlice(new OpenSlideGTK.SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution));
-                    Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
+                    Buffers[i].Dispose();
                 }
-                else
+                Buffers.Clear();
+                for (int i = 0; i < imagesPerSeries; i++)
                 {
-                    start:
-                    byte[] bts = await slideBase.GetSlice(new SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution,Coordinate));
-                    if(bts == null)
+                    if (openSlideImage != null)
                     {
-                        if(PyramidalOrigin.X == 0 && PyramidalOrigin.Y == 0)
-                        {
-                            Resolution = 1;
-                        }
-                        pyramidalOrigin = new PointD(0, 0);
-                        goto start;
+                        byte[] bts = openslideBase.GetSlice(new OpenSlideGTK.SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution));
+                        Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
                     }
-                    Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
+                    else
+                    {
+                        start:
+                        byte[] bts = slideBase.GetSliceSync(new BioLib.SliceInfo(Math.Round(PyramidalOrigin.X), Math.Round(PyramidalOrigin.Y), PyramidalSize.Width, PyramidalSize.Height, resolution,Coordinate));
+                        if(bts == null)
+                        {
+                            if(PyramidalOrigin.X == 0 && PyramidalOrigin.Y == 0)
+                            {
+                                Resolution = 1;
+                            }
+                            pyramidalOrigin = new PointD(0, 0);
+                            goto start;
+                        }
+                        else
+                        {
+                            if (bts.Length != (int)Math.Round(SlideBase.destExtent.Height) * (int)Math.Round(SlideBase.destExtent.Width) * 3)
+                            {
+                                goto start;
+                            }
+                        }
+                        try
+                        {
+                            if (Resolutions[Level].PixelFormat == PixelFormat.Format16bppGrayScale)
+                                Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format16bppGrayScale, bts, new ZCT(), ""));
+                            else if(Resolutions[Level].PixelFormat == PixelFormat.Format48bppRgb)
+                            {
+                                Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format48bppRgb, bts, new ZCT(), ""));
+                            }
+                            else if(Resolutions[Level].PixelFormat == PixelFormat.Format24bppRgb)
+                                Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
+                            else
+                                Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format32bppArgb, bts, new ZCT(), ""));
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine(e.Message);
+                        }
+                    }
                 }
+                BioImage.AutoThreshold(this, true);
+                if (bitsPerPixel > 8)
+                    StackThreshold(true);
+                else
+                    StackThreshold(false);
             }
-            BioImage.AutoThreshold(this, true);
-            if (bitsPerPixel > 8)
-                StackThreshold(true);
-            else
-                StackThreshold(false);
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
         }
         public Bitmap[] GetSlice(int x, int y, int w, int h, double resolution)
         {
@@ -7252,7 +7262,7 @@ namespace BioLib
                 else
                 {
                 start:
-                    byte[] bts = slideBase.GetSlice(new SliceInfo(x, y, w, h, resolution, Coordinate)).Result;
+                    byte[] bts = slideBase.GetSliceSync(new SliceInfo(x, y, w, h, resolution, Coordinate));
                     if (bts == null)
                     {
                         if (x == 0 && y == 0)
