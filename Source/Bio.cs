@@ -7185,6 +7185,7 @@ namespace BioLib
         {
             try
             {
+                PixelFormat pf = Buffers[0].PixelFormat;
                 if (Type != ImageType.pyramidal)
                     return;
                 for (int i = 0; i < Buffers.Count; i++)
@@ -7202,7 +7203,7 @@ namespace BioLib
                     else
                     {
                         start:
-                        byte[] bts = slideBase.GetSliceSync(new BioLib.SliceInfo(Math.Round(PyramidalOrigin.X), Math.Round(PyramidalOrigin.Y), PyramidalSize.Width, PyramidalSize.Height, resolution,Coordinate));
+                        byte[] bts = slideBase.GetSliceSync(new BioLib.SliceInfo(Math.Round(PyramidalOrigin.X), Math.Round(PyramidalOrigin.Y), PyramidalSize.Width, PyramidalSize.Height, resolution,Coordinate),pf);
                         if(bts == null)
                         {
                             if(PyramidalOrigin.X == 0 && PyramidalOrigin.Y == 0)
@@ -7212,29 +7213,15 @@ namespace BioLib
                             pyramidalOrigin = new PointD(0, 0);
                             goto start;
                         }
-                        else
-                        {
-                            if (bts.Length != (int)Math.Round(SlideBase.destExtent.Height) * (int)Math.Round(SlideBase.destExtent.Width) * 3)
-                            {
-                                goto start;
-                            }
-                        }
                         try
                         {
-                            if (Resolutions[Level].PixelFormat == PixelFormat.Format16bppGrayScale)
-                                Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format16bppGrayScale, bts, new ZCT(), ""));
-                            else if(Resolutions[Level].PixelFormat == PixelFormat.Format48bppRgb)
-                            {
-                                Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format48bppRgb, bts, new ZCT(), ""));
-                            }
-                            else if(Resolutions[Level].PixelFormat == PixelFormat.Format24bppRgb)
-                                Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
-                            else
-                                Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format32bppArgb, bts, new ZCT(), ""));
+                           Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), "");
+                           Buffers.Add(bmp.ImageRGB);
                         }
                         catch (Exception e)
                         {
                             Console.WriteLine(e.Message);
+
                         }
                     }
                 }
@@ -7249,7 +7236,7 @@ namespace BioLib
                 Console.WriteLine(e.Message);
             }
         }
-        public Bitmap[] GetSlice(int x, int y, int w, int h, double resolution)
+        public Bitmap[] GetSlice(int x, int y, int w, int h, double resolution, PixelFormat pixelFormat)
         {
             List<Bitmap> Buffers = new List<Bitmap>();
             for (int i = 0; i < imagesPerSeries; i++)
@@ -7262,7 +7249,7 @@ namespace BioLib
                 else
                 {
                 start:
-                    byte[] bts = slideBase.GetSliceSync(new SliceInfo(x, y, w, h, resolution, Coordinate));
+                    byte[] bts = slideBase.GetSliceSync(new SliceInfo(x, y, w, h, resolution, Coordinate),PixelFormat.Format24bppRgb);
                     if (bts == null)
                     {
                         if (x == 0 && y == 0)
@@ -7272,7 +7259,7 @@ namespace BioLib
                         pyramidalOrigin = new PointD(0, 0);
                         goto start;
                     }
-                    Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
+                    Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), ""));
                 }
             }
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), true, x, y,w,h,resolution);

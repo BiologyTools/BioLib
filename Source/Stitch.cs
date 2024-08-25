@@ -46,6 +46,25 @@ namespace BioLib
             }
             return false;
         }
+        public static byte[] ConvertBGRToRGB(byte[] bgrData)
+        {
+            // Ensure the array length is a multiple of 3 (since each pixel is 3 bytes)
+            if (bgrData.Length % 3 != 0)
+            {
+                throw new ArgumentException("The length of the byte array must be a multiple of 3.");
+            }
+
+            byte[] rgbData = new byte[bgrData.Length];
+
+            for (int i = 0; i < bgrData.Length; i += 3)
+            {
+                rgbData[i] = bgrData[i + 2];     // R
+                rgbData[i + 1] = bgrData[i + 1]; // G
+                rgbData[i + 2] = bgrData[i];     // B
+            }
+
+            return rgbData;
+        }
         public static void AddTile(Tuple<Extent, byte[]> tile)
         {
             foreach (var t in gpuTiles)
@@ -53,7 +72,7 @@ namespace BioLib
                 if (t.Item1 == tile.Item1)
                     return;
             }
-            byte[] tileData = tile.Item2;
+            byte[] tileData = ConvertBGRToRGB(tile.Item2);
             if(gpuTiles.Count > maxTiles)
             {
                 var ti = gpuTiles.First();

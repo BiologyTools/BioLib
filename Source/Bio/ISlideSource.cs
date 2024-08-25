@@ -298,7 +298,59 @@ namespace BioLib
             }
             return null;
         }
-        public byte[] GetSliceSync(SliceInfo sliceInfo)
+        public static byte[] Convert16BitToRGB(byte[] input)
+        {
+            if (input.Length % 2 != 0)
+                throw new ArgumentException("Input array length must be even.");
+
+            int pixelCount = input.Length / 2;
+            byte[] output = new byte[pixelCount * 3]; // RGB byte array
+
+            for (int i = 0; i < pixelCount; i++)
+            {
+                // Combine two bytes into a single 16-bit value
+                ushort grayValue = (ushort)((input[i * 2 + 1] << 8) | input[i * 2]);
+
+                // Normalize the 16-bit grayscale value to an 8-bit range
+                byte normalizedValue = (byte)(grayValue >> 8); // Scale down to 0-255
+
+                // Set RGB components to the grayscale value
+                output[i * 3] = normalizedValue;     // Red
+                output[i * 3 + 1] = normalizedValue; // Green
+                output[i * 3 + 2] = normalizedValue; // Blue
+            }
+
+            return output;
+        }
+        public byte[] Convert48BitToRGB(byte[] input)
+        {
+            if (input.Length % 6 != 0)
+                throw new ArgumentException("Input array length must be a multiple of 6.");
+
+            int pixelCount = input.Length / 6;
+            byte[] output = new byte[pixelCount * 3]; // RGB byte array
+
+            for (int i = 0; i < pixelCount; i++)
+            {
+                // Extract 16-bit values for each color channel
+                ushort rHigh = (ushort)(input[i * 6] << 8 | input[i * 6 + 1]);
+                ushort gHigh = (ushort)(input[i * 6 + 2] << 8 | input[i * 6 + 3]);
+                ushort bHigh = (ushort)(input[i * 6 + 4] << 8 | input[i * 6 + 5]);
+
+                // Normalize to 8-bit values (0-255)
+                byte r = (byte)(rHigh >> 8); // Scale down to 0-255
+                byte g = (byte)(gHigh >> 8); // Scale down to 0-255
+                byte b = (byte)(bHigh >> 8); // Scale down to 0-255
+
+                // Assign to output array
+                output[i * 3] = r;     // Red
+                output[i * 3 + 1] = g; // Green
+                output[i * 3 + 2] = b; // Blue
+            }
+
+            return output;
+        }
+        public byte[] GetSliceSync(SliceInfo sliceInfo, PixelFormat format)
         {
             A:
             if (cache == null)
@@ -313,6 +365,15 @@ namespace BioLib
                 byte[] c = cache.GetTileSync(tf,curUnitsPerPixel);
                 if (c != null)
                 {
+                    if (format == PixelFormat.Format16bppGrayScale)
+                    {
+                        c = Convert16BitToRGB(c);
+                    }
+                    else
+                    if(format == PixelFormat.Format48bppRgb)
+                    {
+                        c = Convert48BitToRGB(c);
+                    }
                     if (useGPU)
                     {
                         try
@@ -324,7 +385,6 @@ namespace BioLib
                             useGPU = false;
                             goto A;
                         }
-                        
                     }
                     else
                         tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
