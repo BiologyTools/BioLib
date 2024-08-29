@@ -6185,7 +6185,7 @@ namespace BioLib
             else
                 b.Resolutions.AddRange(rss);
             //If we have 2 resolutions that we're not added they are the label & macro resolutions so we add them to the image.
-            if(rss.Count != pyramidResolutions)
+            if(rss.Count != pyramidResolutions && rss.Count > 1)
             {
                 b.Resolutions.Add(rss[rss.Count - 2]);
                 b.Resolutions.Add(rss[rss.Count - 1]);
@@ -6537,7 +6537,7 @@ namespace BioLib
                     if (st != null && !file.EndsWith("ome.tif") && useOpenSlide)
                     {
                         b.openSlideImage = OpenSlideImage.Open(file);
-                        b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file);
+                        b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file, true);
                     }
                     else
                     {
@@ -6579,7 +6579,7 @@ namespace BioLib
                         if (st != null && !file.EndsWith("ome.tif") && useOpenSlide)
                         {
                             b.openSlideImage = OpenSlideImage.Open(file);
-                            b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file);
+                            b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file, true);
                         }
                         else
                         {
@@ -7181,7 +7181,7 @@ namespace BioLib
         /// <summary>
         /// Updates the Buffers based on current pyramidal origin and resolution.
         /// </summary>
-        public async void UpdateBuffersPyramidal()
+        public async Task UpdateBuffersPyramidal()
         {
             try
             {
@@ -7198,12 +7198,13 @@ namespace BioLib
                     if (openSlideImage != null)
                     {
                         byte[] bts = openslideBase.GetSlice(new OpenSlideGTK.SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution));
+                        int level = this.LevelFromResolution(resolution);
                         Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
                     }
                     else
                     {
                         start:
-                        byte[] bts = slideBase.GetSliceSync(new BioLib.SliceInfo(Math.Round(PyramidalOrigin.X), Math.Round(PyramidalOrigin.Y), PyramidalSize.Width, PyramidalSize.Height, resolution,Coordinate),pf);
+                        byte[] bts = await slideBase.GetSlice(new BioLib.SliceInfo(Math.Round(PyramidalOrigin.X), Math.Round(PyramidalOrigin.Y), PyramidalSize.Width, PyramidalSize.Height, resolution,Coordinate));
                         if(bts == null)
                         {
                             if(PyramidalOrigin.X == 0 && PyramidalOrigin.Y == 0)
@@ -7236,7 +7237,7 @@ namespace BioLib
                 Console.WriteLine(e.Message);
             }
         }
-        public Bitmap[] GetSlice(int x, int y, int w, int h, double resolution, PixelFormat pixelFormat)
+        public async Task<Bitmap[]> GetSlice(int x, int y, int w, int h, double resolution)
         {
             List<Bitmap> Buffers = new List<Bitmap>();
             for (int i = 0; i < imagesPerSeries; i++)
@@ -7249,7 +7250,7 @@ namespace BioLib
                 else
                 {
                 start:
-                    byte[] bts = slideBase.GetSliceSync(new SliceInfo(x, y, w, h, resolution, Coordinate),PixelFormat.Format24bppRgb);
+                    byte[] bts = await slideBase.GetSlice(new SliceInfo(x, y, w, h, resolution, Coordinate));
                     if (bts == null)
                     {
                         if (x == 0 && y == 0)

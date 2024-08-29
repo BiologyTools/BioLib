@@ -213,9 +213,23 @@ namespace BioLib
         public static double curUnitsPerPixel = 1;
         public static bool UseVips = true;
         public TileCache cache = null;
+        public Stitch stitch = new Stitch();
         public static bool useGPU = true;
+        private PixelFormat pixelFormat;
+        public PixelFormat PixelFormat
+        {
+            get
+            {
+                return pixelFormat;
+            }
+            set
+            {
+                pixelFormat = value;
+            }
+        }
         public async Task<byte[]> GetSlice(SliceInfo sliceInfo)
         {
+            A:
             if (cache == null)
                 cache = new TileCache(this);
             var curLevel = Image.BioImage.LevelFromResolution(sliceInfo.Resolution);
@@ -224,13 +238,30 @@ namespace BioLib
             List<Tuple<Extent, byte[]>> tiles = new List<Tuple<Extent, byte[]>>();
             foreach (BruTile.TileInfo t in tileInfos)
             {
-                Info tf = new Info(sliceInfo.Coordinate,t.Index, t.Extent, curLevel);
-                byte[] c = await cache.GetTile(tf);
+                Info tf = new Info(sliceInfo.Coordinate, t.Index, t.Extent, curLevel);
+                byte[] c = cache.GetTileSync(tf, curUnitsPerPixel);
                 if (c != null)
                 {
-                    if(useGPU)
+                    if (PixelFormat == PixelFormat.Format16bppGrayScale)
                     {
-                        Stitch.AddTile(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
+                        c = Convert16BitToRGB(c);
+                    }
+                    else
+                    if (PixelFormat == PixelFormat.Format48bppRgb)
+                    {
+                        c = Convert48BitToRGB(c);
+                    }
+                    if (useGPU)
+                    {
+                        try
+                        {
+                            stitch.AddTile(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
+                        }
+                        catch (Exception)
+                        {
+                            useGPU = false;
+                            goto A;
+                        }
                     }
                     else
                         tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
@@ -349,108 +380,6 @@ namespace BioLib
             }
 
             return output;
-        }
-        public byte[] GetSliceSync(SliceInfo sliceInfo, PixelFormat format)
-        {
-            A:
-            if (cache == null)
-                cache = new TileCache(this);
-            var curLevel = Image.BioImage.LevelFromResolution(sliceInfo.Resolution);
-            var curUnitsPerPixel = Schema.Resolutions[curLevel].UnitsPerPixel;
-            var tileInfos = Schema.GetTileInfos(sliceInfo.Extent, curLevel);
-            List<Tuple<Extent, byte[]>> tiles = new List<Tuple<Extent, byte[]>>();
-            foreach (BruTile.TileInfo t in tileInfos)
-            {
-                Info tf = new Info(sliceInfo.Coordinate, t.Index, t.Extent, curLevel);
-                byte[] c = cache.GetTileSync(tf,curUnitsPerPixel);
-                if (c != null)
-                {
-                    if (format == PixelFormat.Format16bppGrayScale)
-                    {
-                        c = Convert16BitToRGB(c);
-                    }
-                    else
-                    if(format == PixelFormat.Format48bppRgb)
-                    {
-                        c = Convert48BitToRGB(c);
-                    }
-                    if (useGPU)
-                    {
-                        try
-                        {
-                            Stitch.AddTile(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
-                        }
-                        catch (Exception)
-                        {
-                            useGPU = false;
-                            goto A;
-                        }
-                    }
-                    else
-                        tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
-                }
-            }
-            var srcPixelExtent = sliceInfo.Extent.WorldToPixelInvertedY(curUnitsPerPixel);
-            var dstPixelExtent = sliceInfo.Extent.WorldToPixelInvertedY(sliceInfo.Resolution);
-            var dstPixelHeight = sliceInfo.Parame.DstPixelHeight > 0 ? sliceInfo.Parame.DstPixelHeight : dstPixelExtent.Height;
-            var dstPixelWidth = sliceInfo.Parame.DstPixelWidth > 0 ? sliceInfo.Parame.DstPixelWidth : dstPixelExtent.Width;
-            destExtent = new Extent(0, 0, dstPixelWidth, dstPixelHeight);
-            sourceExtent = srcPixelExtent;
-            if (useGPU)
-            {
-                try
-                {
-                    return Stitch.StitchImages((int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY));
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.Message.ToString());
-                    UseVips = true;
-                    useGPU = false;
-                }
-            }
-            if (UseVips)
-            {
-                try
-                {
-                    NetVips.Image im = null;
-                    if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
-                        im = ImageUtil.JoinVips16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    else if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
-                        im = ImageUtil.JoinVipsRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    return im.WriteToMemory();
-                }
-                catch (Exception e)
-                {
-                    UseVips = false;
-                    Console.WriteLine("Failed to use LibVips please install Libvips for your platform.");
-                    Console.WriteLine(e.Message);
-                }
-            }
-            try
-            {
-                Image im = null;
-                if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
-                {
-                    im = ImageUtil.Join16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    byte[] bts = Get16Bytes((Image<L16>)im);
-                    im.Dispose();
-                    return bts;
-                }
-                else if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
-                {
-                    im = ImageUtil.JoinRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    byte[] bts = GetRgb24Bytes((Image<Rgb24>)im);
-                    im.Dispose();
-                    return bts;
-                }
-            }
-            catch (Exception er)
-            {
-                Console.WriteLine(er.Message);
-                return null;
-            }
-            return null;
         }
         public byte[] GetRgb24Bytes(Image<Rgb24> image)
         {

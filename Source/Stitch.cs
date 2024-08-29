@@ -14,7 +14,6 @@ using java.awt;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp;
 using Gtk;
-using ucar.nc2.ft;
 namespace BioLib
 {
     public class Stitch
@@ -65,7 +64,7 @@ namespace BioLib
 
             return rgbData;
         }
-        public static void AddTile(Tuple<Extent, byte[]> tile)
+        public void AddTile(Tuple<Extent, byte[]> tile)
         {
             foreach (var t in gpuTiles)
             {
