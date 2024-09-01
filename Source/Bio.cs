@@ -763,6 +763,22 @@ namespace BioLib
             }
             return selectBoxs.ToArray();
         }
+        /// It returns an array of RectangleF objects that are used to draw the selection boxes around
+        /// the points of the polygon
+        /// 
+        /// @param s the size of the select box
+        /// 
+        /// @return A list of RectangleF objects.
+        public RectangleD[] GetSelectBoxes()
+        {
+            double f = ROI.selectBoxSize / 2;
+            selectBoxs.Clear();
+            for (int i = 0; i < Points.Count; i++)
+            {
+                selectBoxs.Add(new RectangleD((float)(Points[i].X - f), (float)(Points[i].Y - f), (float)ROI.selectBoxSize, (float)ROI.selectBoxSize));
+            }
+            return selectBoxs.ToArray();
+        }
         /// Create a new ROI object, add a point to it, and return it
         /// 
         /// @param ZCT a class that contains the Z, C, and T coordinates of the image.
