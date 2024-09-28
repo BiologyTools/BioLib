@@ -229,13 +229,13 @@ namespace BioLib
         }
         public async Task<byte[]> GetSlice(SliceInfo sliceInfo)
         {
-            A:
             if (cache == null)
                 cache = new TileCache(this);
             var curLevel = Image.BioImage.LevelFromResolution(sliceInfo.Resolution);
             var curUnitsPerPixel = Schema.Resolutions[curLevel].UnitsPerPixel;
             var tileInfos = Schema.GetTileInfos(sliceInfo.Extent, curLevel);
             List<Tuple<Extent, byte[]>> tiles = new List<Tuple<Extent, byte[]>>();
+           
             foreach (BruTile.TileInfo t in tileInfos)
             {
                 Info tf = new Info(sliceInfo.Coordinate, t.Index, t.Extent, curLevel);
@@ -253,17 +253,11 @@ namespace BioLib
                     }
                     if (useGPU)
                     {
-                        try
-                        {
-                            stitch.AddTile(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
-                        }
-                        catch (Exception)
-                        {
-                            useGPU = false;
-                            goto A;
-                        }
+                        TileInfo tileInfo = new TileInfo();
+                        tileInfo.Extent = t.Extent.WorldToPixelInvertedY(curUnitsPerPixel);
+                        tileInfo.Index = t.Index;
+                        stitch.AddTile(Tuple.Create(tileInfo,c));
                     }
-                    else
                         tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
                 }
             }
@@ -277,7 +271,7 @@ namespace BioLib
             {
                 try
                 {
-                    return Stitch.StitchImages((int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY));
+                    return Stitch.StitchImages(tileInfos.ToList(),(int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY),curUnitsPerPixel);
                 }
                 catch (Exception e)
                 {

@@ -33,14 +33,23 @@ namespace BioLib
         // Initialize CUDA context
         private const int maxTiles = 100;
         private static CudaContext context = new CudaContext();
-        public static List<Tuple<Extent, CudaDeviceVariable<byte>>> gpuTiles = new List<Tuple<Extent, CudaDeviceVariable<byte>>>();
+        public static List<Tuple<TileInfo,CudaDeviceVariable<byte>>> gpuTiles = new List<Tuple<TileInfo, CudaDeviceVariable<byte>>>();
         private static CudaKernel kernel;
         private static bool initialized = false;
         public static bool HasTile(Extent ex)
         {
             foreach (var item in gpuTiles)
             {
-                if (item.Item1 == ex)
+                if (item.Item1.Extent == ex)
+                    return true;
+            }
+            return false;
+        }
+        public static bool HasTile(TileInfo t)
+        {
+            foreach (var item in gpuTiles)
+            {
+                if (item.Item1.Extent == t.Extent)
                     return true;
             }
             return false;
@@ -64,13 +73,8 @@ namespace BioLib
 
             return rgbData;
         }
-        public void AddTile(Tuple<Extent, byte[]> tile)
+        public void AddTile(Tuple<TileInfo, byte[]> tile)
         {
-            foreach (var t in gpuTiles)
-            {
-                if (t.Item1 == tile.Item1)
-                    return;
-            }
             byte[] tileData = ConvertBGRToRGB(tile.Item2);
             if(gpuTiles.Count > maxTiles)
             {
@@ -80,7 +84,7 @@ namespace BioLib
             }
             CudaDeviceVariable<byte> devTile = new CudaDeviceVariable<byte>(tileData.Length);
             devTile.CopyToDevice(tileData);
-            gpuTiles.Add(new Tuple<Extent, CudaDeviceVariable<byte>>(tile.Item1, devTile));
+            gpuTiles.Add(new Tuple<TileInfo, CudaDeviceVariable<byte>>(tile.Item1, devTile));
         }
         public static void Initialize()
         {
@@ -119,19 +123,23 @@ namespace BioLib
             // Return the Bitmap object
             return bitmap;
         }
-        public static byte[] StitchImages(int pxwidth, int pxheight, double x, double y)
+        public static byte[] StitchImages(List<TileInfo> tiles,int pxwidth, int pxheight, double x, double y, double resolution)
         {
             try
             {
+                foreach (var item in tiles)
+                {
+                    item.Extent = item.Extent.WorldToPixelInvertedY(resolution);
+                }
                 if (!initialized)
                 {
                     Initialize();
                 }
                 // Calculate canvas size based on extents
-                double maxX = gpuTiles.Max(t => t.Item1.MaxX);
-                double maxY = gpuTiles.Max(t => t.Item1.MaxY);
-                double minX = gpuTiles.Min(t => t.Item1.MinX);
-                double minY = gpuTiles.Min(t => t.Item1.MinY);
+                double maxX = tiles.Max(t => t.Extent.MaxX);
+                double maxY = tiles.Max(t => t.Extent.MaxY);
+                double minX = tiles.Min(t => t.Extent.MinX);
+                double minY = tiles.Min(t => t.Extent.MinY);
 
                 // Calculate canvas width and height
                 int canvasWidth = (int)(maxX - minX);
@@ -149,19 +157,26 @@ namespace BioLib
                     devTiles.CopyToDevice(deviceTiles.ToArray());
                     */
                     // Stitch tiles using the CUDA kernel
-                    foreach (var tile in gpuTiles)
+                    foreach (var tile in tiles)
                     {
-                        Extent extent = tile.Item1;
-                        CudaDeviceVariable<byte> devTile = tile.Item2;
+                        Extent extent = tile.Extent;
 
-                        int startX = (int)Math.Round(extent.MinX - minX);
-                        int startY = (int)Math.Round(extent.MinY - minY);
-                        int tileWidth = (int)Math.Round(extent.MaxX - extent.MinX);
-                        int tileHeight = (int)Math.Round(extent.MaxY - extent.MinY);
+                        CudaDeviceVariable<byte> devTile;
+                        foreach (var t in gpuTiles)
+                        {
+                            if(t.Item1.Index == tile.Index)
+                            {
+                                devTile = t.Item2;
+                                int startX = (int)Math.Round(extent.MinX - minX);
+                                int startY = (int)Math.Round(extent.MinY - minY);
+                                int tileWidth = (int)Math.Round(extent.MaxX - extent.MinX);
+                                int tileHeight = (int)Math.Round(extent.MaxY - extent.MinY);
 
-                        kernel.BlockDimensions = blockSize;
-                        kernel.GridDimensions = gridSize;
-                        kernel.Run(devCanvas.DevicePointer, canvasWidth, canvasHeight, devTile.DevicePointer, tileWidth, tileHeight, startX, startY);
+                                kernel.BlockDimensions = blockSize;
+                                kernel.GridDimensions = gridSize;
+                                kernel.Run(devCanvas.DevicePointer, canvasWidth, canvasHeight, devTile.DevicePointer, tileWidth, tileHeight, startX, startY);
+                            }
+                        }
                     }
 
                     // Download the result back to host

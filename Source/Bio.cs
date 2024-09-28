@@ -7233,7 +7233,7 @@ namespace BioLib
                         try
                         {
                            Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), "");
-                           Buffers.Add(bmp.ImageRGB);
+                           Buffers.Add(bmp);
                         }
                         catch (Exception e)
                         {
