@@ -151,11 +151,6 @@ namespace BioLib
                     // Set the block and grid sizes
                     dim3 blockSize = new dim3(16, 16, 1);
                     dim3 gridSize = new dim3((uint)((canvasWidth + blockSize.x - 1) / blockSize.x), (uint)((canvasHeight + blockSize.y - 1) / blockSize.y), 1);
-                    /*
-                    // Copy the tile information to the GPU
-                    CudaDeviceVariable<TileData> devTiles = new CudaDeviceVariable<TileData>(deviceTiles.Count);
-                    devTiles.CopyToDevice(deviceTiles.ToArray());
-                    */
                     // Stitch tiles using the CUDA kernel
                     foreach (var tile in tiles)
                     {
