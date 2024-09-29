@@ -256,7 +256,7 @@ namespace BioLib
                         TileInfo tileInfo = new TileInfo();
                         tileInfo.Extent = t.Extent.WorldToPixelInvertedY(curUnitsPerPixel);
                         tileInfo.Index = t.Index;
-                        stitch.AddTile(Tuple.Create(tileInfo,c));
+                        Stitch.AddTile(Tuple.Create(tileInfo,c));
                     }
                         tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
                 }
@@ -466,7 +466,7 @@ namespace BioLib
             var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
             var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
             var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
-            var bgraData = Image.ReadRegion(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, tileInfo.Coordinate);
+            var bgraData = Image.ReadRegion(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight);
             return bgraData;
         }
         public async Task<byte[]> GetTileAsync(Info tileInfo)

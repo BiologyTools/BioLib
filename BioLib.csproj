@@ -11,14 +11,14 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>2.7.0.1</AssemblyVersion>
-    <FileVersion>2.7.0.1</FileVersion>
-    <PackageVersion>2.7.0.1</PackageVersion>
+    <AssemblyVersion>2.7.1.0</AssemblyVersion>
+    <FileVersion>2.7.1.0</FileVersion>
+    <PackageVersion>2.7.1.0</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>Fix for select box size.</PackageReleaseNotes>
+    <PackageReleaseNotes>Fix for graphics acceleration of stitching.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>

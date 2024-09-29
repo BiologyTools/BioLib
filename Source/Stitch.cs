@@ -73,9 +73,9 @@ namespace BioLib
 
             return rgbData;
         }
-        public void AddTile(Tuple<TileInfo, byte[]> tile)
+        public static void AddTile(Tuple<TileInfo, byte[]> tile)
         {
-            byte[] tileData = ConvertBGRToRGB(tile.Item2);
+            byte[] tileData = tile.Item2;
             if(gpuTiles.Count > maxTiles)
             {
                 var ti = gpuTiles.First();
@@ -195,9 +195,16 @@ namespace BioLib
                     byte[] viewportImageData = new byte[viewportWidth * viewportHeight * 3];
                     System.Threading.Tasks.Parallel.For(0, viewportHeight, row =>
                     {
-                        int srcOffset = (clippedY + row) * canvasWidth * 3 + clippedX * 3;
-                        int dstOffset = row * viewportWidth * 3;
-                        Array.Copy(stitchedImageData, srcOffset, viewportImageData, dstOffset, viewportWidth * 3);
+                        try
+                        {
+                            int srcOffset = (clippedY + row) * canvasWidth * 3 + clippedX * 3;
+                            int dstOffset = row * viewportWidth * 3;
+                            Array.Copy(stitchedImageData, srcOffset, viewportImageData, dstOffset, viewportWidth * 3);
+                        }
+                        catch (Exception ex)
+                        {
+                            
+                        }
                     });
                     return viewportImageData;
                 }
