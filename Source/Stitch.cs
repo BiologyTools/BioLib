@@ -31,12 +31,16 @@ namespace BioLib
             }
         }
         // Initialize CUDA context
-        private const int maxTiles = 100;
-        private static CudaContext context = new CudaContext();
-        public static List<Tuple<TileInfo,CudaDeviceVariable<byte>>> gpuTiles = new List<Tuple<TileInfo, CudaDeviceVariable<byte>>>();
-        private static CudaKernel kernel;
-        private static bool initialized = false;
-        public static bool HasTile(Extent ex)
+        private const int maxTiles = 250;
+        private CudaContext context;
+        public List<Tuple<TileInfo,CudaDeviceVariable<byte>>> gpuTiles = new List<Tuple<TileInfo, CudaDeviceVariable<byte>>>();
+        private CudaKernel kernel;
+        private bool initialized = false;
+        public Stitch()
+        {
+            Initialize();
+        }
+        public bool HasTile(Extent ex)
         {
             foreach (var item in gpuTiles)
             {
@@ -45,11 +49,11 @@ namespace BioLib
             }
             return false;
         }
-        public static bool HasTile(TileInfo t)
+        public bool HasTile(TileInfo t)
         {
             foreach (var item in gpuTiles)
             {
-                if (item.Item1.Extent == t.Extent)
+                if (item.Item1.Index == t.Index)
                     return true;
             }
             return false;
@@ -73,8 +77,10 @@ namespace BioLib
 
             return rgbData;
         }
-        public static void AddTile(Tuple<TileInfo, byte[]> tile)
+        public void AddTile(Tuple<TileInfo, byte[]> tile)
         {
+            if (HasTile(tile.Item1))
+                return;
             byte[] tileData = tile.Item2;
             if(gpuTiles.Count > maxTiles)
             {
@@ -82,14 +88,24 @@ namespace BioLib
                 ti.Item2.Dispose();
                 gpuTiles.Remove(gpuTiles.First());
             }
-            CudaDeviceVariable<byte> devTile = new CudaDeviceVariable<byte>(tileData.Length);
-            devTile.CopyToDevice(tileData);
-            gpuTiles.Add(new Tuple<TileInfo, CudaDeviceVariable<byte>>(tile.Item1, devTile));
+            try
+            {
+                CudaDeviceVariable<byte> devTile = new CudaDeviceVariable<byte>(tileData.Length);
+                devTile.CopyToDevice(tileData);
+                gpuTiles.Add(new Tuple<TileInfo, CudaDeviceVariable<byte>>(tile.Item1, devTile));
+            }
+            catch (Exception e)
+            {
+                Initialize();
+                Console.WriteLine(e.Message);
+            }
+            
         }
-        public static void Initialize()
+        public void Initialize()
         {
             try
             {
+                context = new CudaContext();
                 // Load the CUDA kernel
                 kernel = context.LoadKernelPTX("tile_copy.ptx", "copyTileToCanvas");
                 initialized = true;
@@ -123,7 +139,7 @@ namespace BioLib
             // Return the Bitmap object
             return bitmap;
         }
-        public static byte[] StitchImages(List<TileInfo> tiles,int pxwidth, int pxheight, double x, double y, double resolution)
+        public byte[] StitchImages(List<TileInfo> tiles,int pxwidth, int pxheight, double x, double y, double resolution)
         {
             try
             {
@@ -207,6 +223,7 @@ namespace BioLib
             catch (Exception ex)
             {
                 Console.WriteLine("An error occurred: " + ex.Message);
+                Initialize();
                 return null;
             }
         }

@@ -11,14 +11,14 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>2.7.1.0</AssemblyVersion>
-    <FileVersion>2.7.1.0</FileVersion>
-    <PackageVersion>2.7.1.0</PackageVersion>
+    <AssemblyVersion>2.7.2.1</AssemblyVersion>
+    <FileVersion>2.7.2.1</FileVersion>
+    <PackageVersion>2.7.2.1</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>Fix for CUDA graphics acceleration of stitching.</PackageReleaseNotes>
+    <PackageReleaseNotes>16 &amp; 48 bit slides fix for CUDA graphics acceleration of stitching.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
@@ -29,7 +29,7 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="AForgeBio" Version="1.7.1.1" />
+    <PackageReference Include="AForgeBio" Version="1.7.1.2" />
     <PackageReference Include="BioFormats.NET8" Version="7.3.1.1" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
     <PackageReference Include="CS-Script" Version="4.8.17" />

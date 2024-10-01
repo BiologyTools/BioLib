@@ -7201,7 +7201,7 @@ namespace BioLib
         {
             try
             {
-                PixelFormat pf = Buffers[0].PixelFormat;
+                
                 if (Type != ImageType.pyramidal)
                     return;
                 for (int i = 0; i < Buffers.Count; i++)
@@ -7225,14 +7225,14 @@ namespace BioLib
                         {
                             if(PyramidalOrigin.X == 0 && PyramidalOrigin.Y == 0)
                             {
-                                Resolution = 1;
+                                Resolution = GetUnitPerPixel(0);
                             }
                             pyramidalOrigin = new PointD(0, 0);
                             goto start;
                         }
                         try
                         {
-                           Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), "");
+                           Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), "");
                            Buffers.Add(bmp);
                         }
                         catch (Exception e)
@@ -7271,7 +7271,7 @@ namespace BioLib
                     {
                         if (x == 0 && y == 0)
                         {
-                            resolution = 1;
+                            Resolution = GetUnitPerPixel(0);
                         }
                         pyramidalOrigin = new PointD(0, 0);
                         goto start;

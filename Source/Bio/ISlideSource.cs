@@ -108,19 +108,20 @@ namespace BioLib
 
         public byte[] GetTileSync(Info inf,double unitsPerPixel)
         {
-            A:
             try
             {
                 if (SlideSourceBase.useGPU)
                 {
-                    if (Stitch.HasTile(inf.Extent.WorldToPixelInvertedY(unitsPerPixel)))
+                    TileInfo tf = new TileInfo();
+                    tf.Index = inf.Index;
+                    tf.Extent = inf.Extent;
+                    if (this.source.Image.BioImage.SlideBase.stitch.HasTile(tf))
                         return null;
                 }
             }
             catch (Exception)
             {
                 SlideSourceBase.useGPU = false;
-                goto A;
             }
             
             byte[] data = cache.Get(inf);
@@ -215,18 +216,6 @@ namespace BioLib
         public TileCache cache = null;
         public Stitch stitch = new Stitch();
         public static bool useGPU = true;
-        private PixelFormat pixelFormat;
-        public PixelFormat PixelFormat
-        {
-            get
-            {
-                return pixelFormat;
-            }
-            set
-            {
-                pixelFormat = value;
-            }
-        }
         public async Task<byte[]> GetSlice(SliceInfo sliceInfo)
         {
             if (cache == null)
@@ -242,12 +231,12 @@ namespace BioLib
                 byte[] c = cache.GetTileSync(tf, curUnitsPerPixel);
                 if (c != null)
                 {
-                    if (PixelFormat == PixelFormat.Format16bppGrayScale)
+                    if (Image.BioImage.Resolutions[0].PixelFormat == PixelFormat.Format16bppGrayScale)
                     {
                         c = Convert16BitToRGB(c);
                     }
                     else
-                    if (PixelFormat == PixelFormat.Format48bppRgb)
+                    if (Image.BioImage.Resolutions[0].PixelFormat == PixelFormat.Format48bppRgb)
                     {
                         c = Convert48BitToRGB(c);
                     }
@@ -256,8 +245,9 @@ namespace BioLib
                         TileInfo tileInfo = new TileInfo();
                         tileInfo.Extent = t.Extent.WorldToPixelInvertedY(curUnitsPerPixel);
                         tileInfo.Index = t.Index;
-                        Stitch.AddTile(Tuple.Create(tileInfo,c));
+                        stitch.AddTile(Tuple.Create(tileInfo,c));
                     }
+                    else
                         tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
                 }
             }
@@ -271,7 +261,7 @@ namespace BioLib
             {
                 try
                 {
-                    return Stitch.StitchImages(tileInfos.ToList(),(int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY),curUnitsPerPixel);
+                    return stitch.StitchImages(tileInfos.ToList(),(int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY),curUnitsPerPixel);
                 }
                 catch (Exception e)
                 {
@@ -323,58 +313,63 @@ namespace BioLib
             }
             return null;
         }
-        public static byte[] Convert16BitToRGB(byte[] input)
+        public byte[] Convert16BitToRGB(byte[] input16BitGrayscale)
         {
-            if (input.Length % 2 != 0)
-                throw new ArgumentException("Input array length must be even.");
-
-            int pixelCount = input.Length / 2;
-            byte[] output = new byte[pixelCount * 3]; // RGB byte array
-
-            for (int i = 0; i < pixelCount; i++)
+            if (input16BitGrayscale.Length % 2 != 0)
             {
-                // Combine two bytes into a single 16-bit value
-                ushort grayValue = (ushort)((input[i * 2 + 1] << 8) | input[i * 2]);
-
-                // Normalize the 16-bit grayscale value to an 8-bit range
-                byte normalizedValue = (byte)(grayValue >> 8); // Scale down to 0-255
-
-                // Set RGB components to the grayscale value
-                output[i * 3] = normalizedValue;     // Red
-                output[i * 3 + 1] = normalizedValue; // Green
-                output[i * 3 + 2] = normalizedValue; // Blue
+                throw new ArgumentException("Input data length must be even, as each grayscale value is 2 bytes.");
             }
 
-            return output;
-        }
-        public byte[] Convert48BitToRGB(byte[] input)
-        {
-            if (input.Length % 6 != 0)
-                throw new ArgumentException("Input array length must be a multiple of 6.");
+            int pixelCount = input16BitGrayscale.Length / 2;
+            byte[] rgbData = new byte[pixelCount * 3];
 
-            int pixelCount = input.Length / 6;
-            byte[] output = new byte[pixelCount * 3]; // RGB byte array
-
-            for (int i = 0; i < pixelCount; i++)
+            for (int i = 0, j = 0; i < input16BitGrayscale.Length; i += 2, j += 3)
             {
-                // Extract 16-bit values for each color channel
-                ushort rHigh = (ushort)(input[i * 6] << 8 | input[i * 6 + 1]);
-                ushort gHigh = (ushort)(input[i * 6 + 2] << 8 | input[i * 6 + 3]);
-                ushort bHigh = (ushort)(input[i * 6 + 4] << 8 | input[i * 6 + 5]);
+                // Combine the two bytes into a single 16-bit grayscale value
+                ushort grayscale16 = (ushort)((input16BitGrayscale[i + 1] << 8) | input16BitGrayscale[i]);
 
-                // Normalize to 8-bit values (0-255)
-                byte r = (byte)(rHigh >> 8); // Scale down to 0-255
-                byte g = (byte)(gHigh >> 8); // Scale down to 0-255
-                byte b = (byte)(bHigh >> 8); // Scale down to 0-255
+                // Convert the 16-bit grayscale value to an 8-bit value
+                byte grayscale8 = (byte)(grayscale16 >> 8); // Normalize to 8-bit by shifting
 
-                // Assign to output array
-                output[i * 3] = r;     // Red
-                output[i * 3 + 1] = g; // Green
-                output[i * 3 + 2] = b; // Blue
+                // Set the RGB values (R = G = B = grayscale)
+                rgbData[j] = grayscale8;     // Red channel
+                rgbData[j + 1] = grayscale8; // Green channel
+                rgbData[j + 2] = grayscale8; // Blue channel
             }
 
-            return output;
+            return rgbData;
         }
+        public byte[] Convert48BitToRGB(byte[] input48BitData)
+        {
+            if (input48BitData.Length % 6 != 0)
+            {
+                throw new ArgumentException("Input data length must be a multiple of 6, as each pixel is 6 bytes.");
+            }
+
+            int pixelCount = input48BitData.Length / 6;
+            byte[] rgbData = new byte[pixelCount * 3];
+
+            for (int i = 0, j = 0; i < input48BitData.Length; i += 6, j += 3)
+            {
+                // Read 16-bit values for Red, Green, and Blue channels
+                ushort red16 = (ushort)((input48BitData[i + 1] << 8) | input48BitData[i]);
+                ushort green16 = (ushort)((input48BitData[i + 3] << 8) | input48BitData[i + 2]);
+                ushort blue16 = (ushort)((input48BitData[i + 5] << 8) | input48BitData[i + 4]);
+
+                // Convert 16-bit values to 8-bit by shifting right (essentially downscaling from 16-bit to 8-bit)
+                byte red8 = (byte)(red16 >> 8);
+                byte green8 = (byte)(green16 >> 8);
+                byte blue8 = (byte)(blue16 >> 8);
+
+                // Store the 8-bit values in the RGB array
+                rgbData[j] = red8;   // Red
+                rgbData[j + 1] = green8; // Green
+                rgbData[j + 2] = blue8;  // Blue
+            }
+
+            return rgbData;
+        }
+
         public byte[] GetRgb24Bytes(Image<Rgb24> image)
         {
             int width = image.Width;
