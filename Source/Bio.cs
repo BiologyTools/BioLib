@@ -5987,6 +5987,7 @@ namespace BioLib
             b.littleEndian = reader.isLittleEndian();
             b.seriesCount = reader.getSeriesCount();
             b.imagesPerSeries = reader.getImageCount();
+            b.imRead = reader;
             if (PixelFormat == PixelFormat.Format8bppIndexed || PixelFormat == PixelFormat.Format24bppRgb || PixelFormat == PixelFormat.Format32bppArgb)
                 b.bitsPerPixel = 8;
             else
@@ -6678,6 +6679,8 @@ namespace BioLib
                 b.StackThreshold(true);
             else
                 b.StackThreshold(false);
+            //We won't close the reader if this is a pyramidal image.
+            if(b.Type != ImageType.pyramidal)
             reader.close();
             if (addToImages)
                 Images.AddImage(b, tab);
@@ -6725,15 +6728,15 @@ namespace BioLib
         /// @param tileSizeY the height of the tile
         /// 
         /// @return A Bitmap object.
-        public static Bitmap GetTile(BioImage b, ZCT coord, int serie, int tilex, int tiley, int tileSizeX, int tileSizeY, BackEnd backend = BackEnd.Bioformats)
+        public static Bitmap GetTile(BioImage b, ZCT coord, int serie, int tilex, int tiley, int tileSizeX, int tileSizeY)
         {
-            if (backend == BackEnd.LibVips || b.file.EndsWith(".tif") && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (b.file.EndsWith(".tif") && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 //We can get a tile faster with libvips rather than bioformats.
                 return ExtractRegionFromTiledTiff(b, tilex, tiley, tileSizeX, tileSizeY, serie);
             }
             else
-            if (backend == BackEnd.OpenSlide || b.openslideBase != null)
+            if (b.openslideBase != null)
             {
                 return new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
             }
