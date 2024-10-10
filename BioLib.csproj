@@ -11,19 +11,26 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>2.7.3.0</AssemblyVersion>
-    <FileVersion>2.7.3.0</FileVersion>
-    <PackageVersion>2.7.3.0</PackageVersion>
+    <AssemblyVersion>2.7.3.2</AssemblyVersion>
+    <FileVersion>2.7.3.2</FileVersion>
+    <PackageVersion>2.7.3.2</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>OpenSlide CUDA stitching acceleration.</PackageReleaseNotes>
+    <PackageReleaseNotes>OpenSlide CUDA stitching acceleration. Fixed package install issue.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="tile_copy.cu" />
+  </ItemGroup>
   <ItemGroup>
     <Content Include="LICENSE" />
+    <Content Include="tile_copy.cu">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="tile_copy.ptx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -45,11 +52,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="OpenSlideGTK" Version="1.9.0" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.5" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\Shared\AForgeBio\AForgeBio\AForgeBio\AForgeBio.csproj" />
-    <ProjectReference Include="..\OpenSlideGTK\src\OpenSlideSharp\OpenSlideGTK.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="banner.jpg">
