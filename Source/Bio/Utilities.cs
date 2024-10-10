@@ -9,6 +9,7 @@ using System.IO;
 using NetVips;
 using System.Drawing.Imaging;
 using AForge;
+using OpenSlideGTK;
 
 namespace BioLib
 {

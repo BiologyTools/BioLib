@@ -7,13 +7,12 @@ using System.Threading.Tasks;
 using BruTile;
 using System.Runtime.InteropServices;
 using ManagedCuda.VectorTypes;
-using ome.xml.model;
 using AForge;
 using ManagedCuda.BasicTypes;
-using java.awt;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp;
 using Gtk;
+using OpenSlideGTK;
 namespace BioLib
 {
     public class Stitch
@@ -107,7 +106,7 @@ namespace BioLib
             {
                 context = new CudaContext();
                 // Load the CUDA kernel
-                kernel = context.LoadKernelPTX(Path.GetDirectoryName(Environment.ProcessPath) + "/tile_copy.ptx", "copyTileToCanvas");
+                kernel = context.LoadKernelPTX("tile_copy.ptx", "copyTileToCanvas");
                 initialized = true;
             }
             catch (Exception e)
