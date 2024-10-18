@@ -6750,10 +6750,12 @@ namespace BioLib
                     useVips = false;
                 }
             }
-            
-            if (b.openslideBase != null)
+            //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
+            if (b.openSlideImage != null && !b.file.EndsWith("ome.tif"))
             {
-                return new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
+                Bitmap bm = new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
+                bm.SwitchRedBlue();
+                return bm;
             }
             else
             {
@@ -6829,7 +6831,9 @@ namespace BioLib
             //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
             if (b.openSlideImage != null && !b.file.EndsWith("ome.tif"))
             {
-                return new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
+                Bitmap bm = new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
+                bm.SwitchRedBlue();
+                return bm;
             }
 
             string curfile = b.imRead.getCurrentFile();
