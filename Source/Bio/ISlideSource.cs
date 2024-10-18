@@ -221,7 +221,7 @@ namespace BioLib
             if (cache == null)
                 cache = new TileCache(this);
             var curLevel = Image.BioImage.LevelFromResolution(sliceInfo.Resolution);
-            var curUnitsPerPixel = Schema.Resolutions[curLevel].UnitsPerPixel;
+            var curUnitsPerPixel = sliceInfo.Resolution;
             var tileInfos = Schema.GetTileInfos(sliceInfo.Extent, curLevel);
             List<Tuple<Extent, byte[]>> tiles = new List<Tuple<Extent, byte[]>>();
            

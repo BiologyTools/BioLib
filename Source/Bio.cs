@@ -2000,12 +2000,15 @@ namespace BioLib
         {
             get 
             {
+                int l = 0;
                 if (openslideBase != null)
-                    return OpenSlideGTK.TileUtil.GetLevel(openslideBase.Schema.Resolutions, Resolution);
+                    l = OpenSlideGTK.TileUtil.GetLevel(openslideBase.Schema.Resolutions, Resolution);
                 else
                     if (slideBase != null)
-                        return LevelFromResolution(Resolution);
-                return level;
+                        l = LevelFromResolution(Resolution);
+                if (l < 0)
+                    return 0;
+                return l;
             }
             set 
             { 
@@ -4082,12 +4085,14 @@ namespace BioLib
             if (RGBChannelCount == 1)
             {
                 Bitmap[] bs = new Bitmap[Channels.Count];
+                List<Channel> chs = new List<Channel>();
                 for (int c = 0; c < Channels.Count; c++)
                 {
                     int index = GetFrameIndex(coord.Z, c, coord.T);
                     bs[c] = Buffers[index];
+                    chs.Add(Channels[c]);
                 }
-                Bitmap bm = (Bitmap)Bitmap.GetEmissionBitmap(bs, Channels.ToArray());
+                Bitmap bm = (Bitmap)Bitmap.GetEmissionBitmap(bs, chs.ToArray());
                 return bm;
             }
             else
@@ -6010,7 +6015,20 @@ namespace BioLib
                         sumSamples += s;
                         def = true;
                         b.Channels.Add(ch);
-                        i++;
+                    }
+                    if (i == 0)
+                    {
+                        b.rgbChannels[0] = 0;
+                    }
+                    else
+                    if (i == 1)
+                    {
+                        b.rgbChannels[1] = 1;
+                    }
+                    else
+                    if (i == 2)
+                    {
+                        b.rgbChannels[2] = 2;
                     }
                     //If this channel is not defined we have loaded all the channels in the file.
                     if (!def)
@@ -6042,27 +6060,16 @@ namespace BioLib
                         ch.DiodeName = b.meta.getLightEmittingDiodeID(serie, i);
                     if (b.meta.getChannelLightSourceSettingsAttenuation(serie, i) != null)
                         ch.LightSourceAttenuation = b.meta.getChannelLightSourceSettingsAttenuation(serie, i).toString(); 
-                    if (i == 0)
-                    {
-                        b.rgbChannels[0] = 0;
-                    }
-                    else
-                    if (i == 1)
-                    {
-                        b.rgbChannels[1] = 1;
-                    }
-                    else
-                    if (i == 2)
-                    {
-                        b.rgbChannels[2] = 2;
-                    }
+                    
+                   
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine(e.Message);
                     if (!def)
                         break;
-                }
+                } 
+                i++;
             }
             //If the file doens't have channels we initialize them.
             if (b.Channels.Count == 0)
@@ -6678,6 +6685,7 @@ namespace BioLib
                 b.StackThreshold(true);
             else
                 b.StackThreshold(false);
+            if(!b.isPyramidal)
             reader.close();
             if (addToImages)
                 Images.AddImage(b, tab);
@@ -6713,6 +6721,8 @@ namespace BioLib
             Bioformats,
             LibVips,
         }
+        static bool useVips = false;
+        static bool useGPU = true;
         /// It reads a tile from a file, and returns a bitmap
         /// 
         /// @param BioImage This is a class that contains the image file name, the image reader, and the
@@ -6725,15 +6735,23 @@ namespace BioLib
         /// @param tileSizeY the height of the tile
         /// 
         /// @return A Bitmap object.
-        public static Bitmap GetTile(BioImage b, ZCT coord, int serie, int tilex, int tiley, int tileSizeX, int tileSizeY, BackEnd backend = BackEnd.Bioformats)
+        public static Bitmap GetTile(BioImage b, ZCT coord, int serie, int tilex, int tiley, int tileSizeX, int tileSizeY)
         {
-            if (backend == BackEnd.LibVips || b.file.EndsWith(".tif") && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (b.file.EndsWith(".tif"))
             {
-                //We can get a tile faster with libvips rather than bioformats.
-                return ExtractRegionFromTiledTiff(b, tilex, tiley, tileSizeX, tileSizeY, serie);
+                try
+                {
+                    //We can get a tile faster with libvips rather than bioformats.
+                    return ExtractRegionFromTiledTiff(b, tilex, tiley, tileSizeX, tileSizeY, serie);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.Message);
+                    useVips = false;
+                }
             }
-            else
-            if (backend == BackEnd.OpenSlide || b.openslideBase != null)
+            
+            if (b.openslideBase != null)
             {
                 return new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
             }
