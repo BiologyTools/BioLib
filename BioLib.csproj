@@ -36,11 +36,11 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="AForgeBio" Version="1.8.0" />
     <PackageReference Include="BioFormats.NET8" Version="7.3.1.1" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
     <PackageReference Include="CS-Script" Version="4.8.17" />
     <PackageReference Include="ManagedCuda" Version="10.0.0" />
-    <PackageReference Include="NetVips" Version="2.4.1" />
     <PackageReference Include="NetVips.Native" Version="8.15.3" />
     <PackageReference Include="NetVips.Native.linux-arm64" Version="8.15.3" />
     <PackageReference Include="NetVips.Native.linux-x64" Version="8.15.3" />
@@ -52,11 +52,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="OpenSlideGTK" Version="1.9.1" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.5" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\Shared\AForgeBio\AForgeBio\AForgeBio\AForgeBio.csproj" />
-    <ProjectReference Include="..\OpenSlideGTK\src\OpenSlideSharp\OpenSlideGTK.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="banner.jpg">
