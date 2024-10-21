@@ -2129,6 +2129,23 @@ namespace BioLib
             bi.statistics = b.statistics;
             bi.MacroResolution = b.MacroResolution;
             bi.LabelResolution = b.LabelResolution;
+            bi.Resolution = b.Resolution;
+            bi.imagesPerSeries = b.imagesPerSeries;
+            bi.imRead = b.imRead;
+            bi.Type = b.Type;
+            bi.tifRead = b.tifRead;
+            if (b.OpenSlideBase != null)
+            {
+                bi.openslideBase = b.openslideBase;
+                bi.openSlideImage = b.openSlideImage;
+            }
+            else
+            {
+                bi.slideBase = b.slideBase;
+            }
+            bi.PyramidalOrigin = b.PyramidalOrigin;
+            bi.PyramidalSize = b.PyramidalSize;
+            bi.Plate = b.Plate;
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, rois);
             return bi;
         }
@@ -2198,6 +2215,23 @@ namespace BioLib
             bi.statistics = b.statistics;
             bi.MacroResolution = b.MacroResolution;
             bi.LabelResolution = b.LabelResolution;
+            bi.Resolution = b.Resolution;
+            bi.imagesPerSeries = b.imagesPerSeries;
+            bi.imRead = b.imRead;
+            bi.tifRead = b.tifRead;
+            bi.Type = b.Type;
+            bi.PyramidalOrigin = b.PyramidalOrigin;
+            bi.PyramidalSize = b.PyramidalSize;
+            if (b.OpenSlideBase != null)
+            {
+                bi.openslideBase = b.openslideBase;
+                bi.openSlideImage = b.openSlideImage;
+            }
+            else
+            {
+                bi.slideBase = b.slideBase;
+            }
+            bi.Plate = b.Plate;
             return bi;
         }
         /// <summary>
