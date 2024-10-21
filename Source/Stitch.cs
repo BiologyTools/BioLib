@@ -195,10 +195,10 @@ namespace BioLib
                         if (devTile != null)
                         {
                             // Calculate the start position on the canvas and the dimensions of the tile
-                            int startX = (int)Math.Round(extent.MinX - minX);
-                            int startY = (int)Math.Round(extent.MinY - minY);
-                            int tileWidth = (int)Math.Round(extent.MaxX - extent.MinX);
-                            int tileHeight = (int)Math.Round(extent.MaxY - extent.MinY);
+                            int startX = (int)Math.Ceiling(extent.MinX - minX);
+                            int startY = (int)Math.Ceiling(extent.MinY - minY);
+                            int tileWidth = (int)Math.Ceiling(extent.MaxX - extent.MinX);
+                            int tileHeight = (int)Math.Ceiling(extent.MaxY - extent.MinY);
 
                             // canvasTileWidth and canvasTileHeight handle the scaling of the tile to the canvas
                             int canvasTileWidth = tileWidth;
