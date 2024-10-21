@@ -102,6 +102,12 @@ namespace BioLib
         }
         public void Initialize()
         {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                OpenSlideBase.useGPU = false;
+                SlideSourceBase.useGPU = false;
+                return;
+            }
             try
             {
                 context = new CudaContext();

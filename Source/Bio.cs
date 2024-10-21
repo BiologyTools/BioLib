@@ -2127,6 +2127,8 @@ namespace BioLib
             bi.filename = b.filename;
             bi.Resolutions = b.Resolutions;
             bi.statistics = b.statistics;
+            bi.MacroResolution = b.MacroResolution;
+            bi.LabelResolution = b.LabelResolution;
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, rois);
             return bi;
         }
@@ -2194,6 +2196,8 @@ namespace BioLib
             bi.Filename = b.Filename;
             bi.ID = Images.GetImageName(b.file);
             bi.statistics = b.statistics;
+            bi.MacroResolution = b.MacroResolution;
+            bi.LabelResolution = b.LabelResolution;
             return bi;
         }
         /// <summary>
@@ -7241,11 +7245,8 @@ namespace BioLib
                         byte[] bts = openslideBase.GetSlice(new OpenSlideGTK.SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution));
                         if (bts == null)
                         {
-                            if (PyramidalOrigin.X == 0 && PyramidalOrigin.Y == 0)
-                            {
-                                Resolution = GetUnitPerPixel(0);
-                            }
                             pyramidalOrigin = new PointD(0, 0);
+                            Resolution = GetUnitPerPixel(0);
                             goto startos;
                         }
                         Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
@@ -7256,11 +7257,8 @@ namespace BioLib
                         byte[] bts = await slideBase.GetSlice(new BioLib.SliceInfo(Math.Round(PyramidalOrigin.X), Math.Round(PyramidalOrigin.Y), PyramidalSize.Width, PyramidalSize.Height, resolution,Coordinate));
                         if(bts == null)
                         {
-                            if(PyramidalOrigin.X == 0 && PyramidalOrigin.Y == 0)
-                            {
-                                Resolution = GetUnitPerPixel(0);
-                            }
                             pyramidalOrigin = new PointD(0, 0);
+                            Resolution = GetUnitPerPixel(0);
                             goto start;
                         }
                         try
