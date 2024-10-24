@@ -2110,7 +2110,10 @@ namespace BioLib
             bi.bitsPerPixel = b.bitsPerPixel;
             bi.file = b.file;
             bi.filename = b.filename;
-            bi.Resolutions = b.Resolutions;
+            foreach (var item in b.Resolutions)
+            {
+                bi.Resolutions.Add(item);
+            }
             bi.statistics = b.statistics;
             bi.MacroResolution = b.MacroResolution;
             bi.LabelResolution = b.LabelResolution;
@@ -2179,7 +2182,10 @@ namespace BioLib
                 {
                     bi.Channels.Add(c.Copy());
                 }
-
+            foreach (var item in b.Resolutions)
+            {
+                bi.Resolutions.Add(item);
+            }
             bi.Coords = b.Coords;
             bi.Volume = b.Volume;
             bi.sizeZ = b.sizeZ;
@@ -2192,7 +2198,6 @@ namespace BioLib
             bi.isGroup = b.isGroup;
             bi.imageInfo = b.imageInfo;
             bi.bitsPerPixel = b.bitsPerPixel;
-            bi.Resolutions = b.Resolutions;
             bi.Coordinate = b.Coordinate;
             bi.file = b.file;
             bi.Filename = b.Filename;
@@ -2292,32 +2297,82 @@ namespace BioLib
         }
         public double PhysicalSizeX
         {
-            get { return Resolutions[Level].PhysicalSizeX; }
+            get 
+            {
+                if (isPyramidal)
+                    return Resolutions[Level].PhysicalSizeX;
+                else
+                if (Plate != null)
+                    return Resolutions[serie].PhysicalSizeX;
+                else
+                    return Resolutions[0].PhysicalSizeX;
+            }
         }
         public double PhysicalSizeY
         {
-            get { return Resolutions[Level].PhysicalSizeY; }
+            get
+            {
+                if (isPyramidal)
+                    return Resolutions[Level].PhysicalSizeY;
+                else
+                if (Plate != null)
+                    return Resolutions[serie].PhysicalSizeY;
+                else
+                    return Resolutions[0].PhysicalSizeY;
+            }
         }
         public double PhysicalSizeZ
         {
-            get { return Resolutions[Level].PhysicalSizeZ; }
+            get
+            {
+                if (isPyramidal)
+                    return Resolutions[Level].PhysicalSizeZ;
+                else
+                if(Plate!=null)
+                    return Resolutions[serie].PhysicalSizeZ;
+                else
+                    return Resolutions[0].PhysicalSizeZ;
+            }
         }
         public double StageSizeX
         {
             get
             {
-                return Resolutions[Level].StageSizeX;
+                if (isPyramidal)
+                    return Resolutions[Level].StageSizeX;
+                else
+                if (Plate != null)
+                    return Resolutions[serie].StageSizeX;
+                else
+                    return Resolutions[0].StageSizeX;
             }
             set { imageInfo.StageSizeX = value; }
         }
         public double StageSizeY
         {
-            get { return Resolutions[Level].StageSizeY; }
+            get {
+                if(isPyramidal)
+                    return Resolutions[Level].StageSizeY;
+                else
+                if (Plate != null)
+                    return Resolutions[serie].StageSizeY;
+                else
+                    return Resolutions[0].StageSizeY;
+            }
             set { imageInfo.StageSizeY = value; }
         }
         public double StageSizeZ
         {
-            get { return Resolutions[Level].StageSizeZ; }
+            get
+            {
+                if (isPyramidal)
+                    return Resolutions[Level].StageSizeZ;
+                else
+                if (Plate != null)
+                    return Resolutions[serie].StageSizeZ;
+                else
+                    return Resolutions[0].StageSizeZ;
+            }
             set { imageInfo.StageSizeZ = value; }
         }
         Size s = new Size(1920, 1080);
@@ -2712,9 +2767,12 @@ namespace BioLib
                 UpdateCoords(SizeZ, 3, SizeT);
             }
             else
+            if(px == PixelFormat.Format16bppGrayScale)
             {
-                To48Bit();
-                To8Bit();
+                foreach (var item in Buffers)
+                {
+                    item.To8Bit();
+                }
             }
             AutoThreshold(this, true);
             StackThreshold(false);
@@ -2792,7 +2850,6 @@ namespace BioLib
                 for (int i = 0; i < Buffers.Count; i++)
                 {
                     Buffers[i] = Bitmap.To24Bit(Buffers[i]);
-                    Buffers[i].SwitchRedBlue();
                 }
                 if (Channels.Count == 4)
                 {
@@ -2809,7 +2866,7 @@ namespace BioLib
                 //We run 8bit so we get 24 bit rgb.
                 for (int i = 0; i < Buffers.Count; i++)
                 {
-                    Buffers[i].Image = AForge.Imaging.Image.Convert16bppTo8bpp(Buffers[i]);
+                    Buffers[i] = AForge.Imaging.Image.Convert16bppTo8bpp(Buffers[i]);
                     Buffers[i].SwitchRedBlue();
                 }
             }
@@ -2943,18 +3000,8 @@ namespace BioLib
                 for (int i = 0; i < Buffers.Count; i++)
                 {
                     Buffers[i] = AForge.Imaging.Image.Convert8bppTo16bpp(Buffers[i]);
+                    Buffers[i].SwitchRedBlue();
                 }
-                /*
-                for (int c = 0; c < Channels.Count; c++)
-                {
-                    for (int i = 0; i < Channels[c].range.Length; i++)
-                    {
-                        Channels[c].range[i].Min = (int)(((float)Channels[c].range[i].Min / (float)byte.MaxValue) * ushort.MaxValue);
-                        Channels[c].range[i].Max = (int)(((float)Channels[c].range[i].Max / (float)byte.MaxValue) * ushort.MaxValue);
-                    }
-                    Channels[c].BitsPerPixel = 16;
-                }
-                */
             }
             else
             {
@@ -5293,27 +5340,27 @@ namespace BioLib
                     Channel c = b.Channels[channel];
                     for (int r = 0; r < c.range.Length; r++)
                     {
-                        omexml.setChannelID("Channel:" + channel + ":" + serie, serie, channel + r);
-                        omexml.setChannelSamplesPerPixel(new PositiveInteger(java.lang.Integer.valueOf(1)), serie, channel + r);
+                        omexml.setChannelID("Channel:" + channel + ":" + serie, r, channel);
+                        omexml.setChannelSamplesPerPixel(new PositiveInteger(java.lang.Integer.valueOf(c.range.Length)), r, channel);
                         if (c.LightSourceWavelength != 0)
                         {
-                            omexml.setChannelLightSourceSettingsID("LightSourceSettings:" + channel, serie, channel + r);
+                            omexml.setChannelLightSourceSettingsID("LightSourceSettings:" + channel, r, channel);
                             ome.units.quantity.Length lw = new ome.units.quantity.Length(java.lang.Double.valueOf(c.LightSourceWavelength), ome.units.UNITS.NANOMETER);
-                            omexml.setChannelLightSourceSettingsWavelength(lw, serie, channel + r);
-                            omexml.setChannelLightSourceSettingsAttenuation(PercentFraction.valueOf(c.LightSourceAttenuation), serie, channel + r);
+                            omexml.setChannelLightSourceSettingsWavelength(lw, r, channel);
+                            omexml.setChannelLightSourceSettingsAttenuation(PercentFraction.valueOf(c.LightSourceAttenuation), r, channel);
                         }
-                        omexml.setChannelName(c.Name, serie, channel + r);
+                        omexml.setChannelName(c.Name, r, channel);
                         if (c.Color != null)
                         {
                             ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(c.Color.Value.R, c.Color.Value.G, c.Color.Value.B, c.Color.Value.A);
-                            omexml.setChannelColor(col, serie, channel + r);
+                            omexml.setChannelColor(col, r, channel);
                         }
                         if (c.Emission != 0)
                         {
                             ome.units.quantity.Length em = new ome.units.quantity.Length(java.lang.Double.valueOf(c.Emission), ome.units.UNITS.NANOMETER);
-                            omexml.setChannelEmissionWavelength(em, serie, channel + r);
+                            omexml.setChannelEmissionWavelength(em, r, channel);
                             ome.units.quantity.Length ex = new ome.units.quantity.Length(java.lang.Double.valueOf(c.Excitation), ome.units.UNITS.NANOMETER);
-                            omexml.setChannelExcitationWavelength(ex, serie, channel + r);
+                            omexml.setChannelExcitationWavelength(ex, r, channel);
                         }
                         /*
                         if (c.ContrastMethod != null)
@@ -5332,12 +5379,12 @@ namespace BioLib
                             omexml.setChannelAcquisitionMode(am, serie, channel + r);
                         }
                         */
-                        omexml.setChannelFluor(c.Fluor, serie, channel + r);
+                        omexml.setChannelFluor(c.Fluor, r, channel);
                         if (c.LightSourceIntensity != 0)
                         {
                             ome.units.quantity.Power pw = new ome.units.quantity.Power(java.lang.Double.valueOf(c.LightSourceIntensity), ome.units.UNITS.VOLT);
-                            omexml.setLightEmittingDiodePower(pw, serie, channel + r);
-                            omexml.setLightEmittingDiodeID(c.DiodeName, serie, channel + r);
+                            omexml.setLightEmittingDiodePower(pw, r, channel);
+                            omexml.setLightEmittingDiodeID(c.DiodeName, r, channel);
                         }
                     }
                 }
@@ -5582,9 +5629,10 @@ namespace BioLib
                     }
 
             }
+            writer = new ImageWriter();
             writer.setMetadataRetrieve(omexml);
-            f = f.Replace("\\", "/");
             writer.setId(f);
+            
             status = "Saving OME Image Planes.";
             for (int i = 0; i < files.Length; i++)
             {
