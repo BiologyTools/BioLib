@@ -37,7 +37,7 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="BioFormats.NET8" Version="7.3.1.1" />
+    <PackageReference Include="BioFormats.NET8" Version="8.0.0" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
     <PackageReference Include="CS-Script" Version="4.8.17" />
     <PackageReference Include="ManagedCuda" Version="10.0.0" />

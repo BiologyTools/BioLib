@@ -57,7 +57,7 @@ namespace BioLib
         {
             for (int i = 0; i < images.Count; i++)
             {
-                if (images[i].ID == ids || images[i].file == ids)
+                if (images[i].ID == ids || images[i].Filename == ids)
                     return images[i];
             }
             return null;
@@ -65,21 +65,11 @@ namespace BioLib
         /// It adds an image to the list of images
         /// 
         /// @param BioImage A class that contains the image data and other information.
-        public static void AddImage(BioImage im, bool newtab)
+        public static void AddImage(BioImage im)
         {
-            string ext = Path.GetExtension(im.ID);
-            if (ext == "")
-                im.ID += "ome.tif";
-            im.Filename = im.ID;
-            if (images.Contains(im)) return;
-            im.Filename = GetImageName(im.ID);
-            int c = GetImageCountByName(im.ID);
-            if (c > 1)
-                im.ID = im.Filename + "-" + c;
-            else
-                im.ID = im.Filename;
+            if(!images.Contains(im))
             images.Add(im);
-            
+            im.Filename = Path.GetFileName(im.ID);
         }
         /// It takes a string as an argument, and returns the number of times that string appears in the
         /// list of images
@@ -89,7 +79,7 @@ namespace BioLib
         /// @return The number of images that contain the name of the image.
         public static int GetImageCountByName(string s)
         {
-            string name = Path.GetFileName(s);
+            string name = Path.GetFileNameWithoutExtension(s);
             string ext = Path.GetExtension(s);
             if (ext != "")
             {
@@ -116,23 +106,18 @@ namespace BioLib
             if (i == 0)
                 return Path.GetFileName(s);
             string name = Path.GetFileNameWithoutExtension(s);
+            name = name.Replace(".ome", "");
             if (Path.GetFileNameWithoutExtension(name) != name)
                 name = Path.GetFileNameWithoutExtension(name);
             string ext = s.Substring(s.IndexOf('.'), s.Length - s.IndexOf('.'));
-            if (name.Split('-').Length > 2)
-            {
-                string sts = name.Remove(name.LastIndexOf('-'), name.Length - name.LastIndexOf('-'));
-                return sts + "-" + i + ext;
-            }
-            else
-                return name + "-" + i + ext;
+            return name + "-" + (i+1) + ext;
         }
         /// This function removes an image from the table
         /// 
         /// @param BioImage This is the image that you want to remove.
         public static void RemoveImage(BioImage im)
         {
-            RemoveImage(im.ID);
+            RemoveImage(im.Filename);
         }
         /// It removes an image from the table
         /// 
@@ -1186,7 +1171,7 @@ namespace BioLib
                 }
                 if (!inPlace)
                 {
-                    Images.AddImage(img, true);
+                    Images.AddImage(img);
                 }
             }
             catch (Exception e)
@@ -1223,7 +1208,7 @@ namespace BioLib
                 }
                 if (!inPlace)
                 {
-                    Images.AddImage(img, true);
+                    Images.AddImage(img);
                 }
                 return img;
             }
@@ -1257,7 +1242,7 @@ namespace BioLib
                 }
                 if (!inPlace)
                 {
-                    Images.AddImage(img, true);
+                    Images.AddImage(img);
                 }
                 return img;
             }
@@ -1293,7 +1278,7 @@ namespace BioLib
                 }
                 if (!inPlace)
                 {
-                    Images.AddImage(img, true);
+                    Images.AddImage(img);
                 }
                 return img;
             }
@@ -1327,7 +1312,7 @@ namespace BioLib
                 }
                 if (!inPlace)
                 {
-                    Images.AddImage(img, true);
+                    Images.AddImage(img);
                 }
                 return img;
             }
@@ -1365,7 +1350,7 @@ namespace BioLib
                 }
                 if (!inPlace)
                 {
-                    Images.AddImage(img, true);
+                    Images.AddImage(img);
                 }
             }
             catch (Exception e)
@@ -1404,7 +1389,7 @@ namespace BioLib
                 }
                 if (!inPlace)
                 {
-                    Images.AddImage(img, true);
+                    Images.AddImage(img);
                 }
             }
             catch (Exception e)
@@ -1440,7 +1425,7 @@ namespace BioLib
                 }
                 if (!inPlace)
                 {
-                    Images.AddImage(img, true);
+                    Images.AddImage(img);
                 }
             }
             catch (Exception e)
@@ -1473,7 +1458,7 @@ namespace BioLib
                 }
                 if (!inPlace)
                 {
-                    Images.AddImage(img, true);
+                    Images.AddImage(img);
                 }
             }
             catch (Exception e)
@@ -3081,7 +3066,7 @@ namespace BioLib
                 }
             }
             AutoThreshold(bm, true);
-            Images.AddImage(bm, true);
+            Images.AddImage(bm);
         }
         /// It takes a list of images and assigns them to a 3D array of coordinates
         public void UpdateCoords()
@@ -3497,7 +3482,7 @@ namespace BioLib
         public static BioImage Substack(BioImage orig, int ser, int zs, int ze, int cs, int ce, int ts, int te)
         {
             BioImage b = CopyInfo(orig, false, false);
-            b.ID = Images.GetImageName(orig.ID);
+            //b.ID = Images.GetImageName(orig.ID);
             int i = 0;
             b.Coords = new int[ze - zs, ce - cs, te - ts];
             b.sizeZ = ze - zs;
@@ -3534,7 +3519,7 @@ namespace BioLib
                 b.StackThreshold(true);
             else
                 b.StackThreshold(false);
-            Images.AddImage(b, true);
+            Images.AddImage(b);
             return b;
         }
         /// This function takes two images and merges them together
@@ -3558,42 +3543,38 @@ namespace BioLib
             res.seriesCount = b2.seriesCount;
             res.imagesPerSeries = res.ImageCount / res.seriesCount;
             res.Coords = new int[res.SizeZ, res.SizeC, res.SizeT];
-
+            res.Resolutions.Add(b2.Resolutions[0]);
+            res.Volume = new VolumeD(new Point3D(res.StageSizeX, res.StageSizeY, res.StageSizeZ), new Point3D(b2.SizeX,b2.SizeY,b2.SizeZ));
             int i = 0;
-            int cc = 0;
-            for (int ti = 0; ti < res.SizeT; ti++)
+            for (int ci = 0; ci < res.SizeC; ci++)
             {
-                for (int zi = 0; zi < res.SizeZ; zi++)
+                for (int ti = 0; ti < res.SizeT; ti++)
                 {
-                    for (int ci = 0; ci < res.SizeC; ci++)
+                    for (int zi = 0; zi < res.SizeZ; zi++)
                     {
-                        ZCT co = new ZCT(zi, ci, ti);
-                        if (ci < cOrig)
+                        if (i < b.ImageCount)
                         {
-                            //If this channel is part of the image b1 we add planes from it.
-                            Bitmap copy = new Bitmap(b2.id, b2.SizeX, b2.SizeY, b2.Buffers[0].PixelFormat, b2.Buffers[i].Bytes, co, i);
-                            if (b2.littleEndian)
-                                copy.RotateFlip(AForge.RotateFlipType.Rotate180FlipNone);
-                            res.SetFrameIndex(zi, ci, ti, i);
-                            res.Buffers.Add(b2.Buffers[i]);
+                            ZCT co = new ZCT(zi, ci, ti);
+                            int ind = b.GetFrameIndex(zi, 0, ti);
+                            //This plane is not part of b1 so we add the planes from b2 channels.
+                            Bitmap copy = new Bitmap(b.id, b.SizeX, b.SizeY, b.Buffers[0].PixelFormat, b.Buffers[ind].Bytes, co, ind);
+                            res.SetFrameIndex(zi, ci, ti, ind);
                             res.Buffers.Add(copy);
                             //Lets copy the ROI's from the original image.
-                            List<ROI> anns = b2.GetAnnotations(zi, ci, ti);
+                            List<ROI> anns = b.GetAnnotations(zi, ci, ti);
                             if (anns.Count > 0)
                                 res.Annotations.AddRange(anns);
                         }
                         else
                         {
+                            ZCT co = new ZCT(zi, ci, ti);
+                            int ind = b2.GetFrameIndex(zi, 0, ti);
                             //This plane is not part of b1 so we add the planes from b2 channels.
-                            Bitmap copy = new Bitmap(b.id, b.SizeX, b.SizeY, b.Buffers[0].PixelFormat, b.Buffers[i].Bytes, co, i);
-                            if (b2.littleEndian)
-                                copy.RotateFlip(AForge.RotateFlipType.Rotate180FlipNone);
-                            res.SetFrameIndex(zi, ci, ti,i);
-                            res.Buffers.Add(b.Buffers[i]);
+                            Bitmap copy = new Bitmap(b2.id, b2.SizeX, b2.SizeY, b2.Buffers[0].PixelFormat, b2.Buffers[ind].Bytes, co, ind);
+                            res.SetFrameIndex(zi, ci, ti, b.ImageCount + ind);
                             res.Buffers.Add(copy);
-
                             //Lets copy the ROI's from the original image.
-                            List<ROI> anns = b.GetAnnotations(zi, cc, ti);
+                            List<ROI> anns = b2.GetAnnotations(zi, ci, ti);
                             if (anns.Count > 0)
                                 res.Annotations.AddRange(anns);
                         }
@@ -3601,20 +3582,21 @@ namespace BioLib
                     }
                 }
             }
-            for (int ci = 0; ci < res.SizeC; ci++)
+            for (int ci = 0; ci < b.SizeC; ci++)
             {
-                if (ci < cOrig)
-                {
-                    res.Channels.Add(b2.Channels[ci].Copy());
-                }
-                else
-                {
-                    res.Channels.Add(b.Channels[cc].Copy());
-                    res.Channels[cOrig + cc].Index = ci;
-                    cc++;
-                }
+                res.Channels.Add(b.Channels[ci].Copy());
             }
-            Images.AddImage(res, true);
+            for (int ci = 0; ci < b2.SizeC; ci++)
+            {
+                res.Channels.Add(b2.Channels[ci].Copy());
+            }
+                res.rgbChannels[0] = 0;
+            if(res.Channels.Count > 1)
+                res.rgbChannels[1] = 1;
+            if (res.Channels.Count > 2)
+                res.rgbChannels[2] = 2;
+            Images.AddImage(res);
+            res.imagesPerSeries = res.Buffers.Count;
             //We wait for threshold image statistics calculation
             do
             {
@@ -3665,7 +3647,7 @@ namespace BioLib
                     ind++;
                 }
             }
-            Images.AddImage(bi, true);
+            Images.AddImage(bi);
             bi.UpdateCoords(1, b.SizeC, b.SizeT);
             bi.Coordinate = new ZCT(0, 0, 0);
             //We wait for threshold image statistics calculation
@@ -3709,7 +3691,7 @@ namespace BioLib
                     ind++;
                 }
             }
-            Images.AddImage(bi, true);
+            Images.AddImage(bi);
             bi.UpdateCoords(1, b.SizeC, b.SizeT);
             bi.Coordinate = new ZCT(0, 0, 0);
             //We wait for threshold image statistics calculation
@@ -3807,9 +3789,9 @@ namespace BioLib
                 AutoThreshold(ri, false);
                 AutoThreshold(gi, false);
                 AutoThreshold(bi, false);
-                Images.AddImage(ri, true);
-                Images.AddImage(gi, true);
-                Images.AddImage(bi, true);
+                Images.AddImage(ri);
+                Images.AddImage(gi);
+                Images.AddImage(bi);
                 Statistics.ClearCalcBuffer();
                 bms[0] = ri;
                 bms[1] = gi;
@@ -5145,7 +5127,7 @@ namespace BioLib
             else
                 b.StackThreshold(false);
             if (addToImages)
-                Images.AddImage(b, tab);
+                Images.AddImage(b);
             //pr.Close();
             //pr.Dispose();
             st.Stop();
@@ -5830,7 +5812,7 @@ namespace BioLib
                 b.Buffers.AddRange(bb.Buffers);
             }
             b.UpdateCoords(sizeZ, sizeC, sizeT);
-            Images.AddImage(b, true);
+            Images.AddImage(b);
             return b;
         }
         /// It takes a folder of images and creates a stack from them
@@ -5869,7 +5851,7 @@ namespace BioLib
             }
             else
                 b.UpdateCoords(z + 1, c + 1, t + 1);
-            Images.AddImage(b, tab);
+            Images.AddImage(b);
             return b;
         }
         static bool vips = false;
@@ -6738,7 +6720,7 @@ namespace BioLib
             if(!b.isPyramidal)
             reader.close();
             if (addToImages)
-                Images.AddImage(b, tab);
+                Images.AddImage(b);
             b.Loading = false;
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),false, file, serie, tab, addToImages, tile, tilex, tiley, tileSizeX, tileSizeY, true);
             return b;
@@ -6746,16 +6728,24 @@ namespace BioLib
         
         public int GetFrameIndex(int z,int c, int t)
         {
-            if(StackOrder == Order.ZCT)
+            try
             {
-                return Coords[z, c, t];
+                if(StackOrder == Order.ZCT)
+                {
+                    return Coords[z, c, t];
+                }
+                else if (StackOrder == Order.CZT)
+                {
+                    return Coords[c, z, t];
+                }
+                else
+                    return Coords[t, c, z];
             }
-            else if (StackOrder == Order.CZT)
+            catch (Exception e)
             {
-                return Coords[c, z, t];
+                return 0;
             }
-            else
-                return Coords[t, c, z];
+            
         }
         public void SetFrameIndex(int z, int c, int t, int val)
         {

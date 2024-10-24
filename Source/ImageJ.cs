@@ -176,7 +176,7 @@ namespace BioLib
                 bm.Filename = fn;
                 bm.ID = fn;
                 bm.file = dir + "/" + fn;
-                Images.AddImage(bm,false);
+                Images.AddImage(bm);
             }
             else
             {
