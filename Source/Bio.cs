@@ -27,7 +27,6 @@ using NetVips;
 using System.Threading.Tasks;
 using OpenSlideGTK;
 using System.Reflection;
-
 namespace BioLib
 {
     /* A class declaration. */
@@ -2074,7 +2073,7 @@ namespace BioLib
                 resolution = value;
             } 
         }
-        
+        public static float Progress = 0;
         ImageInfo imageInfo = new ImageInfo();
         /// It copies the BioImage b and returns a new BioImage object.
         /// 
@@ -5637,11 +5636,13 @@ namespace BioLib
             for (int i = 0; i < files.Length; i++)
             {
                 BioImage b = files[i];
+                progFile = files[i].Filename;
                 writer.setSeries(i);
                 for (int bu = 0; bu < b.Buffers.Count; bu++)
                 {
                     byte[] bts = b.Buffers[bu].GetSaveBytes(BitConverter.IsLittleEndian);
                     writer.saveBytes(bu, bts);
+                    Progress = ((float)bu / (float)b.Buffers.Count) * 100;
                 }
             }
             writer.close();
@@ -5689,6 +5690,7 @@ namespace BioLib
         {
             if (File.Exists(file))
                 File.Delete(file);
+            status = "Saving OME Pyramidal";
             //We need to go through the images and find the ones belonging to each resolution.
             //As well we need to determine the dimensions of the tiles.
             Dictionary<double, List<BioImage>> bis = new Dictionary<double, List<BioImage>>();
@@ -5786,6 +5788,7 @@ namespace BioLib
                 int i = 0;
                 foreach (BioImage b in bis[px])
                 {
+                    Progress = ((float)i / (float)bis[px].Count) * 100;
                     AForge.Size si = ss[px];
                     double xs = (-(min[px].X - bis[px][i].Volume.Location.X) / bis[px][i].Resolutions[0].VolumeWidth) * bis[px][i].SizeX;
                     double ys = (-(min[px].Y - bis[px][i].Volume.Location.Y) / bis[px][i].Resolutions[0].VolumeHeight) * bis[px][i].SizeY;
@@ -6666,6 +6669,7 @@ namespace BioLib
                 {
                     for (int p = 0; p < pages; p++)
                     {
+                        Progress = ((float)p / (float)pages) * 100;
                         Bitmap bf;
                         byte[] bytes = reader.openBytes(p);
                         bf = new Bitmap(file, SizeX, SizeY, PixelFormat, bytes, new ZCT(z, c, t), p, null, b.littleEndian, inter);
@@ -6704,9 +6708,11 @@ namespace BioLib
             }
             else
             {
+                status = "Saving Image Planes.";
                 b.imRead = reader;
                 for (int p = 0; p < pages; p++)
                 {
+                    Progress = ((float)p / (float)pages) * 100;
                     b.Buffers.Add(GetTile(b, p, serie, tilex, tiley, tileSizeX, tileSizeY));
                 }
             }
