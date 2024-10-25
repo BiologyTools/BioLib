@@ -6848,7 +6848,6 @@ namespace BioLib
             if (b.openSlideImage != null && !b.file.EndsWith("ome.tif"))
             {
                 Bitmap bm = new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
-                bm.SwitchRedBlue();
                 return bm;
             }
             else
@@ -6926,7 +6925,6 @@ namespace BioLib
             if (b.openSlideImage != null && !b.file.EndsWith("ome.tif"))
             {
                 Bitmap bm = new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
-                bm.SwitchRedBlue();
                 return bm;
             }
 
