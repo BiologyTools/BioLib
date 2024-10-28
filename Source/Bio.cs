@@ -445,6 +445,8 @@ namespace BioLib
                 if (roiMask != null)
                 roiMask.Selected = value;
                 selected = value;
+                if(!selected)
+                selectedPoints.Clear();
             } 
         }
         public bool subPixel = false;
@@ -5102,7 +5104,7 @@ namespace BioLib
                         {
                             for (int z = 0; z < b.SizeZ; z++)
                             {
-                                Bitmap bmp = GetTile(b, new ZCT(z, c, t), series, tileX, tileY, tileSizeX, tileSizeY);
+                                Bitmap bmp = GetTile(b, b.GetFrameIndex(z,c,t), series, tileX, tileY, tileSizeX, tileSizeY);
                                 b.Buffers.Add(bmp);
                                 Statistics.CalcStatistics(bmp);
                             }
@@ -6039,6 +6041,7 @@ namespace BioLib
                 reader.setMetadataStore(b.meta);
                 try
                 {
+                    status = "Opening file " + b.Filename;
                     reader.setId(f);
                 }
                 catch (Exception e)
@@ -6087,6 +6090,7 @@ namespace BioLib
             int sumSamples = 0;
             while (true)
             {
+                status = "Reading channels.";
                 bool def = false;
                 try
                 {
@@ -6164,6 +6168,7 @@ namespace BioLib
             
             try
             {
+                status = "Reading wells.";
                 int wells = b.meta.getWellCount(0);
                 if(wells>0)
                 {
@@ -6176,12 +6181,15 @@ namespace BioLib
             {
 
             }
+
             List<Resolution> rss = new List<Resolution>();
             for (int s = 0; s < b.seriesCount; s++)
             {
                 reader.setSeries(s);
-                for (int r = 0; r < reader.getResolutionCount(); r++)
+                int ress = reader.getResolutionCount();
+                for (int r = 0; r < ress; r++)
                 {
+                    status = "Reading resolution " + (r+1).ToString() + "/" + ress;
                     Resolution res = new Resolution();
                     try
                     {
@@ -6318,6 +6326,7 @@ namespace BioLib
                 }
                 for (int sc = 0; sc < scount; sc++)
                 {
+                    status = "Reading ROI " + (sc+1).ToString() + "/" + scount;
                     string typ = b.meta.getShapeType(im, sc);
                     ROI an = new ROI();
                     an.roiID = roiID;
@@ -6639,14 +6648,17 @@ namespace BioLib
             {
                 try
                 {
+
                     string st = OpenSlideImage.DetectVendor(file);
                     if (st != null && !file.EndsWith("ome.tif") && useOpenSlide)
                     {
+                        status = "Opening file with OpenSlide.";
                         b.openSlideImage = OpenSlideImage.Open(file);
                         b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file, true);
                     }
                     else
                     {
+                        status = "Opening file with BioFormats.";
                         b.slideBase = new SlideBase(b, SlideImage.Open(b));
                     }
                 }
@@ -6708,7 +6720,7 @@ namespace BioLib
             }
             else
             {
-                status = "Saving Image Planes.";
+                status = "Reading tiles.";
                 b.imRead = reader;
                 for (int p = 0; p < pages; p++)
                 {
@@ -6776,6 +6788,7 @@ namespace BioLib
             if (addToImages)
                 Images.AddImage(b);
             b.Loading = false;
+
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),false, file, serie, tab, addToImages, tile, tilex, tiley, tileSizeX, tileSizeY, true);
             return b;
         }
@@ -6829,91 +6842,6 @@ namespace BioLib
         /// @param tileSizeY the height of the tile
         /// 
         /// @return A Bitmap object.
-        public static Bitmap GetTile(BioImage b, ZCT coord, int serie, int tilex, int tiley, int tileSizeX, int tileSizeY)
-        {
-            if (b.file.EndsWith(".tif"))
-            {
-                try
-                {
-                    //We can get a tile faster with libvips rather than bioformats.
-                    return ExtractRegionFromTiledTiff(b, tilex, tiley, tileSizeX, tileSizeY, serie);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.Message);
-                    useVips = false;
-                }
-            }
-            //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
-            if (b.openSlideImage != null && !b.file.EndsWith("ome.tif"))
-            {
-                Bitmap bm = new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
-                return bm;
-            }
-            else
-            {
-                string curfile = b.imRead.getCurrentFile();
-                if (curfile == null)
-                {
-                    b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
-                    b.imRead.close();
-                    b.imRead.setMetadataStore(b.meta);
-                    Console.WriteLine(b.file);
-                    b.imRead.setId(b.file);
-                }
-                else
-                {
-                    string fi = b.file.Replace("\\", "/");
-                    string cf = curfile.Replace("\\", "/");
-                    if (cf != fi)
-                    {
-                        b.imRead.close();
-                        b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
-                        b.imRead.setMetadataStore(b.meta);
-                        b.imRead.setId(b.file);
-                    }
-                }
-                if (b.imRead.getSeries() != serie)
-                    b.imRead.setSeries(serie);
-                int SizeX = b.imRead.getSizeX();
-                int SizeY = b.imRead.getSizeY();
-                bool flat = b.imRead.hasFlattenedResolutions();
-                int p = b.GetFrameIndex(coord.Z, coord.C, coord.T);
-                bool littleEndian = b.imRead.isLittleEndian();
-                PixelFormat PixelFormat = b.Resolutions[serie].PixelFormat;
-                bool interleaved = b.imRead.isInterleaved();
-                if (tilex < 0)
-                    tilex = 0;
-                if (tiley < 0)
-                    tiley = 0;
-                if (tilex >= SizeX)
-                    tilex = SizeX;
-                if (tiley >= SizeY)
-                    tiley = SizeY;
-                int sx = tileSizeX;
-                if (tilex + tileSizeX > SizeX)
-                    sx -= (tilex + tileSizeX) - (SizeX);
-                int sy = tileSizeY;
-                if (tiley + tileSizeY > SizeY)
-                    sy -= (tiley + tileSizeY) - (SizeY);
-                //For some reason calling openBytes with 1x1px area causes an exception. 
-                if (sx <= 1)
-                    return null;
-                if (sy <= 1)
-                    return null;
-                try
-                {
-                    byte[] bytesr = b.imRead.openBytes(b.GetFrameIndex(coord.Z, coord.C, coord.T), tilex, tiley, sx, sy);
-                    return new Bitmap(b.file, sx, sy, PixelFormat, bytesr, coord, p, null, littleEndian, interleaved);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.Message);
-                    return null;
-                }
-
-            }
-        }
         public static Bitmap GetTile(BioImage b, int index, int serie, int tilex, int tiley, int tileSizeX, int tileSizeY)
         {
             if ((b.file.EndsWith("ome.tif") && vips) || (b.file.EndsWith(".tif") && vips))
@@ -6924,7 +6852,8 @@ namespace BioLib
             //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
             if (b.openSlideImage != null && !b.file.EndsWith("ome.tif"))
             {
-                Bitmap bm = new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY), new ZCT(), "");
+                byte[] bts = b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY);
+                Bitmap bm = new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), "");
                 return bm;
             }
 

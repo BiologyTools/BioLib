@@ -223,7 +223,7 @@ namespace BioLib
         /// <exception cref="OpenSlideException"/>
         public unsafe byte[] ReadRegion(int level, long x, long y, long width, long height)
         {
-            return BioImage.GetTile(BioImage, BioImage.Coordinate, level, (int)x, (int)y, (int)width, (int)height).Bytes;
+            return BioImage.GetTile(BioImage,BioImage.GetFrameIndex(BioImage.Coordinate.Z, BioImage.Coordinate.C, BioImage.Coordinate.T), level, (int)x, (int)y, (int)width, (int)height).Bytes;
         }
 
         /// <summary>
@@ -238,7 +238,7 @@ namespace BioLib
         /// <returns></returns>
         public unsafe bool TryReadRegion(int level, long x, long y, long width, long height, out byte[] data, ZCT zct)
         {
-            data = BioImage.GetTile(BioImage, zct, level, (int)x, (int)y, (int)width, (int)height).Bytes;
+            data = BioImage.GetTile(BioImage, BioImage.GetFrameIndex(BioImage.Coordinate.Z, BioImage.Coordinate.C, BioImage.Coordinate.T), level, (int)x, (int)y, (int)width, (int)height).Bytes;
             if (data == null)
                 return false;
             else

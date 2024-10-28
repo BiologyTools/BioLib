@@ -11,9 +11,9 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>2.8.0</AssemblyVersion>
-    <FileVersion>2.8.0</FileVersion>
-    <PackageVersion>2.8.0</PackageVersion>
+    <AssemblyVersion>2.9.0</AssemblyVersion>
+    <FileVersion>2.9.0</FileVersion>
+    <PackageVersion>2.9.0</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>

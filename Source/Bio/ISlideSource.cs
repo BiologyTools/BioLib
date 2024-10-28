@@ -231,12 +231,12 @@ namespace BioLib
                 byte[] c = cache.GetTileSync(tf, curUnitsPerPixel);
                 if (c != null)
                 {
-                    if (Image.BioImage.Resolutions[0].PixelFormat == PixelFormat.Format16bppGrayScale)
+                    if (Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
                     {
                         c = Convert16BitToRGB(c);
                     }
                     else
-                    if (Image.BioImage.Resolutions[0].PixelFormat == PixelFormat.Format48bppRgb)
+                    if (Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format48bppRgb)
                     {
                         c = Convert48BitToRGB(c);
                     }
