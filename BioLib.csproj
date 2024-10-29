@@ -18,7 +18,7 @@
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>Bioformats 8.0.0 update &amp; bug fixes.</PackageReleaseNotes>
+    <PackageReleaseNotes>Bioformats 8.0.0 and progress &amp; status indication for opening and saving.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
@@ -48,11 +48,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="OpenSlideGTK" Version="2.0.0" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.5" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\Shared\AForgeBio\AForgeBio\AForgeBio\AForgeBio.csproj" />
-    <ProjectReference Include="..\OpenSlideGTK\src\OpenSlideSharp\OpenSlideGTK.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="banner.jpg">
