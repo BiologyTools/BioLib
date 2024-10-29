@@ -24,10 +24,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="tile_copy.cu" />
-    <None Remove="tile_copy.ptx" />
-  </ItemGroup>
-  <ItemGroup>
     <Content Include="LICENSE" />
     <Content Include="tile_copy.cu">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -41,14 +37,14 @@
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
     <PackageReference Include="CS-Script" Version="4.8.17" />
     <PackageReference Include="ManagedCuda" Version="10.0.0" />
-    <PackageReference Include="NetVips.Native" Version="8.15.3" />
-    <PackageReference Include="NetVips.Native.linux-arm64" Version="8.15.3" />
-    <PackageReference Include="NetVips.Native.linux-x64" Version="8.15.3" />
-    <PackageReference Include="NetVips.Native.osx-arm64" Version="8.15.3" />
-    <PackageReference Include="NetVips.Native.osx-x64" Version="8.15.3" />
-    <PackageReference Include="NetVips.Native.win-x64" Version="8.15.3" />
+    <PackageReference Include="NetVips.Native" Version="8.16.0" />
+    <PackageReference Include="NetVips.Native.linux-arm64" Version="8.16.0" />
+    <PackageReference Include="NetVips.Native.linux-x64" Version="8.16.0" />
+    <PackageReference Include="NetVips.Native.osx-arm64" Version="8.16.0" />
+    <PackageReference Include="NetVips.Native.osx-x64" Version="8.16.0" />
+    <PackageReference Include="NetVips.Native.win-x64" Version="8.16.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="NuGet.Build.Tasks.Pack" Version="6.11.0">
+    <PackageReference Include="NuGet.Build.Tasks.Pack" Version="6.11.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

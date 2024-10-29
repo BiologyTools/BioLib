@@ -492,21 +492,6 @@ namespace BioLib
             var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, new ZCT());
             return bgraData;
         }
-        public static byte[] ConvertRgbaToRgb(byte[] rgbaArray)
-        {
-            // Initialize a new byte array for RGB24 format
-            byte[] rgbArray = new byte[(rgbaArray.Length / 4) * 3];
-
-            for (int i = 0, j = 0; i < rgbaArray.Length; i += 4, j += 3)
-            {
-                // Copy the R, G, B values, skip the A value
-                rgbArray[j] = rgbaArray[i + 2];     // B
-                rgbArray[j + 1] = rgbaArray[i + 1]; // G
-                rgbArray[j + 2] = rgbaArray[i]; // R
-            }
-
-            return rgbArray;
-        }
         #endregion
     }
 

@@ -57,30 +57,12 @@ namespace BioLib
             }
             return false;
         }
-        public static byte[] ConvertBGRToRGB(byte[] bgrData)
-        {
-            // Ensure the array length is a multiple of 3 (since each pixel is 3 bytes)
-            if (bgrData.Length % 3 != 0)
-            {
-                throw new ArgumentException("The length of the byte array must be a multiple of 3.");
-            }
 
-            byte[] rgbData = new byte[bgrData.Length];
-
-            for (int i = 0; i < bgrData.Length; i += 3)
-            {
-                rgbData[i] = bgrData[i + 2];     // R
-                rgbData[i + 1] = bgrData[i + 1]; // G
-                rgbData[i + 2] = bgrData[i];     // B
-            }
-
-            return rgbData;
-        }
         public void AddTile(Tuple<TileInfo, byte[]> tile)
         {
             if (HasTile(tile.Item1))
                 return;
-            byte[] tileData = ConvertBGRToRGB(tile.Item2);
+            byte[] tileData = tile.Item2;
             if (gpuTiles.Count > maxTiles)
             {
                 var ti = gpuTiles.First();
@@ -180,7 +162,6 @@ namespace BioLib
                     foreach (var tile in tiles)
                     {
                         Extent extent = tile.Extent;
-
                         // Find the corresponding GPU tile (already loaded into GPU memory)
                         CudaDeviceVariable<byte> devTile = null;
                         foreach (var t in gpuTiles)
@@ -191,12 +172,12 @@ namespace BioLib
                                 break;
                             }
                         }
-
                         if (devTile != null)
                         {
                             // Calculate the start position on the canvas and the dimensions of the tile
                             int startX = (int)Math.Ceiling(extent.MinX - minX);
                             int startY = (int)Math.Ceiling(extent.MinY - minY);
+                           
                             int tileWidth = (int)Math.Ceiling(extent.MaxX - extent.MinX);
                             int tileHeight = (int)Math.Ceiling(extent.MaxY - extent.MinY);
 

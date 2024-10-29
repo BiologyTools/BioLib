@@ -6677,6 +6677,7 @@ namespace BioLib
             int t = 0;
             if (!tile)
             {
+                status = "Reading image planes.";
                 try
                 {
                     for (int p = 0; p < pages; p++)
@@ -6789,7 +6790,7 @@ namespace BioLib
                 Images.AddImage(b);
             b.Loading = false;
 
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),false, file, serie, tab, addToImages, tile, tilex, tiley, tileSizeX, tileSizeY, true);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),false, file, serie, tab, addToImages, tile, tilex, tiley, tileSizeX, tileSizeY);
             return b;
         }
         
@@ -6853,7 +6854,8 @@ namespace BioLib
             if (b.openSlideImage != null && !b.file.EndsWith("ome.tif"))
             {
                 byte[] bts = b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY);
-                Bitmap bm = new Bitmap(tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), "");
+                Bitmap bm = new Bitmap("",tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0, null, true, true);
+
                 return bm;
             }
 
@@ -6863,7 +6865,6 @@ namespace BioLib
                 b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
                 b.imRead.close();
                 b.imRead.setMetadataStore(b.meta);
-                Console.WriteLine(b.file);
                 b.imRead.setId(b.file);
             }
             else
