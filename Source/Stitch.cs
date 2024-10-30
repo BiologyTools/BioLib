@@ -100,6 +100,10 @@ namespace BioLib
             catch (Exception e)
             {
                 Console.WriteLine(e);
+                OpenSlideBase.useGPU = false;
+                SlideSourceBase.useGPU = false;
+                SlideBase.UseVips = true;
+                OpenSlideBase.UseVips = true;
             }
 
         }

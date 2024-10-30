@@ -38,7 +38,7 @@
     <PackageReference Include="BioFormats.NET8" Version="8.0.0" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
     <PackageReference Include="CS-Script" Version="4.8.17" />
-    <PackageReference Include="ManagedCuda" Version="10.0.0" />
+    <PackageReference Include="ManagedCuda.NETStandard" Version="9.1.300" />
     <PackageReference Include="NetVips.Native" Version="8.16.0" />
     <PackageReference Include="NetVips.Native.linux-arm64" Version="8.16.0" />
     <PackageReference Include="NetVips.Native.linux-x64" Version="8.16.0" />
@@ -50,8 +50,10 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="OpenSlideGTK" Version="2.0.0.1" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OpenSlideGTK\src\OpenSlideSharp\OpenSlideGTK.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="banner.jpg">

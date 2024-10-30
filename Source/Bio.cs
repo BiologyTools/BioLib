@@ -5097,7 +5097,7 @@ namespace BioLib
                 {
                     Console.WriteLine("Opening tiles.");
                     if (vips)
-                        OpenVips(b, b.Resolutions.Count);
+                        OpenVips(b);
                     for (int t = 0; t < b.SizeT; t++)
                     {
                         for (int c = 0; c < b.SizeC; c++)
@@ -5916,11 +5916,11 @@ namespace BioLib
         /// contains information about the image file, such as the file path and other metadata.
         /// @param pagecount The parameter "pagecount" represents the number of pages in the TIFF file
         /// that needs to be loaded into the "vipPages" list of the "BioImage" object.
-        public static void OpenVips(BioImage b, int pagecount)
+        public static void OpenVips(BioImage b)
         {
             try
             {
-                for (int i = 0; i < pagecount; i++)
+                for (int i = 0; i < b.seriesCount;  i++)
                 {
                     b.vipPages.Add(NetVips.Image.Tiffload(b.file, i));
                 }
@@ -6084,7 +6084,8 @@ namespace BioLib
                 b.bitsPerPixel = 16;
             b.series = serie;
             string order = reader.getDimensionOrder();
-
+            if (vips)
+                OpenVips(b);
             //Lets get the channels and initialize them
             int i = 0;
             int sumSamples = 0;
@@ -6646,6 +6647,7 @@ namespace BioLib
             b.Buffers = new List<Bitmap>();
             if (b.Type == ImageType.pyramidal)
             {
+                
                 try
                 {
 
@@ -6845,17 +6847,16 @@ namespace BioLib
         /// @return A Bitmap object.
         public static Bitmap GetTile(BioImage b, int index, int serie, int tilex, int tiley, int tileSizeX, int tileSizeY)
         {
-            if ((b.file.EndsWith("ome.tif") && vips) || (b.file.EndsWith(".tif") && vips))
+            if (vips && b.vipPages.Count > 0)
             {
                 //We can get a tile faster with libvips rather than bioformats.
                 return ExtractRegionFromTiledTiff(b, tilex, tiley, tileSizeX, tileSizeY, serie);
             }
             //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
-            if (b.openSlideImage != null && !b.file.EndsWith("ome.tif"))
+            if (b.openSlideImage != null)
             {
                 byte[] bts = b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY);
                 Bitmap bm = new Bitmap("",tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0, null, true, true);
-
                 return bm;
             }
 
@@ -7467,9 +7468,6 @@ namespace BioLib
         /// it will return true. If an exception is caught, it will return false.
         public static bool VipsSupport(string file)
         {
-            //Currently GTKSharp and LibVips causes an error so on windows no netvips support.
-            if (OperatingSystem.IsWindows())
-                return false;
             try
             {
                 netim = NetVips.Image.Tiffload(file);
