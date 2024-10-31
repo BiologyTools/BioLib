@@ -4931,7 +4931,7 @@ namespace BioLib
                 int SizeX = image.GetField(TiffTag.IMAGEWIDTH)[0].ToInt();
                 int SizeY = image.GetField(TiffTag.IMAGELENGTH)[0].ToInt();
                 b.bitsPerPixel = image.GetField(TiffTag.BITSPERSAMPLE)[0].ToInt();
-                b.littleEndian = image.IsBigEndian();
+                b.littleEndian = !image.IsBigEndian();
                 int RGBChannelCount = image.GetField(TiffTag.SAMPLESPERPIXEL)[0].ToInt();
                 string desc = "";
 
@@ -5954,13 +5954,20 @@ namespace BioLib
         {
             try
             {
-                NetVips.Image subImage = b.vipPages[res].Crop(x, y, width, height);
+                NetVips.Image subImage = null;
+                for (int i = 0; i < b.vipPages.Count; i++)
+                {
+                    if (width == b.vipPages[i].Width && height == b.vipPages[i].Height)
+                        subImage = b.vipPages[i];
+                }
+                if(subImage == null)
+                    subImage = b.vipPages[res].Crop(x, y, width, height);
                 if (b.vipPages[res].Format == Enums.BandFormat.Uchar)
                 {
                     Bitmap bm;
                     byte[] imageData = subImage.WriteToMemory();
                     if (b.Resolutions[res].RGBChannelsCount == 3)
-                        bm = new Bitmap(width, height, PixelFormat.Format24bppRgb, imageData, new ZCT(), b.file);
+                        bm = new Bitmap(b.file, width, height, PixelFormat.Format24bppRgb, imageData, new ZCT(),0);
                     else
                         bm = new Bitmap(width, height, PixelFormat.Format8bppIndexed, imageData, new ZCT(), b.file);
                     return bm;
@@ -6850,13 +6857,18 @@ namespace BioLib
             if (vips && b.vipPages.Count > 0)
             {
                 //We can get a tile faster with libvips rather than bioformats.
-                return ExtractRegionFromTiledTiff(b, tilex, tiley, tileSizeX, tileSizeY, serie);
+                Bitmap bmp = ExtractRegionFromTiledTiff(b, tilex, tiley, tileSizeX, tileSizeY, serie);
+                if (bmp != null)
+                {
+                    return bmp;
+                }
             }
             //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
             if (b.openSlideImage != null)
             {
                 byte[] bts = b.openSlideImage.ReadRegion(serie, tilex, tiley, tileSizeX, tileSizeY);
                 Bitmap bm = new Bitmap("",tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0, null, true, true);
+                bm.SwitchRedBlue();
                 return bm;
             }
 

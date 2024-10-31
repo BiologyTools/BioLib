@@ -24,6 +24,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="tile_copy.cu" />
+    <None Remove="tile_copy.ptx" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="LICENSE" />
     <Content Include="tile_copy.cu">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

@@ -57,12 +57,33 @@ namespace BioLib
             }
             return false;
         }
+        public static byte[] ConvertRgbToBgr(byte[] rgbBytes)
+        {
+            // Ensure input is in RGB format with 3 bytes per pixel
+            if (rgbBytes.Length % 3 != 0)
+            {
+                throw new ArgumentException("Input byte array length must be a multiple of 3.", nameof(rgbBytes));
+            }
+
+            // Create a new array for the BGR output
+            byte[] bgrBytes = new byte[rgbBytes.Length];
+
+            // Process each pixel (3 bytes per pixel)
+            for (int i = 0; i < rgbBytes.Length; i += 3)
+            {
+                bgrBytes[i] = rgbBytes[i + 2];     // B
+                bgrBytes[i + 1] = rgbBytes[i + 1]; // G
+                bgrBytes[i + 2] = rgbBytes[i];     // R
+            }
+
+            return bgrBytes;
+        }
 
         public void AddTile(Tuple<TileInfo, byte[]> tile)
         {
             if (HasTile(tile.Item1))
                 return;
-            byte[] tileData = tile.Item2;
+            byte[] tileData = ConvertRgbToBgr(tile.Item2);
             if (gpuTiles.Count > maxTiles)
             {
                 var ti = gpuTiles.First();
