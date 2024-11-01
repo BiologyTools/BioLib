@@ -2694,7 +2694,19 @@ namespace BioLib
             }
         }
         public string file;
-        public static string status;
+        static string stat;
+        public static string Status
+        {
+            get
+            {
+                return stat;
+            }
+            set
+            {
+                stat = value;
+                Console.WriteLine(stat);
+            }
+        }
         public static string progFile;
         public static bool Initialized
         {
@@ -4905,7 +4917,7 @@ namespace BioLib
             
             Stopwatch st = new Stopwatch();
             st.Start();
-            status = "Opening Image";
+            Status = "Opening Image";
             progFile = file;
             BioImage b = new BioImage(file);
             if(tiled && file.EndsWith(".tif") && !file.EndsWith(".ome.tif"))
@@ -5294,7 +5306,7 @@ namespace BioLib
             if (File.Exists(f))
                 File.Delete(f);
             loci.formats.meta.IMetadata omexml = service.createOMEXMLMetadata();
-            status = "Saving OME Image Metadata.";
+            Status = "Saving OME Image Metadata.";
             for (int fi = 0; fi < files.Length; fi++)
             {
                 int serie = fi;
@@ -5634,7 +5646,7 @@ namespace BioLib
             writer.setMetadataRetrieve(omexml);
             writer.setId(f);
             
-            status = "Saving OME Image Planes.";
+            Status = "Saving OME Image Planes.";
             for (int i = 0; i < files.Length; i++)
             {
                 BioImage b = files[i];
@@ -5692,7 +5704,7 @@ namespace BioLib
         {
             if (File.Exists(file))
                 File.Delete(file);
-            status = "Saving OME Pyramidal";
+            Status = "Saving OME Pyramidal";
             //We need to go through the images and find the ones belonging to each resolution.
             //As well we need to determine the dimensions of the tiles.
             Dictionary<double, List<BioImage>> bis = new Dictionary<double, List<BioImage>>();
@@ -6048,7 +6060,7 @@ namespace BioLib
                 reader.setMetadataStore(b.meta);
                 try
                 {
-                    status = "Opening file " + b.Filename;
+                    Status = "Opening file " + b.Filename;
                     reader.setId(f);
                 }
                 catch (Exception e)
@@ -6098,7 +6110,7 @@ namespace BioLib
             int sumSamples = 0;
             while (true)
             {
-                status = "Reading channels.";
+                Status = "Reading channels.";
                 bool def = false;
                 try
                 {
@@ -6171,12 +6183,9 @@ namespace BioLib
             {
                 b.Channels.Add(new Channel(0, b.bitsPerPixel, RGBChannelCount));
             }
-
-            int resc = reader.getResolutionCount();
-            
             try
             {
-                status = "Reading wells.";
+                Status = "Reading wells.";
                 int wells = b.meta.getWellCount(0);
                 if(wells>0)
                 {
@@ -6197,21 +6206,22 @@ namespace BioLib
                 int ress = reader.getResolutionCount();
                 for (int r = 0; r < ress; r++)
                 {
-                    status = "Reading resolution " + (r+1).ToString() + "/" + ress;
+                    Status = "Reading resolution " + (r+1).ToString() + "/" + ress;
                     Resolution res = new Resolution();
+                    int rgbc = reader.getRGBChannelCount();
+                    int bps = reader.getBitsPerPixel();
+                    PixelFormat px;
                     try
                     {
-                        int rgbc = reader.getRGBChannelCount();
-                        int bps = reader.getBitsPerPixel();
-                        PixelFormat px;
-                        try
-                        {
-                            px = GetPixelFormat(rgbc, b.meta.getPixelsType(r));
-                        }
-                        catch (Exception)
-                        {
-                            px = GetPixelFormat(rgbc, bps);
-                        }
+                        px = GetPixelFormat(rgbc, b.meta.getPixelsType(r));
+                    }
+                    catch (Exception ex)
+                    {
+                        px = GetPixelFormat(rgbc, bps);
+                        Console.WriteLine(ex.Message);
+                    }
+                    try
+                    {
                         res.PixelFormat = px;
                         res.SizeX = reader.getSizeX();
                         res.SizeY = reader.getSizeY();
@@ -6227,36 +6237,43 @@ namespace BioLib
                         }
                         else
                             res.PhysicalSizeY = (96 / 2.54) / 1000;
-
-                        if (b.meta.getStageLabelX(r) != null)
+                        //For some reason trying to get undefined stage coordinates cause a bus error on MacOS so we won't look for them on MacOS.
+                        if(!RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && b.isPyramidal)
+                        {
+                            if (b.meta.getStageLabelX(r) != null)
                             res.StageSizeX = b.meta.getStageLabelX(r).value().doubleValue();
-                        if (b.meta.getStageLabelY(r) != null)
-                            res.StageSizeY = b.meta.getStageLabelY(r).value().doubleValue();
-                        if (b.meta.getStageLabelZ(r) != null)
-                            res.StageSizeZ = b.meta.getStageLabelZ(r).value().doubleValue();
-                        else
-                            res.StageSizeZ = 1;
-                        if (b.meta.getPixelsPhysicalSizeZ(r) != null)
-                        {
-                            res.PhysicalSizeZ = b.meta.getPixelsPhysicalSizeZ(r).value().doubleValue();
-                        }
-                        else
-                        {
-                            res.PhysicalSizeZ = 1;
-                        }
+                            if (b.meta.getStageLabelY(r) != null)
+                                res.StageSizeY = b.meta.getStageLabelY(r).value().doubleValue();
+                            if (b.meta.getStageLabelZ(r) != null)
+                                res.StageSizeZ = b.meta.getStageLabelZ(r).value().doubleValue();
+                            else
+                                res.StageSizeZ = 1;
+                            if (b.meta.getPixelsPhysicalSizeZ(r) != null)
+                            {
+                                res.PhysicalSizeZ = b.meta.getPixelsPhysicalSizeZ(r).value().doubleValue();
+                            }
+                            else
+                            {
+                                res.PhysicalSizeZ = 1;
+                            }
+                        }                       
                     }
                     catch (Exception e)
                     {
+                        Console.WriteLine(e.Message);
                         Console.WriteLine("No Stage Coordinates. PhysicalSize:(" + res.PhysicalSizeX + "," + res.PhysicalSizeY + "," + res.PhysicalSizeZ + ")");
                     }
                     rss.Add(res);
                 }
+                Console.WriteLine("Series: " + s + " Resolutions:" + ress);
             }
+            Console.WriteLine("Done reading resolutions.");
             reader.setSeries(serie);
 
             int pyramidCount = 0;
             int pyramidResolutions = 0;
             List<Tuple<int, int>> prs = new List<Tuple<int, int>>();
+            Console.WriteLine("Determining pyramidal levels.");
             //We need to determine if this image is pyramidal or not.
             //We do this by seeing if the resolutions are downsampled or not.
             if (rss.Count > 1 && b.Type != ImageType.well)
@@ -6306,16 +6323,19 @@ namespace BioLib
             }
             else
                 b.Resolutions.AddRange(rss);
+
+            Console.WriteLine("Determining Label and Macro resolutions.");
             //If we have 2 resolutions that we're not added they are the label & macro resolutions so we add them to the image.
-            if(rss.Count != pyramidResolutions && rss.Count > 1)
+            if(rss.Count != pyramidResolutions && rss.Count > 1 && b.Type == ImageType.pyramidal)
             {
                 b.Resolutions.Add(rss[rss.Count - 2]);
                 b.Resolutions.Add(rss[rss.Count - 1]);
             }
-            if(b.Resolutions.Count > 1 && b.Type == ImageType.pyramidal)
+            if(b.Resolutions.Count > 1 && b.Type != ImageType.well)
             {
                 tile = true;
             }
+
             b.Volume = new VolumeD(new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ), new Point3D(b.PhysicalSizeX * SizeX, b.PhysicalSizeY * SizeY, b.PhysicalSizeZ * SizeZ));
             int rc = b.meta.getROICount();
             for (int im = 0; im < rc; im++)
@@ -6334,7 +6354,7 @@ namespace BioLib
                 }
                 for (int sc = 0; sc < scount; sc++)
                 {
-                    status = "Reading ROI " + (sc+1).ToString() + "/" + scount;
+                    Status = "Reading ROI " + (sc+1).ToString() + "/" + scount;
                     string typ = b.meta.getShapeType(im, sc);
                     ROI an = new ROI();
                     an.roiID = roiID;
@@ -6661,13 +6681,13 @@ namespace BioLib
                     string st = OpenSlideImage.DetectVendor(file);
                     if (st != null && !file.EndsWith("ome.tif") && useOpenSlide)
                     {
-                        status = "Opening file with OpenSlide.";
+                        Status = "Opening file with OpenSlide.";
                         b.openSlideImage = OpenSlideImage.Open(file);
                         b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file, true);
                     }
                     else
                     {
-                        status = "Opening file with BioFormats.";
+                        Status = "Opening file with BioFormats.";
                         b.slideBase = new SlideBase(b, SlideImage.Open(b));
                     }
                 }
@@ -6686,7 +6706,7 @@ namespace BioLib
             int t = 0;
             if (!tile)
             {
-                status = "Reading image planes.";
+                Status = "Reading image planes.";
                 try
                 {
                     for (int p = 0; p < pages; p++)
@@ -6730,7 +6750,7 @@ namespace BioLib
             }
             else
             {
-                status = "Reading tiles.";
+                Status = "Reading tiles.";
                 b.imRead = reader;
                 for (int p = 0; p < pages; p++)
                 {
@@ -7144,7 +7164,7 @@ namespace BioLib
             {
                 if (reader.getCurrentFile() != file)
                 {
-                    status = "Opening OME Image.";
+                    Status = "Opening OME Image.";
                     file = file.Replace("\\", "/");
                     reader.setId(file);
                 }

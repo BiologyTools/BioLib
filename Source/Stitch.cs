@@ -57,6 +57,7 @@ namespace BioLib
             }
             return false;
         }
+
         public static byte[] ConvertRgbToBgr(byte[] rgbBytes)
         {
             // Ensure input is in RGB format with 3 bytes per pixel
