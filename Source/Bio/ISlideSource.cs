@@ -215,7 +215,7 @@ namespace BioLib
         public static bool UseVips = true;
         public TileCache cache = null;
         public Stitch stitch = new Stitch();
-        public static bool useGPU = true;
+        public static bool useGPU = false;
         private static byte[] Convert32bppToRgb24(byte[] rgbaBytes)
         {
             // Calculate the number of pixels in the 32bpp image
@@ -255,12 +255,12 @@ namespace BioLib
                         c = Convert32bppToRgb24(c);
                     }
                     else
-                    if (Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
+                    if (c.Length == 2 * 256 * 256)
                     {
                         c = Convert16BitToRGB(c);
                     }
                     else
-                    if (Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format48bppRgb)
+                    if (c.Length == 6 * 256 * 256)
                     {
                         c = Convert48BitToRGB(c);
                     }
@@ -298,11 +298,7 @@ namespace BioLib
             {
                 try
                 {
-                    NetVips.Image im = null;
-                    if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
-                        im = ImageUtil.JoinVips16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    else if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
-                        im = ImageUtil.JoinVipsRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
+                    NetVips.Image im = ImageUtil.JoinVipsRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
                     return im.WriteToMemory();
                 }
                 catch (Exception e)
@@ -314,21 +310,10 @@ namespace BioLib
             }
             try
             {
-                Image im = null;
-                if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
-                {
-                    im = ImageUtil.Join16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    byte[] bts = Get16Bytes((Image<L16>)im);
-                    im.Dispose();
-                    return bts;
-                }
-                else if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
-                {
-                    im = ImageUtil.JoinRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    byte[] bts = GetRgb24Bytes((Image<Rgb24>)im);
-                    im.Dispose();
-                    return bts;
-                }
+                Image im = ImageUtil.JoinRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
+                byte[] bts = GetRgb24Bytes((Image<Rgb24>)im);
+                im.Dispose();
+                return bts;
             }
             catch (Exception er)
             {

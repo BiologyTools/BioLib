@@ -10,6 +10,7 @@ using NetVips;
 using System.Drawing.Imaging;
 using AForge;
 using OpenSlideGTK;
+using Image = SixLabors.ImageSharp.Image;
 
 namespace BioLib
 {
@@ -24,66 +25,80 @@ namespace BioLib
         /// <returns></returns>
         public static Image<Rgb24> JoinRGB24(IEnumerable<Tuple<Extent, byte[]>> srcPixelTiles, Extent srcPixelExtent, Extent dstPixelExtent)
         {
-            if (srcPixelTiles == null || srcPixelTiles.Count() == 0)
+            if (srcPixelTiles == null || !srcPixelTiles.Any())
                 return null;
+
+            // Convert extents to integer values to ensure precision
             srcPixelExtent = srcPixelExtent.ToIntegerExtent();
             dstPixelExtent = dstPixelExtent.ToIntegerExtent();
+
             int canvasWidth = (int)srcPixelExtent.Width;
             int canvasHeight = (int)srcPixelExtent.Height;
-            var dstWidth = (int)dstPixelExtent.Width;
-            var dstHeight = (int)dstPixelExtent.Height;
-            Image<Rgb24> canvas = new Image<Rgb24>(canvasWidth, canvasHeight);
+            int dstWidth = (int)dstPixelExtent.Width;
+            int dstHeight = (int)dstPixelExtent.Height;
+
+            // Initialize a blank canvas
+            var canvas = new Image<Rgb24>(canvasWidth, canvasHeight);
+
+            // Process each tile
             foreach (var tile in srcPixelTiles)
             {
-                try
+                var tileExtent = tile.Item1.ToIntegerExtent();
+                var intersect = srcPixelExtent.Intersect(tileExtent);
+
+                // Skip tiles that don’t overlap with the source area or have no data
+                if (intersect.Width == 0 || intersect.Height == 0 || tile.Item2 == null)
+                    continue;
+
+                // Load the tile data as a 256x256 Image<Rgb24>
+                const int originalTileSize = 256;
+                var tileImage = Image.LoadPixelData<Rgb24>(tile.Item2, originalTileSize, originalTileSize);
+
+                // Resize the tile to match the actual tile extent dimensions
+                tileImage.Mutate(x => x.Resize((int)tileExtent.Width, (int)tileExtent.Height));
+
+                // Calculate offsets for placing the tile within the canvas
+                int tileOffsetX = (int)(intersect.MinX - tileExtent.MinX);
+                int tileOffsetY = (int)(intersect.MinY - tileExtent.MinY);
+                int canvasOffsetX = (int)(intersect.MinX - srcPixelExtent.MinX);
+                int canvasOffsetY = (int)(intersect.MinY - srcPixelExtent.MinY);
+
+                // Ensure the offsets respect image boundaries and copy the data precisely
+                for (int y = 0; y < intersect.Height; y++)
                 {
-                    var tileExtent = tile.Item1.ToIntegerExtent();
-                    var intersect = srcPixelExtent.Intersect(tileExtent);
-                    if (intersect.Width == 0 || intersect.Height == 0)
-                        continue;
-                    if(tile.Item2 == null)
-                        continue;
-                    Image<Rgb24> tileRawData = (Image<Rgb24>)CreateImageFromBytes(tile.Item2, (int)tileExtent.Width, (int)tileExtent.Height,AForge.PixelFormat.Format24bppRgb);
-                    var tileOffsetPixelX = (int)Math.Ceiling(intersect.MinX - tileExtent.MinX);
-                    var tileOffsetPixelY = (int)Math.Ceiling(intersect.MinY - tileExtent.MinY);
-                    var canvasOffsetPixelX = (int)Math.Ceiling(intersect.MinX - srcPixelExtent.MinX);
-                    var canvasOffsetPixelY = (int)Math.Ceiling(intersect.MinY - srcPixelExtent.MinY);
-                    //We copy the tile region to the canvas.
-                    for (int y = 0; y < intersect.Height; y++)
+                    for (int x = 0; x < intersect.Width; x++)
                     {
-                        for (int x = 0; x < intersect.Width; x++)
+                        int canvasX = canvasOffsetX + x;
+                        int canvasY = canvasOffsetY + y;
+                        int tileX = tileOffsetX + x;
+                        int tileY = tileOffsetY + y;
+
+                        // Only copy if within bounds
+                        if (canvasX < canvasWidth && canvasY < canvasHeight && tileX < tileImage.Width && tileY < tileImage.Height)
                         {
-                            int indx = canvasOffsetPixelX + x;
-                            int indy = canvasOffsetPixelY + y;
-                            int tindx = tileOffsetPixelX + x;
-                            int tindy = tileOffsetPixelY + y;
-                            canvas[indx, indy] = tileRawData[tindx, tindy];
+                            canvas[canvasX, canvasY] = tileImage[tileX, tileY];
                         }
                     }
-                    tileRawData.Dispose();
                 }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.ToString());
-                }
-                
+
+                tileImage.Dispose();
             }
+
+            // Resize if necessary to match the destination extent
             if (dstWidth != canvasWidth || dstHeight != canvasHeight)
             {
                 try
                 {
                     canvas.Mutate(x => x.Resize(dstWidth, dstHeight));
-                    return canvas;
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine(e.Message);
+                    Console.WriteLine($"Error resizing canvas: {e.Message}");
                 }
-
             }
+
             return canvas;
         }
-
         /// <summary>
         /// Join by <paramref name="srcPixelTiles"/> and cut by <paramref name="srcPixelExtent"/> then scale to <paramref name="dstPixelExtent"/>(only height an width is useful).
         /// </summary>
@@ -91,65 +106,80 @@ namespace BioLib
         /// <param name="srcPixelExtent">canvas extent</param>
         /// <param name="dstPixelExtent">jpeg output size</param>
         /// <returns></returns>
-        public static Image<L16>Join16(IEnumerable<Tuple<Extent, byte[]>> srcPixelTiles, Extent srcPixelExtent, Extent dstPixelExtent)
+        public static Image<L16> Join16(IEnumerable<Tuple<Extent, byte[]>> srcPixelTiles, Extent srcPixelExtent, Extent dstPixelExtent)
         {
-            if (srcPixelTiles == null || srcPixelTiles.Count() == 0)
+            if (srcPixelTiles == null || !srcPixelTiles.Any())
                 return null;
+
+            // Convert extents to integer values to ensure precision
             srcPixelExtent = srcPixelExtent.ToIntegerExtent();
             dstPixelExtent = dstPixelExtent.ToIntegerExtent();
+
             int canvasWidth = (int)srcPixelExtent.Width;
             int canvasHeight = (int)srcPixelExtent.Height;
-            var dstWidth = (int)dstPixelExtent.Width;
-            var dstHeight = (int)dstPixelExtent.Height;
-            Image<L16> canvas = new Image<L16>(canvasWidth, canvasHeight);
+            int dstWidth = (int)dstPixelExtent.Width;
+            int dstHeight = (int)dstPixelExtent.Height;
+
+            // Initialize a blank canvas
+            var canvas = new Image<L16>(canvasWidth, canvasHeight);
+
+            // Process each tile
             foreach (var tile in srcPixelTiles)
             {
-                try
+                var tileExtent = tile.Item1.ToIntegerExtent();
+                var intersect = srcPixelExtent.Intersect(tileExtent);
+
+                // Skip tiles that don’t overlap with the source area or have no data
+                if (intersect.Width == 0 || intersect.Height == 0 || tile.Item2 == null)
+                    continue;
+
+                // Load the tile data as a 256x256 Image<L16>
+                const int originalTileSize = 256;
+                var tileImage = Image.LoadPixelData<L16>(tile.Item2, originalTileSize, originalTileSize);
+
+                // Resize the tile to match the actual tile extent dimensions
+                tileImage.Mutate(x => x.Resize((int)tileExtent.Width, (int)tileExtent.Height));
+
+                // Calculate offsets for placing the tile within the canvas
+                int tileOffsetX = (int)(intersect.MinX - tileExtent.MinX);
+                int tileOffsetY = (int)(intersect.MinY - tileExtent.MinY);
+                int canvasOffsetX = (int)(intersect.MinX - srcPixelExtent.MinX);
+                int canvasOffsetY = (int)(intersect.MinY - srcPixelExtent.MinY);
+
+                // Ensure the offsets respect image boundaries and copy the data precisely
+                for (int y = 0; y < intersect.Height; y++)
                 {
-                    var tileExtent = tile.Item1.ToIntegerExtent();
-                    var intersect = srcPixelExtent.Intersect(tileExtent);
-                    if (intersect.Width == 0 || intersect.Height == 0)
-                        continue;
-                    if (tile.Item2 == null)
-                        continue;
-                    Image<L16> tileRawData = (Image<L16>)CreateImageFromBytes(tile.Item2, (int)tileExtent.Width, (int)tileExtent.Height, AForge.PixelFormat.Format16bppGrayScale);
-                    var tileOffsetPixelX = (int)Math.Ceiling(intersect.MinX - tileExtent.MinX);
-                    var tileOffsetPixelY = (int)Math.Ceiling(intersect.MinY - tileExtent.MinY);
-                    var canvasOffsetPixelX = (int)Math.Ceiling(intersect.MinX - srcPixelExtent.MinX);
-                    var canvasOffsetPixelY = (int)Math.Ceiling(intersect.MinY - srcPixelExtent.MinY);
-                    //We copy the tile region to the canvas.
-                    for (int y = 0; y < intersect.Height; y++)
+                    for (int x = 0; x < intersect.Width; x++)
                     {
-                        for (int x = 0; x < intersect.Width; x++)
+                        int canvasX = canvasOffsetX + x;
+                        int canvasY = canvasOffsetY + y;
+                        int tileX = tileOffsetX + x;
+                        int tileY = tileOffsetY + y;
+
+                        // Only copy if within bounds
+                        if (canvasX < canvasWidth && canvasY < canvasHeight && tileX < tileImage.Width && tileY < tileImage.Height)
                         {
-                            int indx = canvasOffsetPixelX + x;
-                            int indy = canvasOffsetPixelY + y;
-                            int tindx = tileOffsetPixelX + x;
-                            int tindy = tileOffsetPixelY + y;
-                            canvas[indx, indy] = tileRawData[tindx, tindy];
+                            canvas[canvasX, canvasY] = tileImage[tileX, tileY];
                         }
                     }
-                    tileRawData.Dispose();
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.ToString());
                 }
 
+                tileImage.Dispose();
             }
+
+            // Resize if necessary to match the destination extent
             if (dstWidth != canvasWidth || dstHeight != canvasHeight)
             {
                 try
                 {
                     canvas.Mutate(x => x.Resize(dstWidth, dstHeight));
-                    return canvas;
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine(e.Message);
+                    Console.WriteLine($"Error resizing canvas: {e.Message}");
                 }
-
             }
+
             return canvas;
         }
 
@@ -165,13 +195,15 @@ namespace BioLib
             if (srcPixelTiles == null || !srcPixelTiles.Any())
                 return null;
 
+            // Convert extents to integer values for precision
             srcPixelExtent = srcPixelExtent.ToIntegerExtent();
             dstPixelExtent = dstPixelExtent.ToIntegerExtent();
+
             int canvasWidth = (int)srcPixelExtent.Width;
             int canvasHeight = (int)srcPixelExtent.Height;
 
-            // Create a base canvas. Adjust as necessary, for example, using a transparent image if needed.
-            NetVips.Image canvas = NetVips.Image.Black(canvasWidth, canvasHeight, bands: 3);
+            // Create a blank canvas as an RGB image in srgb color space
+            NetVips.Image canvas = NetVips.Image.Black(canvasWidth, canvasHeight, bands: 3).Cast(Enums.BandFormat.Uchar).Colourspace(Enums.Interpretation.Srgb);
 
             foreach (var tile in srcPixelTiles)
             {
@@ -181,21 +213,31 @@ namespace BioLib
                 fixed (byte* pTileData = tile.Item2)
                 {
                     var tileExtent = tile.Item1.ToIntegerExtent();
-                    NetVips.Image tileImage = NetVips.Image.NewFromMemory((IntPtr)pTileData, (ulong)tile.Item2.Length, (int)tileExtent.Width, (int)tileExtent.Height, 3, Enums.BandFormat.Uchar);
 
-                    // Calculate positions and sizes for cropping and inserting
+                    // Load tile from memory, assuming it's a 256x256 RGB 24-bit image by default
+                    const int originalTileSize = 256;
+                    NetVips.Image tileImage = NetVips.Image.NewFromMemory((IntPtr)pTileData, (ulong)tile.Item2.Length, originalTileSize, originalTileSize, 3, Enums.BandFormat.Uchar);
+
+                    // Resize the tile image to match its tileExtent dimensions
+                    tileImage = tileImage.Resize((double)tileExtent.Width / originalTileSize, vscale: (double)tileExtent.Height / originalTileSize);
+
+                    // Convert the tile to srgb color space if necessary
+                    tileImage = tileImage.Colourspace(Enums.Interpretation.Srgb);
+
+                    // Calculate the intersection area between the source extent and tile extent
                     var intersect = srcPixelExtent.Intersect(tileExtent);
                     if (intersect.Width == 0 || intersect.Height == 0)
                         continue;
 
+                    // Calculate offsets within the tile and the canvas for cropping and compositing
                     int tileOffsetPixelX = (int)Math.Ceiling(intersect.MinX - tileExtent.MinX);
                     int tileOffsetPixelY = (int)Math.Ceiling(intersect.MinY - tileExtent.MinY);
                     int canvasOffsetPixelX = (int)Math.Ceiling(intersect.MinX - srcPixelExtent.MinX);
                     int canvasOffsetPixelY = (int)Math.Ceiling(intersect.MinY - srcPixelExtent.MinY);
 
+                    // Crop the resized tile to match the intersecting region and composite it onto the canvas
                     using (var croppedTile = tileImage.Crop(tileOffsetPixelX, tileOffsetPixelY, (int)intersect.Width, (int)intersect.Height))
                     {
-                        // Instead of inserting directly, we composite over the base canvas
                         canvas = canvas.Composite2(croppedTile, Enums.BlendMode.Over, canvasOffsetPixelX, canvasOffsetPixelY);
                     }
                 }
@@ -224,14 +266,15 @@ namespace BioLib
             if (srcPixelTiles == null || !srcPixelTiles.Any())
                 return null;
 
+            // Convert extents to integer values for precision
             srcPixelExtent = srcPixelExtent.ToIntegerExtent();
             dstPixelExtent = dstPixelExtent.ToIntegerExtent();
+
             int canvasWidth = (int)srcPixelExtent.Width;
             int canvasHeight = (int)srcPixelExtent.Height;
 
-            // Create a base canvas. Adjust as necessary, for example, using a transparent image if needed.
-            Bitmap bf = new Bitmap(canvasWidth, canvasHeight, AForge.PixelFormat.Format16bppGrayScale);
-            NetVips.Image canvas = NetVips.Image.NewFromMemory(bf.Bytes, bf.SizeX, bf.SizeX, 1, Enums.BandFormat.Ushort);
+            // Create a blank canvas as a 16-bit grayscale image
+            NetVips.Image canvas = NetVips.Image.Black(canvasWidth, canvasHeight, bands: 1).Cast(Enums.BandFormat.Ushort);
 
             foreach (var tile in srcPixelTiles)
             {
@@ -241,21 +284,28 @@ namespace BioLib
                 fixed (byte* pTileData = tile.Item2)
                 {
                     var tileExtent = tile.Item1.ToIntegerExtent();
-                    NetVips.Image tileImage = NetVips.Image.NewFromMemory((IntPtr)pTileData, (ulong)tile.Item2.Length, (int)tileExtent.Width, (int)tileExtent.Height, 1, Enums.BandFormat.Ushort);
 
-                    // Calculate positions and sizes for cropping and inserting
+                    // Load tile from memory, assuming it's a 256x256 16-bit grayscale by default
+                    const int originalTileSize = 256;
+                    NetVips.Image tileImage = NetVips.Image.NewFromMemory((IntPtr)pTileData, (ulong)tile.Item2.Length, originalTileSize, originalTileSize, 1, Enums.BandFormat.Ushort);
+
+                    // Resize the tile image to match its tileExtent dimensions
+                    tileImage = tileImage.Resize((double)tileExtent.Width / originalTileSize, vscale: (double)tileExtent.Height / originalTileSize);
+
+                    // Calculate the intersection area between the source extent and tile extent
                     var intersect = srcPixelExtent.Intersect(tileExtent);
                     if (intersect.Width == 0 || intersect.Height == 0)
                         continue;
 
+                    // Calculate offsets within the tile and the canvas for cropping and compositing
                     int tileOffsetPixelX = (int)Math.Ceiling(intersect.MinX - tileExtent.MinX);
                     int tileOffsetPixelY = (int)Math.Ceiling(intersect.MinY - tileExtent.MinY);
                     int canvasOffsetPixelX = (int)Math.Ceiling(intersect.MinX - srcPixelExtent.MinX);
                     int canvasOffsetPixelY = (int)Math.Ceiling(intersect.MinY - srcPixelExtent.MinY);
 
+                    // Crop the resized tile to match the intersecting region and composite it onto the canvas
                     using (var croppedTile = tileImage.Crop(tileOffsetPixelX, tileOffsetPixelY, (int)intersect.Width, (int)intersect.Height))
                     {
-                        // Instead of inserting directly, we composite over the base canvas
                         canvas = canvas.Composite2(croppedTile, Enums.BlendMode.Over, canvasOffsetPixelX, canvasOffsetPixelY);
                     }
                 }

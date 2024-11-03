@@ -42,14 +42,9 @@
   <ItemGroup>
     <PackageReference Include="BioFormats.NET8" Version="8.0.0" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
-    <PackageReference Include="CS-Script" Version="4.8.17" />
+    <PackageReference Include="CS-Script" Version="4.8.19" />
     <PackageReference Include="ManagedCuda.NETStandard" Version="9.1.300" />
-    <PackageReference Include="NetVips.Native" Version="8.16.0" />
-    <PackageReference Include="NetVips.Native.linux-arm64" Version="8.16.0" />
-    <PackageReference Include="NetVips.Native.linux-x64" Version="8.16.0" />
-    <PackageReference Include="NetVips.Native.osx-arm64" Version="8.16.0" />
-    <PackageReference Include="NetVips.Native.osx-x64" Version="8.16.0" />
-    <PackageReference Include="NetVips.Native.win-x64" Version="8.16.0" />
+    <PackageReference Include="NetVips" Version="3.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="NuGet.Build.Tasks.Pack" Version="6.11.1">
       <PrivateAssets>all</PrivateAssets>
