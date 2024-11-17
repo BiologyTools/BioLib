@@ -35,7 +35,7 @@
     </Content>
   </ItemGroup>
 	<ItemGroup>
-    <PackageReference Include="BioFormats.NET8" Version="8.0.0.1" />
+    <PackageReference Include="BioFormats.NET8" Version="8.0.1" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
     <PackageReference Include="CS-Script" Version="4.8.19" />
     <PackageReference Include="ImageJ.NET" Version="154.0.0.2" />
