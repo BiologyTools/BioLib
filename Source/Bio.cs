@@ -54,9 +54,10 @@ namespace BioLib
         /// @param ids The id of the image you want to get.
         public static BioImage GetImage(string ids)
         {
+            string s = ids.Substring(ids.LastIndexOf('-'));
             for (int i = 0; i < images.Count; i++)
             {
-                if (images[i].ID == ids || images[i].Filename == ids)
+                if (images[i].ID == ids || images[i].Filename.EndsWith(s))
                     return images[i];
             }
             return null;
@@ -66,7 +67,6 @@ namespace BioLib
         /// @param BioImage A class that contains the image data and other information.
         public static void AddImage(BioImage im)
         {
-            if(!images.Contains(im))
             images.Add(im);
             im.Filename = Path.GetFileName(im.ID);
         }
@@ -108,7 +108,9 @@ namespace BioLib
             name = name.Replace(".ome", "");
             if (Path.GetFileNameWithoutExtension(name) != name)
                 name = Path.GetFileNameWithoutExtension(name);
-            string ext = s.Substring(s.IndexOf('.'), s.Length - s.IndexOf('.'));
+            string ext = ".ome.tif";
+            if(s.Contains("."))
+            ext = s.Substring(s.IndexOf('.'), s.Length - s.IndexOf('.'));
             return name + "-" + (i+1) + ext;
         }
         /// This function removes an image from the table
@@ -4225,7 +4227,7 @@ namespace BioLib
         /// @return A Bitmap object.
         public Bitmap GetRGBBitmap(ZCT coord, IntRange rf, IntRange gf, IntRange bf)
         {
-            int index = GetFrameIndex(coord.Z, coord.C, coord.T);
+            int index = GetFrameIndex(coord.Z, 0, coord.T);
             if (Buffers[0].RGBChannelsCount == 1)
             {
                 if (Channels.Count >= 3)
@@ -4484,18 +4486,23 @@ namespace BioLib
             return annotations;
         }
         public bool Loading = false;
-        /// We initialize OME on a seperate thread so the user doesn't have to wait for initialization
-        /// to view images.
-        public static void Initialize()
+        /// <summary>
+        /// Initializes ImageJ/Fiji with the given path.
+        /// </summary>
+        /// <param name="imageJPath"></param>
+        public static void Initialize(string imageJPath)
         {
             //We initialize OME on a seperate thread so the user doesn't have to wait for initialization to
             //view images. 
-            System.Threading.Thread t = new System.Threading.Thread(new System.Threading.ThreadStart(InitFactory));
-            t.Start();
-            System.Threading.Thread t3 = new System.Threading.Thread(new System.Threading.ThreadStart(InitReader));
-            t3.Start();
-            System.Threading.Thread t4 = new System.Threading.Thread(new System.Threading.ThreadStart(InitWriter));
-            t4.Start();
+            InitFactory();
+            InitReader();
+            InitWriter();
+            if (imageJPath.Contains("Fiji"))
+            {
+                Fiji.Initialize(imageJPath);
+            }
+            else
+                ImageJ.Initialize(imageJPath);
         }
         static bool inf = false, inr = false, inw = false;
         /// > Initialize the OME-XML library
@@ -4523,15 +4530,7 @@ namespace BioLib
             if (inf && inr && inw)
                 initialized = true;
         }
-        string FromMethod(MethodBase bm)
-        {
-            string s = bm.Name + ".(";
-            foreach (var item in bm.GetParameters())
-            {
-                
-            }
-            return s;
-        }
+       
         private static List<Resolution> GetResolutions(BioImage b)
         {
             ImageReader re = b.imRead;
@@ -4638,7 +4637,9 @@ namespace BioLib
                                     {
                                         res.PhysicalSizeZ = meta.getPixelsPhysicalSizeZ(r).value().doubleValue();
                                     }
-                                
+                                    else
+                                        res.PhysicalSizeZ = 1.0;
+                                    /* 
                                     if (meta.getStageLabelX(r) != null)
                                     res.StageSizeX = meta.getStageLabelX(r).value().doubleValue();
                                     if (meta.getStageLabelY(r) != null)
@@ -4647,14 +4648,8 @@ namespace BioLib
                                     res.StageSizeZ = meta.getStageLabelZ(r).value().doubleValue();
                                     else
                                     res.StageSizeZ = 1;
-                                    if (meta.getPixelsPhysicalSizeZ(r) != null)
-                                    {
-                                        res.PhysicalSizeZ = meta.getPixelsPhysicalSizeZ(r).value().doubleValue();
-                                    }
-                                    else
-                                    {
-                                        res.PhysicalSizeZ = 1;
-                                    }
+                                    */
+                                    
                                 }
                                 catch (Exception ex)
                                 {
@@ -5398,10 +5393,6 @@ namespace BioLib
             {
                 int serie = fi;
                 BioImage b = files[fi];
-                if (b.isPyramidal)
-                {
-                    b = OpenOME(b.file, b.Level, false, false, true,0, 0,1080, 1920);
-                }
                 // create OME-XML metadata store
 
                 omexml.setImageID("Image:" + serie, serie);
@@ -5731,22 +5722,34 @@ namespace BioLib
             }
             writer = new ImageWriter();
             writer.setMetadataRetrieve(omexml);
-            writer.setId(f);
-            
-            Status = "Saving OME Image Planes.";
-            for (int i = 0; i < files.Length; i++)
+            try
             {
-                BioImage b = files[i];
-                progFile = files[i].Filename;
-                writer.setSeries(i);
-                for (int bu = 0; bu < b.Buffers.Count; bu++)
+                Status = "Saving OME Image Planes.";
+                for (int i = 0; i < files.Length; i++)
                 {
-                    byte[] bts = b.Buffers[bu].GetSaveBytes(BitConverter.IsLittleEndian);
-                    writer.saveBytes(bu, bts);
-                    Progress = ((float)bu / (float)b.Buffers.Count) * 100;
+                    Console.WriteLine("Writer setId: " + files[i]);
+                    writer.setId(f);
+                    BioImage b = files[i];
+                    progFile = files[i].Filename;
+                    writer.setSeries(i);
+                    for (int bu = 0; bu < b.Buffers.Count; bu++)
+                    {
+                        byte[] bts = b.Buffers[bu].GetSaveBytes(BitConverter.IsLittleEndian);
+                        writer.saveBytes(bu, bts);
+                        Progress = ((float)bu / (float)b.Buffers.Count) * 100;
+                    }
+                }
+                if (!OperatingSystem.IsMacOS())
+                {
+                    Console.WriteLine("Closing writer.");
+                    writer.close();
                 }
             }
-            writer.close();
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+            
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, files, f, planes);
         }
         /// <summary>
@@ -6329,30 +6332,34 @@ namespace BioLib
                     {
                         pyramidResolutions += (prs[p].Item2 - prs[p].Item1) + 1;
                     }
-
                     if (prs[serie].Item2 == 0)
                     {
                         prs[serie] = new Tuple<int, int>(prs[serie].Item1, b.seriesCount-1);
                     }
                 }
-
             }
-            Console.WriteLine("Determining Label and Macro resolutions.");
-            for (int p = 0; p < prs.Count; p++)
+            if (b.Type == ImageType.pyramidal)
             {
-                for (int r = prs[p].Item1; r < prs[p].Item2; r++)
+                Console.WriteLine("Determining Label and Macro resolutions.");
+                for (int p = 0; p < prs.Count; p++)
                 {
-                    b.Resolutions.Add(ress[r]);
+                    for (int r = prs[p].Item1; r < prs[p].Item2; r++)
+                    {
+                        b.Resolutions.Add(ress[r]);
+                    }
+                }
+                //If we have 2 resolutions that we're not added they are the label & macro resolutions so we add them to the image.
+                if (ress.Count > b.Resolutions.Count && b.Type == ImageType.pyramidal)
+                {
+                    b.LabelResolution = ress.Count - 1;
+                    b.Resolutions.Add(ress[ress.Count - 1]);
+                    b.MacroResolution = ress.Count - 2;
+                    b.Resolutions.Add(ress[ress.Count - 2]);
                 }
             }
-            //If we have 2 resolutions that we're not added they are the label & macro resolutions so we add them to the image.
-            if(ress.Count > b.Resolutions.Count  && b.Type == ImageType.pyramidal)
-            {
-                b.LabelResolution = ress.Count - 1;
-                b.Resolutions.Add(ress[ress.Count - 1]);
-                b.MacroResolution = ress.Count - 2;
-                b.Resolutions.Add(ress[ress.Count - 2]);
-            }
+            if (b.Resolutions.Count == 0)
+                b.Resolutions.AddRange(ress);
+
             b.Volume = new VolumeD(new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ), new Point3D(b.PhysicalSizeX * SizeX, b.PhysicalSizeY * SizeY, b.PhysicalSizeZ * SizeZ));
             int rc = b.meta.getROICount();
             for (int im = 0; im < rc; im++)
@@ -6737,31 +6744,7 @@ namespace BioLib
                 }
                 catch (Exception ex)
                 {
-                    //If we failed to read an entire plane it is likely too large so we open as pyramidal.
-                    b.Type = ImageType.pyramidal;
-                    try
-                    {
-                        string st = OpenSlideImage.DetectVendor(file);
-                        if (st != null && !file.EndsWith("ome.tif") && useOpenSlide)
-                        {
-                            b.openSlideImage = OpenSlideImage.Open(file);
-                            b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file, true);
-                        }
-                        else
-                        {
-                            b.slideBase = new SlideBase(b, SlideImage.Open(b));
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine(e.Message.ToString());
-                        b.slideBase = new SlideBase(b, SlideImage.Open(b));
-                    }
-                    b.imRead = reader;
-                    for (int p = 0; p < pages; p++)
-                    {
-                        b.Buffers.Add(GetTile(b, p, serie, tilex, tiley, tileSizeX, tileSizeY));
-                    }
+                    Console.WriteLine(ex.Message);
                 }
                 
             }
@@ -6823,19 +6806,23 @@ namespace BioLib
                 b.UpdateCoords(b.SizeZ, b.SizeC, b.SizeT, Order.CZT);
             else if (ord == "XYTCZ")
                 b.UpdateCoords(b.SizeZ, b.SizeC, b.SizeT, Order.TCZ);
-           
-            
             AutoThreshold(b, true);
             if (b.bitsPerPixel > 8)
                 b.StackThreshold(true);
             else
                 b.StackThreshold(false);
-            if(!b.isPyramidal)
-            reader.close();
-            if (addToImages)
-                Images.AddImage(b);
+            try
+            {
+                if(!b.isPyramidal)
+                reader.close();
+                if (addToImages)
+                    Images.AddImage(b);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
             b.Loading = false;
-
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),false, file, serie, tab, addToImages, tile, tilex, tiley, tileSizeX, tileSizeY);
             return b;
         }
@@ -7180,7 +7167,7 @@ namespace BioLib
             {
                 if (reader.getCurrentFile() != file)
                 {
-                    Status = "Opening OME Image.";
+                    Status = "Opening OME Image: " + file;
                     file = file.Replace("\\", "/");
                     reader.setId(file);
                 }

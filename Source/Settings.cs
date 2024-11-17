@@ -36,7 +36,10 @@ namespace BioLib
         /// added to the settings.</param>
         public static void AddSettings(string name,string val)
         {
-            Default.Add(name, val);
+            if(Default.ContainsKey((string)name))
+                Default[name] = val;
+            else
+                Default.Add(name, val);
         }
         static string path = System.IO.Path.GetDirectoryName(Environment.ProcessPath);
         /// <summary>
@@ -66,7 +69,10 @@ namespace BioLib
             foreach (string item in sts)
             {
                 string[] st = item.Split('=');
-                Default.Add(st[0], st[1]);
+                if (Default.ContainsKey(st[0]))
+                    Default[st[0]] = st[1];
+                else
+                    Default.Add(st[0], st[1]);
             }
         }
     }

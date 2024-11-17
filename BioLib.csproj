@@ -11,22 +11,17 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>2.9.0.1</AssemblyVersion>
-    <FileVersion>2.9.0.1</FileVersion>
-    <PackageVersion>2.9.0.1</PackageVersion>
+    <AssemblyVersion>2.9.1.0</AssemblyVersion>
+    <FileVersion>2.9.1.0</FileVersion>
+    <PackageVersion>2.9.1.0</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>Included CUDA .ptx file in NuGet package.</PackageReleaseNotes>
+    <PackageReleaseNotes>Added ImageJ.NET library. Mac related bug fixes.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
-
-  <ItemGroup>
-    <None Remove="tile_copy.cu" />
-    <None Remove="tile_copy.ptx" />
-  </ItemGroup>
 
   <ItemGroup>
     <Content Include="LICENSE" />
@@ -39,12 +34,12 @@
 		<PackageCopyToOutput>true</PackageCopyToOutput>
     </Content>
   </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="BioFormats.NET8" Version="8.0.0" />
+	<ItemGroup>
+    <PackageReference Include="BioFormats.NET8" Version="8.0.0.1" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
     <PackageReference Include="CS-Script" Version="4.8.19" />
+    <PackageReference Include="ImageJ.NET" Version="154.0.0.2" />
     <PackageReference Include="ManagedCuda.NETStandard" Version="9.1.300" />
-    <PackageReference Include="NetVips" Version="3.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="NuGet.Build.Tasks.Pack" Version="6.11.1">
       <PrivateAssets>all</PrivateAssets>
@@ -59,6 +54,16 @@
     <None Update="banner.jpg">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
+    </None>
+    <None Update="macro-commands.csv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		<Pack>True</Pack>
+		<PackagePath>\</PackagePath>
+    </None>
+    <None Update="macro-functions.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		<Pack>True</Pack>
+		<PackagePath>\</PackagePath>
     </None>
     <None Update="README.md">
       <Pack>True</Pack>

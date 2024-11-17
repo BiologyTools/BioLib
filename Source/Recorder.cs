@@ -12,6 +12,7 @@ namespace BioLib
     {
         public static bool Internal = false;
         static List<string> rec = new List<string>();
+        public static bool outputConsole = true;
         public static void Clear()
         {
             rec.Clear();
@@ -20,7 +21,8 @@ namespace BioLib
         {
             if (!isInternal || Internal)
             {
-                string code = inf.DeclaringType.FullName + "." + inf.Name + "(";
+                string name = inf.DeclaringType.FullName.Replace("+<","").Replace(">d__24", "");
+                string code = name + "." + inf.Name + "(";
                 for (int i = 0; i < args.Length; i++)
                 {
                     Type t = args[i].GetType();
@@ -52,7 +54,7 @@ namespace BioLib
                             else
                             {
                                 if (i == 0)
-                                    code += "new " + t.Name + "[]{\"" + ar.GetValue(a).ToString() + "\"";
+                                    code += "new " + t.Name + "{\"" + ar.GetValue(a).ToString() + "\"";
                                 else
                                     code += "," + ar.GetValue(a).ToString();
                                 if (i == ar.Length - 1)
@@ -83,6 +85,7 @@ namespace BioLib
                         code += "," + args[i];
                 }
                 code += ");";
+                Console.WriteLine(code);
                 rec.Add(code);
             }
         }
