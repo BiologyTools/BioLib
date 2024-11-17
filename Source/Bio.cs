@@ -109,8 +109,6 @@ namespace BioLib
             if (Path.GetFileNameWithoutExtension(name) != name)
                 name = Path.GetFileNameWithoutExtension(name);
             string ext = ".ome.tif";
-            if(s.Contains("."))
-            ext = s.Substring(s.IndexOf('.'), s.Length - s.IndexOf('.'));
             return name + "-" + (i+1) + ext;
         }
         /// This function removes an image from the table
@@ -7375,6 +7373,11 @@ namespace BioLib
             Update(this);
         }
         
+        public void Rename(string name)
+        {
+            this.Filename = Path.GetFileName(name);
+            this.ID = name;
+        }
         static string openfile;
         static bool omes, tab, add;
         static int serie;

@@ -16,6 +16,7 @@ using javax.swing.text.html;
 using ij.process;
 using java.awt.image;
 using java.nio.file.attribute;
+using org.checkerframework.common.returnsreceiver.qual;
 
 namespace BioLib
 {
@@ -566,8 +567,8 @@ namespace BioLib
                     "saveAs(\"Tiff\",\"" + file + "\"); " +
                     "dir = \"" + donepath + "\"" +
                     "File.saveString(\"done\", dir + \"/done.txt\");";
-               
-                BioImage bm = await Fiji.RunStringFiji(b, st, "", headlesss);
+
+                BioImage bm = await Fiji.RunStringFiji(b, st, "", Fiji.headless);
                 if (File.Exists(file) && bioformats)
                     File.Delete(file);
                 BioLib.Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, con, index, headless, onTab, bioformats, resultInNewTab);
@@ -577,9 +578,9 @@ namespace BioLib
             {
                 cons = con;
                 indexs = index;
-                headlesss = headless;
+                Fiji.headless = headless;
                 onTabs = onTab;
-                bioformatss = bioformats;
+                Fiji.bioformats = bioformats;
                 resultInNewTabs = resultInNewTab;
                 bioImage = b;
                 Task<BioImage> t = new Task<BioImage>(RunImageJ);
@@ -591,9 +592,9 @@ namespace BioLib
 
         static string cons;
         static int indexs;
-        static bool headlesss;
+        static bool headless;
         static bool onTabs;
-        static bool bioformatss;
+        static bool bioformats;
         static bool resultInNewTabs;
         static BioImage bioImage;
         private static BioImage RunImageJ()
@@ -619,7 +620,15 @@ namespace BioLib
             if (UseFiji)
                 bm = await RunOnImageFiji(b, con, 0, headless, onTab, useBioformats, resultInNewTab);
             else
-                bm = await RunOnImage(b, con, headless, onTab, useBioformats, resultInNewTab);
+            {
+                bioImage = b;
+                cons = con;
+                indexs = 0;
+                Fiji.headless = headless;
+                bioformats = useBioformats;
+                resultInNewTabs = resultInNewTab;
+                return RunImageJ();
+            }
             return bm;
         }
         /*
