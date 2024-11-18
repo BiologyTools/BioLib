@@ -11,14 +11,14 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>2.9.1</AssemblyVersion>
-    <FileVersion>2.9.1</FileVersion>
-    <PackageVersion>2.9.1</PackageVersion>
+    <AssemblyVersion>2.9.1.1</AssemblyVersion>
+    <FileVersion>2.9.1.1</FileVersion>
+    <PackageVersion>2.9.1.1</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image;</PackageTags>
-    <PackageReleaseNotes>Added ImageJ.NET library. Mac related bug fixes.</PackageReleaseNotes>
+    <PackageReleaseNotes>Fixed issue with pyramidal images not opening.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
