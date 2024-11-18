@@ -54,7 +54,11 @@ namespace BioLib
         /// @param ids The id of the image you want to get.
         public static BioImage GetImage(string ids)
         {
-            string s = ids.Substring(ids.LastIndexOf('-'));
+            string s;
+            if (ids.Contains('-'))
+                s = ids.Substring(ids.LastIndexOf('-'));
+            else
+                s = ids;
             for (int i = 0; i < images.Count; i++)
             {
                 if (images[i].ID == ids || images[i].Filename.EndsWith(s))
@@ -6020,10 +6024,12 @@ namespace BioLib
         {
             try
             {
+                List<NetVips.Image> ims = new List<NetVips.Image>();
                 for (int i = 0; i < b.seriesCount;  i++)
                 {
                     b.vipPages.Add(NetVips.Image.Tiffload(b.file, i));
                 }
+                b.vipPages = SortImagesBySizeDescending(b.vipPages.ToArray()).ToList();
             }
             catch (Exception e)
             {
@@ -6031,6 +6037,18 @@ namespace BioLib
             }
             
         }
+        private static NetVips.Image[] SortImagesBySizeDescending(NetVips.Image[] images)
+        {
+            if (images == null || images.Length == 0)
+            {
+                throw new ArgumentException("The input array of images cannot be null or empty.");
+            }
+            // Sort images by area (width * height) in descending order
+            return images
+                .OrderByDescending(img => img.Width * img.Height)
+                .ToArray();
+        }
+
         /// The function ExtractRegionFromTiledTiff takes a BioImage object, coordinates, width, height,
         /// and resolution as input, and returns a Bitmap object representing the extracted region from
         /// the tiled TIFF image.
@@ -6054,41 +6072,84 @@ namespace BioLib
         {
             try
             {
-                // Get the required image level page
-                NetVips.Image subImage = b.vipPages[level].ExtractArea(x, y, width, height);
-                Bitmap bm;
-                if (b.bitsPerPixel == 8)
-                {
-                    // 8-bit images (assuming 24bpp RGB format)
-                    bm = new Bitmap(width, height, PixelFormat.Format24bppRgb);
-                    BitmapData bmpData = bm.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
-                    byte[] imageData = subImage.PngsaveBuffer();
-                    Marshal.Copy(imageData, 0, bmpData.Scan0, imageData.Length); // copy directly to bitmap memory
-                    bm.UnlockBits(bmpData);
-                }
-                else if (b.bitsPerPixel == 16)
-                {
-                    // 16-bit images (assuming 48bpp RGB format)
-                    bm = new Bitmap(width, height, PixelFormat.Format48bppRgb);
-                    BitmapData bmpData = bm.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadWrite, PixelFormat.Format48bppRgb);
+                // Validate inputs
+                if (b == null) throw new ArgumentNullException(nameof(b));
+                if (b.vipPages == null || b.vipPages.Count <= level) throw new ArgumentException("Invalid image level.");
 
-                    byte[] imageData = subImage.PngsaveBuffer();
-                    Marshal.Copy(imageData, 0, bmpData.Scan0, imageData.Length);
-                    bm.UnlockBits(bmpData);
-                }
-                else
-                {
-                    throw new NotSupportedException("Unsupported bit depth.");
-                }
+                // Extract the region from the specified level
+                NetVips.Image subImage = b.vipPages[level].ExtractArea(x, y, width, height);
+
+                // Convert the NetVips.Image to Bitmap
+                Bitmap bitmap = ConvertVipsImageToBitmap(subImage, b.bitsPerPixel);
+
+                // Clean up
                 subImage.Dispose();
-                return bm;
+
+                return bitmap;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error: {ex.Message}");
+                Console.WriteLine($"Error: {ex.Message}\n{ex.StackTrace}");
                 return null;
             }
         }
+
+        /// <summary>
+        /// Converts a NetVips.Image to a Bitmap object based on the bit depth.
+        /// </summary>
+        private static Bitmap ConvertVipsImageToBitmap(NetVips.Image subImage, int bitsPerPixel)
+        {
+            // Convert to byte array with raw pixel data
+            byte[] pixelData = subImage.WriteToMemory();
+            int width = (int)subImage.Width;
+            int height = (int)subImage.Height;
+
+            Bitmap bitmap;
+            if (bitsPerPixel == 8)
+            {
+                // 8-bit images -> 24bpp RGB
+                bitmap = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+                BitmapData bmpData = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
+
+                // Ensure correct stride alignment
+                int stride = bmpData.Stride;
+                byte[] rowBuffer = new byte[stride];
+                int bytesPerPixel = 3;
+
+                for (int y = 0; y < height; y++)
+                {
+                    Array.Copy(pixelData, y * width * bytesPerPixel, rowBuffer, 0, width * bytesPerPixel);
+                    Marshal.Copy(rowBuffer, 0, bmpData.Scan0 + y * stride, stride);
+                }
+
+                bitmap.UnlockBits(bmpData);
+            }
+            else if (bitsPerPixel == 16)
+            {
+                // 16-bit images -> 48bpp RGB
+                bitmap = new Bitmap(width, height, PixelFormat.Format48bppRgb);
+                BitmapData bmpData = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadWrite, PixelFormat.Format48bppRgb);
+
+                int stride = bmpData.Stride;
+                byte[] rowBuffer = new byte[stride];
+                int bytesPerPixel = 6;
+
+                for (int y = 0; y < height; y++)
+                {
+                    Array.Copy(pixelData, y * width * bytesPerPixel, rowBuffer, 0, width * bytesPerPixel);
+                    Marshal.Copy(rowBuffer, 0, bmpData.Scan0 + y * stride, stride);
+                }
+
+                bitmap.UnlockBits(bmpData);
+            }
+            else
+            {
+                throw new NotSupportedException($"Unsupported bit depth: {bitsPerPixel}");
+            }
+
+            return bitmap;
+        }
+
 
 
         /// The function "OpenOME" opens a bioimage file, with options to specify the series, whether to
@@ -6341,13 +6402,13 @@ namespace BioLib
                 Console.WriteLine("Determining Label and Macro resolutions.");
                 for (int p = 0; p < prs.Count; p++)
                 {
-                    for (int r = prs[p].Item1; r < prs[p].Item2; r++)
+                    for (int r = prs[p].Item1; r < prs[p].Item2 + 1; r++)
                     {
                         b.Resolutions.Add(ress[r]);
                     }
                 }
                 //If we have 2 resolutions that we're not added they are the label & macro resolutions so we add them to the image.
-                if (ress.Count > b.Resolutions.Count && b.Type == ImageType.pyramidal)
+                if (ress.Count > b.Resolutions.Count)
                 {
                     b.LabelResolution = ress.Count - 1;
                     b.Resolutions.Add(ress[ress.Count - 1]);
