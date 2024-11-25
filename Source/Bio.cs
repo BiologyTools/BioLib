@@ -2636,6 +2636,10 @@ namespace BioLib
             CZT,
             TCZ
         }
+        public double Magnification
+        {
+            get;set;
+        }
         public Order StackOrder
         {
             get;set;
@@ -4506,6 +4510,14 @@ namespace BioLib
             else
                 ImageJ.Initialize(imageJPath);
         }
+        public static void Initialize()
+        {
+            //We initialize OME on a seperate thread so the user doesn't have to wait for initialization to
+            //view images. 
+            InitFactory();
+            InitReader();
+            InitWriter();
+        }
         static bool inf = false, inr = false, inw = false;
         /// > Initialize the OME-XML library
         private static void InitFactory()
@@ -6318,7 +6330,7 @@ namespace BioLib
                         ch.DiodeName = b.meta.getLightEmittingDiodeID(serie, i);
                     if (b.meta.getChannelLightSourceSettingsAttenuation(serie, i) != null)
                         ch.LightSourceAttenuation = b.meta.getChannelLightSourceSettingsAttenuation(serie, i).toString();
-
+                    
 
                 }
                 catch (Exception e)
@@ -6329,6 +6341,18 @@ namespace BioLib
                 }
                 i++;
             }
+            try
+            {
+                if(b.meta.getObjectiveNominalMagnification(serie, 0) != null)
+                {
+                    b.Magnification = b.meta.getObjectiveNominalMagnification(serie, 0).intValue();
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+            
             //If the file doens't have channels we initialize them.
             if (b.Channels.Count == 0)
             {
