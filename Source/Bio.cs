@@ -27,6 +27,7 @@ using NetVips;
 using System.Threading.Tasks;
 using OpenSlideGTK;
 using System.Reflection;
+using Newtonsoft.Json.Serialization;
 namespace BioLib
 {
     /* A class declaration. */
@@ -59,9 +60,10 @@ namespace BioLib
                 s = ids.Substring(ids.LastIndexOf('-'));
             else
                 s = ids;
+            ids = ids.Replace("\\", "/");
             for (int i = 0; i < images.Count; i++)
             {
-                if (images[i].ID == ids || images[i].Filename.EndsWith(s))
+                if (images[i].ID == ids || images[i].Filename.EndsWith(Path.GetFileName(s)))
                     return images[i];
             }
             return null;
@@ -1888,6 +1890,666 @@ namespace BioLib
         }
 
     }
+
+    public class NumPy
+    {
+        public enum NpyDataType
+        {
+            // Integer types
+            UInt8 = 1,      // |u1
+            Int8 = 2,       // |i1
+            UInt16 = 3,     // |u2
+            Int16 = 4,      // |i2
+            UInt32 = 5,     // |u4
+            Int32 = 6,      // |i4
+            UInt64 = 7,     // |u8
+            Int64 = 8,      // |i8
+
+            // Floating point types
+            Float16 = 9,    // |f2
+            Float32 = 10,   // |f4
+            Float64 = 11,   // |f8
+
+            // Complex number types (optional depending on your use case)
+            Complex64 = 12, // |c8
+            Complex128 = 13 // |c16
+        }
+        public static string GetNpyTypeString(NpyDataType type)
+        {
+            switch (type)
+            {
+                case NpyDataType.UInt8:
+                    return "|u1";
+                case NpyDataType.Int8:
+                    return "|i1";
+                case NpyDataType.UInt16:
+                    return "|u2";
+                case NpyDataType.Int16:
+                    return "|i2";
+                case NpyDataType.UInt32:
+                    return "|u4";
+                case NpyDataType.Int32:
+                    return "|i4";
+                case NpyDataType.UInt64:
+                    return "|u8";
+                case NpyDataType.Int64:
+                    return "|i8";
+                case NpyDataType.Float16:
+                    return "|f2";
+                case NpyDataType.Float32:
+                    return "|f4";
+                case NpyDataType.Float64:
+                    return "|f8";
+                case NpyDataType.Complex64:
+                    return "|c8";
+                case NpyDataType.Complex128:
+                    return "|c16";
+                default:
+                    throw new ArgumentException("Unsupported NpyDataType", nameof(type));
+            }
+        }
+        public static NpyDataType GetNpyTypeEnum(string type)
+        {
+            switch (type)
+            {
+                case "|u1":
+                    return NpyDataType.UInt8;
+                case "|i1":
+                    return NpyDataType.Int8;
+                case "|u2":
+                    return NpyDataType.UInt16;
+                case "|i2":
+                    return NpyDataType.Int16;
+                case "|u4":
+                    return NpyDataType.UInt32;
+                case "|i4":
+                    return NpyDataType.Int32;
+                case "|u8":
+                    return NpyDataType.UInt64;
+                case "|i8":
+                    return NpyDataType.Int64;
+                case "|f2":
+                    return NpyDataType.Float16;
+                case "|f4":
+                    return NpyDataType.Float32;
+                case "|f8":
+                    return NpyDataType.Float64;
+                case "|c8":
+                    return NpyDataType.Complex64;
+                case "|c16":
+                    return NpyDataType.Complex128;
+                case "<f4":
+                    return NpyDataType.Float32;
+                case "<i4":
+                    return NpyDataType.Int32;
+                default:
+                    throw new ArgumentException("Unsupported numpy type string", nameof(type));
+            }
+        }
+        public class NpyHeader
+        {
+            // Data type descriptor (|u1 in numpy means unsigned 1-byte integer)
+            public string descr { get; set; }
+
+            // Fortran order flag
+            public bool fortran_order { get; set; }
+
+            // Shape of the array (a tuple or array of integers)
+            public int[] shape { get; set; }
+        }
+
+        /// <summary>
+        /// Converts a flat array into a multi-dimensional array based on the given shape.
+        /// </summary>
+        /// <typeparam name="T">Type of the elements in the array.</typeparam>
+        /// <typeparam name="TArray">Type of the target multi-dimensional array.</typeparam>
+        /// <param name="flatArray">The flat array containing the data.</param>
+        /// <param name="shape">The shape of the target multi-dimensional array.</param>
+        /// <returns>The multi-dimensional array.</returns>
+        public static TArray ConvertToMultidimensional<T, TArray>(Array flatArray, int[] shape)
+        {
+            if (flatArray.Length != shape.Aggregate(1, (a, b) => a * b))
+                throw new ArgumentException("The shape does not match the length of the flat array.");
+
+            var result = (Array)Array.CreateInstance(typeof(T), shape);
+
+            int[] indices = new int[shape.Length];
+            for (int i = 0; i < flatArray.Length; i++)
+            {
+                // Compute the multi-dimensional indices
+                int offset = i;
+                for (int j = shape.Length - 1; j >= 0; j--)
+                {
+                    indices[j] = offset % shape[j];
+                    offset /= shape[j];
+                }
+
+                // Set the value in the multi-dimensional array
+                result.SetValue(flatArray.GetValue(i), indices);
+            }
+
+            return (TArray)(object)result;
+        }
+        static T ReadValue<T>(BinaryReader reader) where T : struct
+        {
+            if (typeof(T) == typeof(float))
+                return (T)(object)reader.ReadSingle();
+            if (typeof(T) == typeof(double))
+                return (T)(object)reader.ReadDouble();
+            if (typeof(T) == typeof(int))
+                return (T)(object)reader.ReadInt32();
+            if (typeof(T) == typeof(short))
+                return (T)(object)reader.ReadInt16();
+            if (typeof(T) == typeof(byte))
+                return (T)(object)reader.ReadByte();
+
+            throw new NotSupportedException($"Type {typeof(T)} is not supported.");
+        }
+        public static (int[], NpyDataType, Array) ReadNpyFile(string filePath)
+        {
+            using (var reader = new BinaryReader(File.Open(filePath, FileMode.Open)))
+            {
+                // Verify .npy magic string
+                byte[] magic = reader.ReadBytes(6);
+                string magicString = Encoding.ASCII.GetString(magic);
+                if (magicString != "?NUMPY")
+                {
+                    throw new InvalidOperationException("Invalid .npy file.");
+                }
+
+                // Skip the version information (2 bytes)
+                reader.BaseStream.Seek(2, SeekOrigin.Current);
+
+                // Read the header length (2 bytes)
+                byte[] headerLengthBytes = reader.ReadBytes(2);
+                int headerLength = BitConverter.ToInt16(headerLengthBytes, 0);
+
+                // Read the header bytes
+                byte[] headerBytes = reader.ReadBytes(headerLength);
+                string headerString = Encoding.ASCII.GetString(headerBytes).Replace("True", "true").Replace("False", "false").Replace("(", "[").Replace(")", "]");
+
+                // Configure Json.NET to handle camel case
+                var settings = new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                };
+
+                // Deserialize the JSON string into an object of type NpyHeader
+                NpyHeader header = JsonConvert.DeserializeObject<NpyHeader>(headerString, settings);
+                var shape = header.shape;
+                var dtype = header.descr;
+                NpyDataType type = GetNpyTypeEnum(dtype);
+
+                // Calculate the total number of elements in the array
+                int totalElements = shape.Aggregate(1, (acc, dim) => acc * dim); // Multiply all dimensions
+
+                // Calculate the data size based on the number of elements and element size
+                int elementSize = GetElementSize(type);
+                int dataSize = totalElements * elementSize;
+
+                // Read the data bytes
+                byte[] dataBytes = reader.ReadBytes(dataSize);
+
+                // Convert the byte array to the proper data type array
+                Array data = null;
+                switch (type)
+                {
+                    case NpyDataType.UInt8:
+                        data = new byte[dataBytes.Length];
+                        Buffer.BlockCopy(dataBytes, 0, data, 0, dataBytes.Length);
+                        break;
+
+                    case NpyDataType.Int8:
+                        data = new sbyte[dataBytes.Length];
+                        Buffer.BlockCopy(dataBytes, 0, data, 0, dataBytes.Length);
+                        break;
+
+                    case NpyDataType.UInt16:
+                        data = new ushort[totalElements]; // Using totalElements for multidimensional support
+                        for (int i = 0; i < data.Length; i++)
+                        {
+                            data.SetValue(BitConverter.ToUInt16(dataBytes, i * 2), i);
+                        }
+                        break;
+
+                    case NpyDataType.Int16:
+                        data = new short[totalElements];
+                        for (int i = 0; i < data.Length; i++)
+                        {
+                            data.SetValue(BitConverter.ToInt16(dataBytes, i * 2), i);
+                        }
+                        break;
+
+                    case NpyDataType.UInt32:
+                        data = new uint[totalElements];
+                        for (int i = 0; i < data.Length; i++)
+                        {
+                            data.SetValue(BitConverter.ToUInt32(dataBytes, i * 4), i);
+                        }
+                        break;
+
+                    case NpyDataType.Int32:
+                        data = new int[totalElements];
+                        for (int i = 0; i < data.Length; i++)
+                        {
+                            data.SetValue(BitConverter.ToInt32(dataBytes, i * 4), i);
+                        }
+                        break;
+
+                    case NpyDataType.UInt64:
+                        data = new ulong[totalElements];
+                        for (int i = 0; i < data.Length; i++)
+                        {
+                            data.SetValue(BitConverter.ToUInt64(dataBytes, i * 8), i);
+                        }
+                        break;
+
+                    case NpyDataType.Int64:
+                        data = new long[totalElements];
+                        for (int i = 0; i < data.Length; i++)
+                        {
+                            data.SetValue(BitConverter.ToInt64(dataBytes, i * 8), i);
+                        }
+                        break;
+
+                    case NpyDataType.Float16:
+                        // Convert each 2-byte segment to Float16 (not directly supported by BitConverter)
+                        // You'll need a custom method to handle Float16 conversion
+                        break;
+
+                    case NpyDataType.Float32:
+                        data = new float[totalElements];
+                        for (int i = 0; i < data.Length; i++)
+                        {
+                            data.SetValue(BitConverter.ToSingle(dataBytes, i * 4), i);
+                        }
+                        break;
+
+                    case NpyDataType.Float64:
+                        data = new double[totalElements];
+                        for (int i = 0; i < data.Length; i++)
+                        {
+                            data.SetValue(BitConverter.ToDouble(dataBytes, i * 8), i);
+                        }
+                        break;
+
+                    case NpyDataType.Complex64:
+                        data = new (float, float)[totalElements];
+                        for (int i = 0; i < data.Length; i++)
+                        {
+                            var real = BitConverter.ToSingle(dataBytes, i * 8);
+                            var imaginary = BitConverter.ToSingle(dataBytes, i * 8 + 4);
+                            data.SetValue((real, imaginary), i);
+                        }
+                        break;
+
+                    case NpyDataType.Complex128:
+                        data = new (double, double)[totalElements];
+                        for (int i = 0; i < data.Length; i++)
+                        {
+                            var real = BitConverter.ToDouble(dataBytes, i * 16);
+                            var imaginary = BitConverter.ToDouble(dataBytes, i * 16 + 8);
+                            data.SetValue((real, imaginary), i);
+                        }
+                        break;
+
+                    default:
+                        throw new ArgumentException("Unsupported NpyDataType", nameof(type));
+                }
+
+                return (shape, type, data);
+            }
+        }
+
+        /// <summary>
+        /// Helper function to get the size of the elements based on dtype
+        /// </summary>
+        /// <param name="dtype"></param>
+        /// <returns></returns>
+        public static int GetElementSize(NpyDataType type)
+        {
+            switch (type)
+            {
+                case NpyDataType.UInt8:
+                case NpyDataType.Int8:
+                    return 1; // 1 byte for UInt8 and Int8
+
+                case NpyDataType.UInt16:
+                case NpyDataType.Int16:
+                    return 2; // 2 bytes for UInt16 and Int16
+
+                case NpyDataType.UInt32:
+                case NpyDataType.Int32:
+                    return 4; // 4 bytes for UInt32 and Int32
+
+                case NpyDataType.UInt64:
+                case NpyDataType.Int64:
+                    return 8; // 8 bytes for UInt64 and Int64
+
+                case NpyDataType.Float16:
+                    return 2; // 2 bytes for Float16
+
+                case NpyDataType.Float32:
+                    return 4; // 4 bytes for Float32
+
+                case NpyDataType.Float64:
+                    return 8; // 8 bytes for Float64
+
+                case NpyDataType.Complex64:
+                    return 8; // 8 bytes for Complex64 (2 * Float32)
+
+                case NpyDataType.Complex128:
+                    return 16; // 16 bytes for Complex128 (2 * Float64)
+
+                default:
+                    throw new ArgumentException("Unsupported NpyDataType", nameof(type));
+            }
+        }
+
+        public static T ConvertJaggedArray<T>(Array jaggedArray)
+        {
+            // Ensure the provided array is of the correct jagged array type
+            if (jaggedArray is int[][] jagged)
+            {
+                int rows = jagged.Length;
+                int cols = jagged[0].Length;
+
+                // Create an instance of the desired 2D array using reflection
+                T result = (T)Activator.CreateInstance(typeof(T), new object[] { rows, cols });
+
+                // Copy values from jagged array to the newly created 2D array
+                for (int i = 0; i < rows; i++)
+                {
+                    for (int j = 0; j < cols; j++)
+                    {
+                        // Use reflection to set the value in the result array
+                        var element = result.GetType().GetElementType();
+                        result.GetType().GetMethod("SetValue").Invoke(result, new object[] { jagged[i][j], i, j });
+                    }
+                }
+
+                return result;
+            }
+
+            throw new InvalidCastException("The input array is not of the expected type.");
+        }
+
+        public static T CreateJaggedArray<T>(int[] shape, T[] data, int dimension) where T : struct
+        {
+            // Base case: if we reached the last dimension, return the data array for that dimension
+            if (dimension == shape.Length - 1)
+            {
+                // Create a 2D array for the last dimension
+                T[,] array = (T[,])Activator.CreateInstance(typeof(T[,]), shape[dimension], data.Length / shape[dimension]);
+                Array.Copy(data, array, data.Length); // Copy data into the array
+                return (T)(object)array; // Cast to T (we will handle this later)
+            }
+
+            // Recursive case: create jagged array for higher dimensions
+            int subDimensionSize = shape[dimension + 1];
+            int firstDimLength = shape[dimension];
+
+            // Create a jagged array for the current dimension
+            Array jaggedArray = Array.CreateInstance(typeof(Array), shape[dimension]);
+
+            int index = 0;
+            for (int i = 0; i < firstDimLength; i++)
+            {
+                // Recursively create the sub-arrays
+                var subArray = CreateJaggedArray(shape, data.Skip(index).Take(subDimensionSize).ToArray(), dimension + 1);
+                jaggedArray.SetValue(subArray, i); // Set the sub-array at index
+                index += subDimensionSize;
+            }
+
+            // Return the jagged array
+            return (T)Convert.ChangeType(jaggedArray, typeof(T)); // Use Convert.ChangeType to cast System.Array to T
+        }
+
+        static void SaveNpyFile(string filePath, Array array)
+        {
+            using (var writer = new BinaryWriter(File.Open(filePath, FileMode.Create)))
+            {
+                // Write the magic string and version number
+                writer.Write(new byte[] { 0x93, 0x4E, 0x55, 0x4D, 0x50, 0x59 }); // \x93NUMPY
+                writer.Write((byte)1); // Major version (1)
+                writer.Write((byte)0); // Minor version (0)
+
+                // Write the header length (ushort)
+                string header = GetHeader(array);
+                writer.Write((ushort)header.Length);
+
+                // Write the header
+                writer.Write(Encoding.ASCII.GetBytes(header));
+
+                // Write the binary data
+                WriteArrayData(writer, array);
+            }
+        }
+
+        static string GetHeader(Array array)
+        {
+            // Get the shape of the array
+            string shape = "(" + string.Join(",", array.GetDimensions().Select(dim => dim.ToString())) + ")";
+
+            // Get the data type (assuming float32)
+            string dtype = "|<f4"; // For little-endian float32 (numpy standard)
+
+            // Construct the header
+            string header = "{'descr': '" + dtype + "', 'fortran_order': False, 'shape': " + shape + "}";
+
+            // Pad header length to be even
+            int headerLength = header.Length + 1;
+            if (headerLength % 2 != 0)
+            {
+                header += " ";
+            }
+
+            return header;
+        }
+
+        static void WriteArrayData(BinaryWriter writer, Array array)
+        {
+            // Flatten the array to 1D
+            var flattenedArray = array.Cast<float>().ToArray();
+
+            // Write the data
+            foreach (var value in flattenedArray)
+            {
+                writer.Write(value);
+            }
+        }
+
+        // Helper method to convert byte[] to the corresponding typed array (e.g., float[], int[], etc.)
+        public static Array ConvertBytesToTypedArray(byte[] data, NpyDataType dataType)
+        {
+            switch (dataType)
+            {
+                case NpyDataType.UInt8:
+                    return ConvertByteArrayToUInt8(data);
+                case NpyDataType.Int8:
+                    return ConvertByteArrayToInt8(data);
+                case NpyDataType.UInt16:
+                    return ConvertByteArrayToUInt16(data);
+                case NpyDataType.Int16:
+                    return ConvertByteArrayToInt16(data);
+                case NpyDataType.UInt32:
+                    return ConvertByteArrayToUInt32(data);
+                case NpyDataType.Int32:
+                    return ConvertByteArrayToInt32(data);
+                case NpyDataType.UInt64:
+                    return ConvertByteArrayToUInt64(data);
+                case NpyDataType.Int64:
+                    return ConvertByteArrayToInt64(data);
+                case NpyDataType.Float16:
+                    return ConvertByteArrayToFloat16(data);
+                case NpyDataType.Float32:
+                    return ConvertByteArrayToFloat32(data);
+                case NpyDataType.Float64:
+                    return ConvertByteArrayToFloat64(data);
+                case NpyDataType.Complex64:
+                    return ConvertByteArrayToComplex64(data);
+                case NpyDataType.Complex128:
+                    return ConvertByteArrayToComplex128(data);
+                default:
+                    throw new ArgumentException("Unsupported data type", nameof(dataType));
+            }
+        }
+
+        // Conversion methods for each type
+
+        private static byte[] ConvertByteArrayToUInt8(byte[] data)
+        {
+            return data;
+        }
+
+        private static sbyte[] ConvertByteArrayToInt8(byte[] data)
+        {
+            int length = data.Length;
+            sbyte[] result = new sbyte[length];
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = (sbyte)data[i];
+            }
+            return result;
+        }
+
+        private static ushort[] ConvertByteArrayToUInt16(byte[] data)
+        {
+            int length = data.Length / sizeof(ushort);
+            ushort[] result = new ushort[length];
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = BitConverter.ToUInt16(data, i * sizeof(ushort));
+            }
+            return result;
+        }
+
+        private static short[] ConvertByteArrayToInt16(byte[] data)
+        {
+            int length = data.Length / sizeof(short);
+            short[] result = new short[length];
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = BitConverter.ToInt16(data, i * sizeof(short));
+            }
+            return result;
+        }
+
+        private static uint[] ConvertByteArrayToUInt32(byte[] data)
+        {
+            int length = data.Length / sizeof(uint);
+            uint[] result = new uint[length];
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = BitConverter.ToUInt32(data, i * sizeof(uint));
+            }
+            return result;
+        }
+
+        private static int[] ConvertByteArrayToInt32(byte[] data)
+        {
+            int length = data.Length / sizeof(int);
+            int[] result = new int[length];
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = BitConverter.ToInt32(data, i * sizeof(int));
+            }
+            return result;
+        }
+
+        private static ulong[] ConvertByteArrayToUInt64(byte[] data)
+        {
+            int length = data.Length / sizeof(ulong);
+            ulong[] result = new ulong[length];
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = BitConverter.ToUInt64(data, i * sizeof(ulong));
+            }
+            return result;
+        }
+
+        private static long[] ConvertByteArrayToInt64(byte[] data)
+        {
+            int length = data.Length / sizeof(long);
+            long[] result = new long[length];
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = BitConverter.ToInt64(data, i * sizeof(long));
+            }
+            return result;
+        }
+
+        private static float[] ConvertByteArrayToFloat16(byte[] data)
+        {
+            // For Float16, .NET does not natively support conversion, so you might need a custom implementation
+            // or use an external library to handle Float16 to Float32 conversion.
+            // Here's a placeholder for that implementation:
+            throw new NotImplementedException("Float16 is not natively supported in .NET. You need to convert it to Float32.");
+        }
+
+        private static float[] ConvertByteArrayToFloat32(byte[] data)
+        {
+            int length = data.Length / sizeof(float);
+            float[] result = new float[length];
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = BitConverter.ToSingle(data, i * sizeof(float));
+            }
+            return result;
+        }
+
+        private static double[] ConvertByteArrayToFloat64(byte[] data)
+        {
+            int length = data.Length / sizeof(double);
+            double[] result = new double[length];
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = BitConverter.ToDouble(data, i * sizeof(double));
+            }
+            return result;
+        }
+
+        private static (float, float)[] ConvertByteArrayToComplex64(byte[] data)
+        {
+            int length = data.Length / sizeof(float) / 2;
+            (float, float)[] result = new (float, float)[length];
+            for (int i = 0; i < length; i++)
+            {
+                float real = BitConverter.ToSingle(data, i * sizeof(float) * 2);
+                float imaginary = BitConverter.ToSingle(data, i * sizeof(float) * 2 + sizeof(float));
+                result[i] = (real, imaginary);
+            }
+            return result;
+        }
+
+        private static (double, double)[] ConvertByteArrayToComplex128(byte[] data)
+        {
+            int length = data.Length / sizeof(double) / 2;
+            (double, double)[] result = new (double, double)[length];
+            for (int i = 0; i < length; i++)
+            {
+                double real = BitConverter.ToDouble(data, i * sizeof(double) * 2);
+                double imaginary = BitConverter.ToDouble(data, i * sizeof(double) * 2 + sizeof(double));
+                result[i] = (real, imaginary);
+            }
+            return result;
+        }
+    }
+    public static class ArrayExtensions
+    {
+        // Extension method to get the dimensions of an array
+        public static int[] GetDimensions(this Array array)
+        {
+            int rank = array.Rank;
+            int[] dimensions = new int[rank];
+            for (int i = 0; i < rank; i++)
+            {
+                dimensions[i] = array.GetLength(i);
+            }
+            return dimensions;
+        }
+    }
+
     public class BioImage : IDisposable
     {
         public class WellPlate
@@ -4137,6 +4799,18 @@ namespace BioLib
             int index = GetFrameIndex(coord.Z, coord.C, coord.T);
             return GetFiltered(index, r, g, b);
         }
+        public static IntRange MapIntRangeToByteRange(IntRange ushortRange)
+        {
+            // Ensure the range is valid
+            if (ushortRange.Min < 0 || ushortRange.Max > ushort.MaxValue)
+                throw new ArgumentOutOfRangeException(nameof(ushortRange), "Range must be within 0 to ushort.MaxValue.");
+
+            // Map each value in the range
+            int mappedMin = (int)((ushortRange.Min / (float)ushort.MaxValue) * byte.MaxValue);
+            int mappedMax = (int)((ushortRange.Max / (float)ushort.MaxValue) * byte.MaxValue);
+
+            return new IntRange(mappedMin, mappedMax);
+        }
         /// It takes an image, and returns a filtered version of that image
         /// 
         /// @param ind the index of the buffer to be filtered
@@ -4147,13 +4821,21 @@ namespace BioLib
         /// @return A filtered image.
         public Bitmap GetFiltered(int ind, IntRange r, IntRange g, IntRange b)
         {
-            if (Buffers[ind].PixelFormat == PixelFormat.Float || Buffers[ind].PixelFormat == PixelFormat.Short)
+            if (Buffers[ind].PixelFormat == PixelFormat.Float)
             {
-                BioImage.filter8.InRed = r;
-                BioImage.filter8.InGreen = g;
-                BioImage.filter8.InBlue = b;
-                Bitmap bm = BioImage.filter8.Apply(Buffers[ind].GetImageRGBA());
-                return bm;  
+                if (Statistics.StackMax <= 1)
+                {
+                    Bitmap bm = Buffers[ind].GetImageRGBA(true);
+                    return bm;
+                }
+                else
+                {
+                    BioImage.filter8.InRed = MapIntRangeToByteRange(r);
+                    BioImage.filter8.InGreen = MapIntRangeToByteRange(g);
+                    BioImage.filter8.InBlue = MapIntRangeToByteRange(b);
+                    Bitmap bm = BioImage.filter8.Apply(Buffers[ind].GetImageRGBA(false));
+                    return bm;
+                }
             }
             else
             if (Buffers[ind].BitsPerPixel > 8)
@@ -4944,7 +5626,7 @@ namespace BioLib
             else
             if (unit == "NONE")
             {
-                if (jdesc != null)
+                if (jdesc != null && jdesc.ImageJ != null)
                 {
                     if (jdesc.unit == "micron")
                     {
@@ -5005,6 +5687,8 @@ namespace BioLib
             string fs = file.Replace("\\", "/");
             vips = VipsSupport(file);
             Console.WriteLine("Opening BioImage: " + file);
+            if (file.EndsWith(".npy"))
+                return BioImage.FromNumpy(file);
             bool ome = isOME(file);
             if (ome) return OpenOME(file, series, tab, addToImages, tile, tileX, tileY, tileSizeX, tileSizeY);
             bool tiled = IsTiffTiled(file);
@@ -5049,6 +5733,7 @@ namespace BioLib
                 b.sizeC = 1;
                 b.sizeT = 1;
                 b.sizeZ = 1;
+                bool imagej = false;
                 if (f != null && !tile)
                 {
                     imDesc = new ImageJDesc();
@@ -5076,6 +5761,7 @@ namespace BioLib
                             b.imageInfo.PhysicalSizeZ = imDesc.spacing;
                         else
                             b.imageInfo.PhysicalSizeZ = 1;
+                        imagej = true;
                     }
                 }
                 int stride = 0;
@@ -5196,6 +5882,8 @@ namespace BioLib
 
                 b.Buffers = new List<Bitmap>();
                 int pages = image.NumberOfDirectories() / b.seriesCount;
+                if (!imagej)
+                    b.sizeZ = pages;
                 int str = image.ScanlineSize();
                 bool inter = true;
                 if (stride != str)
@@ -5961,6 +6649,201 @@ namespace BioLib
         {
             return OpenOME(file, serie, true, false, false, 0, 0, 0, 0);
         }
+        /// <summary>
+        /// Converts a numpy array to BioImage.
+        /// </summary>
+        /// <param name="file"></param>
+        /// <returns></returns>
+        public static BioImage FromNumpy(string file)
+        {
+            BioImage bm = new BioImage(file);
+            var (shape, dataType, data) = NumPy.ReadNpyFile(file);
+
+            // Handle different shapes and cast the data into appropriate multi-dimensional arrays
+            if (shape.Length == 5)
+            {
+                if (dataType == NumPy.NpyDataType.Float32)
+                {
+                    float[,,,,] fs = NumPy.ConvertToMultidimensional<float, float[,,,,]>(data, shape);
+                    for (int c = 0; c < shape[2]; c++)
+                    {
+                        Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Float);
+                        for (int y = 0; y < shape[4]; y++)
+                        {
+                            for (int x = 0;  x < shape[3];  x++)
+                            {
+                                b.SetValue(x,y,fs[0, 0, c, x, y]);
+                            }
+                        }
+                        bm.Buffers.Add(b);
+                    }
+                }
+                else if(dataType == NumPy.NpyDataType.UInt8)
+                {
+                    uint[,,,,] fs = NumPy.ConvertToMultidimensional<uint, uint[,,,,]>(data, shape);
+                    for (int c = 0; c < shape[2]; c++)
+                    {
+                        Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Format8bppIndexed);
+                        for (int y = 0; y < shape[4]; y++)
+                        {
+                            for (int x = 0; x < shape[3]; x++)
+                            {
+                                b.SetValue(x, y, fs[0, 0, c, x, y]);
+                            }
+                        }
+                        bm.Buffers.Add(b);
+                    }
+                }
+                bm.sizeC = shape[2];
+            }
+            else if (shape.Length == 4)
+            {
+                if (dataType == NumPy.NpyDataType.Float32)
+                {
+                    float[,,,] fs = NumPy.ConvertToMultidimensional<float, float[,,,]>(data, shape);
+                    for (int c = 0; c < shape[1]; c++)
+                    {
+                        Bitmap b = new Bitmap(shape[2], shape[3], PixelFormat.Float);
+                        for (int y = 0; y < shape[3]; y++)
+                        {
+                            for (int x = 0; x < shape[2]; x++)
+                            {
+                                b.SetValue(x, y, (float)fs[0, c, x, y]);
+                            }
+                        }
+                        bm.Buffers.Add(b);
+                    }
+                }
+                else if (dataType == NumPy.NpyDataType.UInt8)
+                {
+                    uint[,,,] fs = NumPy.ConvertToMultidimensional<uint, uint[,,,]>(data, shape);
+                    for (int c = 0; c < shape[1]; c++)
+                    {
+                        Bitmap b = new Bitmap(shape[2], shape[3], PixelFormat.Format8bppIndexed);
+                        for (int y = 0; y < shape[3]; y++)
+                        {
+                            for (int x = 0; x < shape[2]; x++)
+                            {
+                                b.SetValue(x, y, fs[0, c, x, y]);
+                            }
+                        }
+                        bm.Buffers.Add(b);
+                    }
+                }
+                bm.sizeC = shape[1];
+            }
+            else if (shape.Length == 3)
+            {
+                if (dataType == NumPy.NpyDataType.Float32)
+                {
+                    float[,,] fs = NumPy.ConvertToMultidimensional<float, float[,,]>(data, shape);
+                    for (int c = 0; c < shape[2]; c++)
+                    {
+                        Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Float);
+                        for (int y = 0; y < shape[4]; y++)
+                        {
+                            for (int x = 0; x < shape[3]; x++)
+                            {
+                                b.SetValue(x, y, fs[c, x, y]);
+                            }
+                        }
+                        bm.Buffers.Add(b);
+                    }
+                }
+                else if (dataType == NumPy.NpyDataType.UInt8)
+                {
+                    uint[,,] fs = NumPy.ConvertToMultidimensional<uint, uint[,,]>(data, shape);
+                    for (int c = 0; c < shape[0]; c++)
+                    {
+                        Bitmap b = new Bitmap(shape[1], shape[2], PixelFormat.Format8bppIndexed);
+                        for (int y = 0; y < shape[2]; y++)
+                        {
+                            for (int x = 0; x < shape[1]; x++)
+                            {
+                                b.SetValue(x, y, fs[c, x, y]);
+                            }
+                        }
+                        bm.Buffers.Add(b);
+                    }
+                }
+                bm.sizeC = shape[0];
+            }
+            else if (shape.Length == 2)
+            {
+                if (dataType == NumPy.NpyDataType.Float32)
+                {
+                    float[,] fs = NumPy.ConvertToMultidimensional<float, float[,]>(data, shape);
+                    Bitmap b = new Bitmap(shape[0], shape[1], PixelFormat.Float);
+                    for (int y = 0; y < shape[1]; y++)
+                    {
+                        for (int x = 0; x < shape[0]; x++)
+                        {
+                            b.SetValue(x, y, fs[x, y]);
+                        }
+                    }
+                    bm.Buffers.Add(b);
+                }
+                else if (dataType == NumPy.NpyDataType.UInt8)
+                {
+                    int[,] fs = NumPy.ConvertToMultidimensional<int, int[,]>(data, shape);
+                    Bitmap b = new Bitmap(shape[0], shape[1], PixelFormat.UInt);
+                    for (int y = 0; y < shape[1]; y++)
+                    {
+                        for (int x = 0; x < shape[0]; x++)
+                        {
+                            b.SetValue(x, y, fs[x, y]);
+                        }
+                    }
+                    bm.Buffers.Add(b);
+                }
+                bm.sizeC = 1;
+            }
+            else
+            {
+                throw new InvalidOperationException("Unsupported array shape.");
+            }
+
+            for (int i = 0; i < bm.SizeC; i++)
+            {
+                if (bm.Buffers[0].PixelFormat == PixelFormat.Float || bm.Buffers[0].PixelFormat == PixelFormat.UInt || bm.Buffers[0].PixelFormat == PixelFormat.Int)
+                    bm.Channels.Add(new Channel(i, 32, 1));
+                else
+                if (bm.Buffers[0].PixelFormat == PixelFormat.Format8bppIndexed)
+                    bm.Channels.Add(new Channel(i, 8, 1));
+            }
+            bm.sizeT = 1;
+            bm.sizeZ = 1;
+            bm.Coords = new int[bm.SizeZ, bm.SizeC, bm.SizeT];
+            bm.UpdateCoords();
+            bm.bitsPerPixel = 8;
+            if(dataType == NumPy.NpyDataType.Float32)
+                bm.Resolutions.Add(new Resolution(bm.SizeX, bm.SizeY, PixelFormat.Float, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 0, 0, 0));
+            else
+            if (dataType == NumPy.NpyDataType.UInt32)
+                bm.Resolutions.Add(new Resolution(bm.SizeX, bm.SizeY, PixelFormat.UInt, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 0, 0, 0));
+            else
+            if (dataType == NumPy.NpyDataType.Int32)
+                bm.Resolutions.Add(new Resolution(bm.SizeX, bm.SizeY, PixelFormat.Int, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 0, 0, 0));
+            else
+            if (dataType == NumPy.NpyDataType.UInt8)
+                bm.Resolutions.Add(new Resolution(bm.SizeX, bm.SizeY, PixelFormat.Format8bppIndexed, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 0, 0, 0));
+            foreach (var item in bm.Buffers)
+            {
+                item.Stats = Statistics.FromBytes(item);
+            }
+            bm.Type = ImageType.stack;
+            bm.Volume = new VolumeD(new Point3D(bm.StageSizeX, bm.StageSizeY, bm.StageSizeZ), new Point3D(bm.PhysicalSizeX * bm.SizeX, bm.PhysicalSizeY * bm.SizeY, bm.PhysicalSizeZ * bm.SizeZ));
+            AutoThreshold(bm, false);
+            if (bm.bitsPerPixel > 8)
+                bm.StackThreshold(true);
+            else
+                bm.StackThreshold(false);
+            bm.StackOrder = Order.ZCT;
+            bm.ID = Path.GetFileName(file);
+            bm.file = file;
+            Images.AddImage(bm);
+            return bm;
+        }
         /// It takes a list of files, and creates a new BioImage object with the first file in the list.
         /// Then it loops through the rest of the files, adding the buffers from each file to the new
         /// BioImage object. Finally, it updates the coordinates of the new BioImage object, and adds it
@@ -6161,8 +7044,6 @@ namespace BioLib
 
             return bitmap;
         }
-
-
 
         /// The function "OpenOME" opens a bioimage file, with options to specify the series, whether to
         /// display it in a tab, whether to add it to existing images, whether to tile the image, and
@@ -6577,6 +7458,7 @@ namespace BioLib
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                         ome.xml.model.enums.FillRule fr = b.meta.getRectangleFillRule(im, sc);
+
                     }
                     else
                     if (typ == "Ellipse")
