@@ -3434,7 +3434,8 @@ namespace BioLib
                 Buffers = bfs;
                 UpdateCoords(SizeZ, 3, SizeT);
             }
-            else if (px == PixelFormat.Format24bppRgb)
+            else 
+            if (px == PixelFormat.Format24bppRgb)
             {
                 List<Bitmap> bfs = new List<Bitmap>();
                 int index = 0;
@@ -3468,6 +3469,17 @@ namespace BioLib
                 foreach (var item in Buffers)
                 {
                     item.To8Bit();
+                }
+            }
+            else
+            if (px == PixelFormat.Float)
+            {
+                foreach (var item in Buffers)
+                {
+                    if(Statistics.StackMax <= 1)
+                        item.To8Bit(true);
+                    else
+                        item.To8Bit(false);
                 }
             }
             AutoThreshold(this, true);
@@ -3513,7 +3525,6 @@ namespace BioLib
                 for (int i = 0; i < Buffers.Count; i++)
                 {
                     Buffers[i] = AForge.Imaging.Image.Convert8bppTo16bpp(Buffers[i]);
-                    Statistics.CalcStatistics(Buffers[i]);
                 }
                 for (int c = 0; c < Channels.Count; c++)
                 {
@@ -3531,7 +3542,21 @@ namespace BioLib
                 To48Bit();
                 To16Bit();
             }
-            Statistics.ClearCalcBuffer();
+            else if (Buffers[0].PixelFormat == PixelFormat.Float)
+            {
+                for (int i = 0; i < Buffers.Count; i++)
+                {
+                    if(Statistics.StackMax <= 1)
+                        Buffers[i].To16Bit(true);
+                    else
+                        Buffers[i].To16Bit(false);
+                }
+            }
+
+            foreach (var item in Buffers)
+            {
+                item.Stats = Statistics.FromBytes(item);
+            }
             AutoThreshold(this, true);
             StackThreshold(true);
         }
@@ -3615,6 +3640,10 @@ namespace BioLib
                 Buffers = bfs;
                 UpdateCoords(SizeZ, 1, SizeT);
             }
+            foreach (var item in Buffers)
+            {
+                item.Stats = Statistics.FromBytes(item);
+            }
             AutoThreshold(this, true);
             StackThreshold(false);
         }
@@ -3679,7 +3708,6 @@ namespace BioLib
                         }
                         bfs.Add(bbs);
                     }
-                GC.Collect();
                 Buffers = bfs;
                 UpdateCoords(SizeZ, 1, SizeT);
                 Channel c = Channels[0].Copy();
@@ -3723,6 +3751,25 @@ namespace BioLib
             bitsPerPixel = 16;
             AutoThreshold(this, true);
             StackThreshold(true);
+        }
+        public void ToShort()
+        {
+            foreach (var b in Buffers)
+            {
+                b.ToShort();
+            }
+            AutoThreshold(this, true);
+            StackThreshold(false);
+        }
+        public void ToFloat()
+        {
+            foreach (var b in Buffers)
+            {
+                b.ToFloat();
+                b.Stats = Statistics.FromBytes(b);
+            }
+            AutoThreshold(this, true);
+            StackThreshold(false);
         }
         public int? MacroResolution { get;set; }
         public int? LabelResolution { get;set; }
@@ -4920,43 +4967,19 @@ namespace BioLib
             {
                 if (Channels.Count >= 3)
                 {
-                    if (Buffers[0].PixelFormat == PixelFormat.Float || Buffers[0].PixelFormat == PixelFormat.Short)
-                    {
-                        Bitmap[] bs = new Bitmap[3];
-                        bs[2] = Buffers[index + RChannel.Index].GetImageRGBA();
-                        bs[1] = Buffers[index + GChannel.Index].GetImageRGBA();
-                        bs[0] = Buffers[index + BChannel.Index].GetImageRGBA();
-                        return Bitmap.GetRGBBitmap(bs, rf, gf, bf);
-                    }
-                    else
-                    {
-                        Bitmap[] bs = new Bitmap[3];
-                        bs[2] = Buffers[index + RChannel.Index];
-                        bs[1] = Buffers[index + GChannel.Index];
-                        bs[0] = Buffers[index + BChannel.Index];
-                        return Bitmap.GetRGBBitmap(bs, rf, gf, bf);
-                    }
-
+                    Bitmap[] bs = new Bitmap[3];
+                    bs[2] = Buffers[index + RChannel.Index];
+                    bs[1] = Buffers[index + GChannel.Index];
+                    bs[0] = Buffers[index + BChannel.Index];
+                    return Bitmap.GetRGBBitmap(bs, rf, gf, bf);
                 }
                 else
                 {
-                    if (Buffers[0].PixelFormat == PixelFormat.Float || Buffers[0].PixelFormat == PixelFormat.Short)
-                    {
-                        Bitmap[] bs = new Bitmap[3];
-                        bs[2] = Buffers[index + RChannel.Index].GetImageRGBA();
-                        bs[1] = Buffers[index + RChannel.Index + 1].GetImageRGBA();
-                        bs[0] = Buffers[index + RChannel.Index + 2].GetImageRGBA();
-                        return Bitmap.GetRGBBitmap(bs, rf, gf, bf);
-                    }
-                    else
-                    {
-                        Bitmap[] bs = new Bitmap[3];
-                        bs[2] = Buffers[index + RChannel.Index];
-                        bs[1] = Buffers[index + RChannel.Index + 1];
-                        bs[0] = Buffers[index + RChannel.Index + 2];
-                        return Bitmap.GetRGBBitmap(bs, rf, gf, bf);
-                    }
-
+                    Bitmap[] bs = new Bitmap[3];
+                    bs[2] = Buffers[index + RChannel.Index];
+                    bs[1] = Buffers[index + RChannel.Index + 1];
+                    bs[0] = Buffers[index + RChannel.Index + 2];
+                    return Bitmap.GetRGBBitmap(bs, rf, gf, bf);
                 }
             }
             else
@@ -6665,86 +6688,100 @@ namespace BioLib
                 if (dataType == NumPy.NpyDataType.Float32)
                 {
                     float[,,,,] fs = NumPy.ConvertToMultidimensional<float, float[,,,,]>(data, shape);
-                    for (int c = 0; c < shape[2]; c++)
+                    for (int z = 0; z < shape[2]; z++)
                     {
-                        Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Float);
-                        for (int y = 0; y < shape[4]; y++)
+                        for (int c = 0; c < shape[1]; c++)
                         {
-                            for (int x = 0;  x < shape[3];  x++)
+                            Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Float);
+                            for (int y = 0; y < shape[4]; y++)
                             {
-                                b.SetValue(x,y,fs[0, 0, c, x, y]);
+                                for (int x = 0;  x < shape[3];  x++)
+                                {
+                                    b.SetValue(x,y,fs[0, c, z, x, y]);
+                                }
                             }
+                            bm.Buffers.Add(b);
                         }
-                        bm.Buffers.Add(b);
                     }
                 }
                 else if(dataType == NumPy.NpyDataType.UInt8)
                 {
                     uint[,,,,] fs = NumPy.ConvertToMultidimensional<uint, uint[,,,,]>(data, shape);
-                    for (int c = 0; c < shape[2]; c++)
+                    for (int z = 0; z < shape[2]; z++)
                     {
-                        Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Format8bppIndexed);
-                        for (int y = 0; y < shape[4]; y++)
+                        for (int c = 0; c < shape[1]; c++)
                         {
-                            for (int x = 0; x < shape[3]; x++)
+                            Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Format8bppIndexed);
+                            for (int y = 0; y < shape[4]; y++)
                             {
-                                b.SetValue(x, y, fs[0, 0, c, x, y]);
+                                for (int x = 0; x < shape[3]; x++)
+                                {
+                                    b.SetValue(x, y, fs[0, c, z, x, y]);
+                                }
                             }
+                            bm.Buffers.Add(b);
                         }
-                        bm.Buffers.Add(b);
                     }
                 }
-                bm.sizeC = shape[2];
+                bm.sizeZ = shape[2];
+                bm.sizeC = shape[1];
             }
             else if (shape.Length == 4)
             {
                 if (dataType == NumPy.NpyDataType.Float32)
                 {
                     float[,,,] fs = NumPy.ConvertToMultidimensional<float, float[,,,]>(data, shape);
-                    for (int c = 0; c < shape[1]; c++)
+                    for (int z = 0; z < shape[1]; z++)
                     {
-                        Bitmap b = new Bitmap(shape[2], shape[3], PixelFormat.Float);
-                        for (int y = 0; y < shape[3]; y++)
+                        for (int c = 0; c < shape[0]; c++)
                         {
-                            for (int x = 0; x < shape[2]; x++)
+                            Bitmap b = new Bitmap(shape[2], shape[3], PixelFormat.Float);
+                            for (int y = 0; y < shape[3]; y++)
                             {
-                                b.SetValue(x, y, (float)fs[0, c, x, y]);
+                                for (int x = 0; x < shape[2]; x++)
+                                {
+                                    b.SetValue(x, y, fs[c, z, x, y]);
+                                }
                             }
+                            bm.Buffers.Add(b);
                         }
-                        bm.Buffers.Add(b);
                     }
                 }
                 else if (dataType == NumPy.NpyDataType.UInt8)
                 {
                     uint[,,,] fs = NumPy.ConvertToMultidimensional<uint, uint[,,,]>(data, shape);
-                    for (int c = 0; c < shape[1]; c++)
+                    for (int z = 0; z < shape[1]; z++)
                     {
-                        Bitmap b = new Bitmap(shape[2], shape[3], PixelFormat.Format8bppIndexed);
-                        for (int y = 0; y < shape[3]; y++)
+                        for (int c = 0; c < shape[0]; c++)
                         {
-                            for (int x = 0; x < shape[2]; x++)
+                            Bitmap b = new Bitmap(shape[2], shape[3], PixelFormat.Format8bppIndexed);
+                            for (int y = 0; y < shape[3]; y++)
                             {
-                                b.SetValue(x, y, fs[0, c, x, y]);
+                                for (int x = 0; x < shape[2]; x++)
+                                {
+                                    b.SetValue(x, y, fs[c, z, x, y]);
+                                }
                             }
+                            bm.Buffers.Add(b);
                         }
-                        bm.Buffers.Add(b);
                     }
                 }
-                bm.sizeC = shape[1];
+                bm.sizeZ = shape[1];
+                bm.sizeC = shape[0];
             }
             else if (shape.Length == 3)
             {
                 if (dataType == NumPy.NpyDataType.Float32)
                 {
                     float[,,] fs = NumPy.ConvertToMultidimensional<float, float[,,]>(data, shape);
-                    for (int c = 0; c < shape[2]; c++)
+                    for (int z = 0; z < shape[0]; z++)
                     {
-                        Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Float);
-                        for (int y = 0; y < shape[4]; y++)
+                        Bitmap b = new Bitmap(shape[1], shape[2], PixelFormat.Float);
+                        for (int y = 0; y < shape[1]; y++)
                         {
-                            for (int x = 0; x < shape[3]; x++)
+                            for (int x = 0; x < shape[2]; x++)
                             {
-                                b.SetValue(x, y, fs[c, x, y]);
+                                b.SetValue(x, y, fs[z, x, y]);
                             }
                         }
                         bm.Buffers.Add(b);
@@ -6753,20 +6790,21 @@ namespace BioLib
                 else if (dataType == NumPy.NpyDataType.UInt8)
                 {
                     uint[,,] fs = NumPy.ConvertToMultidimensional<uint, uint[,,]>(data, shape);
-                    for (int c = 0; c < shape[0]; c++)
+                    for (int z = 0; z < shape[0]; z++)
                     {
                         Bitmap b = new Bitmap(shape[1], shape[2], PixelFormat.Format8bppIndexed);
-                        for (int y = 0; y < shape[2]; y++)
+                        for (int y = 0; y < shape[1]; y++)
                         {
-                            for (int x = 0; x < shape[1]; x++)
+                            for (int x = 0; x < shape[2]; x++)
                             {
-                                b.SetValue(x, y, fs[c, x, y]);
+                                b.SetValue(x, y, fs[z, x, y]);
                             }
                         }
                         bm.Buffers.Add(b);
                     }
                 }
-                bm.sizeC = shape[0];
+                bm.sizeZ = shape[0];
+                bm.sizeC = 1;
             }
             else if (shape.Length == 2)
             {
@@ -6785,8 +6823,8 @@ namespace BioLib
                 }
                 else if (dataType == NumPy.NpyDataType.UInt8)
                 {
-                    int[,] fs = NumPy.ConvertToMultidimensional<int, int[,]>(data, shape);
-                    Bitmap b = new Bitmap(shape[0], shape[1], PixelFormat.UInt);
+                    uint[,] fs = NumPy.ConvertToMultidimensional<uint, uint[,]>(data, shape);
+                    Bitmap b = new Bitmap(shape[0], shape[1], PixelFormat.Format8bppIndexed);
                     for (int y = 0; y < shape[1]; y++)
                     {
                         for (int x = 0; x < shape[0]; x++)
@@ -6797,6 +6835,7 @@ namespace BioLib
                     bm.Buffers.Add(b);
                 }
                 bm.sizeC = 1;
+                bm.sizeZ = 1;
             }
             else
             {
@@ -6812,7 +6851,6 @@ namespace BioLib
                     bm.Channels.Add(new Channel(i, 8, 1));
             }
             bm.sizeT = 1;
-            bm.sizeZ = 1;
             bm.Coords = new int[bm.SizeZ, bm.SizeC, bm.SizeT];
             bm.UpdateCoords();
             bm.bitsPerPixel = 8;
@@ -9355,23 +9393,6 @@ namespace BioLib
         {
             return "BioLib.Images.GetImage(\"" + id + "\")";
         }
-
-        public void ToShort()
-        {
-            foreach (var b in Buffers)
-            {
-                b.ToShort();
-            }
-        }
-
-        public void ToFloat()
-        {
-            foreach (var b in Buffers)
-            {
-                b.ToFloat();
-            }
-        }
-
         public static int GetSeriesCount(string file)
         {
             ImageReader r = new ImageReader();
