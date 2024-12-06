@@ -228,7 +228,7 @@ namespace BioLib
         public static void RunOnImage(BioImage b, string con, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
         {
             RunOnImage(b, con,0,headless,onTab,bioformats,resultInNewTab);
-            //Recorder.AddLine("ImageJ.RunOnImage(\"" + con + "\"," + 0 + "," + headless + "," + onTab + "," + bioformats + "," + resultInNewTab + ");");
+            Recorder.AddLine("ImageJ.RunOnImage(Images.GetImage(\"" + b.Filename + "\"),\"" + con + "\"," + 0 + "," + headless + "," + onTab + "," + bioformats + "," + resultInNewTab + ");",false);
         }
 
         /// <summary>

@@ -34,36 +34,15 @@ namespace BioLib
     public static class Images
     {
         public static List<BioImage> images = new List<BioImage>();
-        public delegate void ImageAddedEventHandler(object sender, EventArgs e);
-        // Declare the event
-        public static event ImageAddedEventHandler AddedEvent;
-
-        // Method to raise the event
-        static void OnMyEvent(EventArgs e)
-        {
-            // Raise the event
-            AddedEvent.Invoke(null, e);
-        }
-
-        // Example method that triggers the event
-        public static void TriggerEvent()
-        {
-            OnMyEvent(EventArgs.Empty);
-        }
 
         /// 
         /// @param ids The id of the image you want to get.
         public static BioImage GetImage(string ids)
         {
-            string s;
-            if (ids.Contains('-'))
-                s = ids.Substring(ids.LastIndexOf('-'));
-            else
-                s = ids;
             ids = ids.Replace("\\", "/");
             for (int i = 0; i < images.Count; i++)
             {
-                if (images[i].ID == ids || images[i].Filename.EndsWith(Path.GetFileName(s)))
+                if (images[i].ID == ids || images[i].Filename == Path.GetFileName(ids))
                     return images[i];
             }
             return null;
@@ -73,6 +52,8 @@ namespace BioLib
         /// @param BioImage A class that contains the image data and other information.
         public static void AddImage(BioImage im)
         {
+            if (images.Contains(im))
+                return;
             images.Add(im);
             im.Filename = Path.GetFileName(im.ID);
         }
@@ -84,37 +65,61 @@ namespace BioLib
         /// @return The number of images that contain the name of the image.
         public static int GetImageCountByName(string s)
         {
-            string name = Path.GetFileNameWithoutExtension(s);
-            string ext = Path.GetExtension(s);
-            if (ext != "")
-            {
-                if (name.Split('-').Length > 2)
-                    name = name.Remove(name.LastIndexOf('-'), name.Length - name.LastIndexOf('-'));
-            }
             int i = 0;
+            s = RemoveExtensions(s);
+            if (s.Contains("-"))
+            {
+                string ss = RemoveExtensions(s.Substring(s.LastIndexOf("-"), s.Length - s.LastIndexOf("-")));
+                s = ss;
+            }
             for (int im = 0; im < images.Count; im++)
             {
-                if (images[im].ID.Contains(name) && images[im].ID.EndsWith(ext))
+                if (images[im].ID.Contains(s))
                     i++;
             }
             return i;
         }
-        /// It takes a string, and returns a string
-        /// 
-        /// @param s The path to the image.
-        /// 
-        /// @return The name of the image.
+        /// <summary>
+        /// Removes extensions from filename including multiple extensions like .ome.tif.
+        /// </summary>
+        /// <param name="file"></param>
+        /// <returns></returns>
+        public static string RemoveExtensions(string file)
+        {
+            return Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(file));
+        }
+        /// <summary>
+        /// Return extensions of a file including multiple extensions like .ome.tif.
+        /// </summary>
+        /// <param name="file"></param>
+        /// <returns></returns>
+        public static string GetExtensions(string file)
+        {
+            string[] ex = file.Split(".");
+            if (ex.Length == 1)
+                return "." + ex[0];
+            else
+            if (ex.Length > 2)
+                return "." + ex[ex.Length - 2] + "." + ex[ex.Length - 1];
+            else
+                return "." + ex.Last();
+        }
+
+        /// <summary>
+        /// Get a unique image name from a string.
+        /// </summary>
+        /// <param name="s"></param>
+        /// <returns></returns>
         public static string GetImageName(string s)
         {
             //Here we create a unique ID for an image.
             int i = Images.GetImageCountByName(s);
             if (i == 0)
                 return Path.GetFileName(s);
-            string name = Path.GetFileNameWithoutExtension(s);
-            name = name.Replace(".ome", "");
-            if (Path.GetFileNameWithoutExtension(name) != name)
-                name = Path.GetFileNameWithoutExtension(name);
-            string ext = ".ome.tif";
+            string name = RemoveExtensions(s);
+            string ext = GetExtensions(s);
+            if (name.EndsWith("-" + i))
+                name = name.Substring(name.LastIndexOf('-'), name.Length - name.LastIndexOf('-'));
             return name + "-" + (i+1) + ext;
         }
         /// This function removes an image from the table
@@ -482,7 +487,7 @@ namespace BioLib
                 { 
                     selected = value;
                     if (selected)
-                        UpdateColored(Color.Blue);
+                        UpdateColored(Color.Blue,100);
                     else
                         updateColored = true;
                 } 
@@ -571,7 +576,7 @@ namespace BioLib
                         return pixbuf;
                 }
             }
-            void UpdateColored(AForge.Color col)
+            void UpdateColored(AForge.Color col, byte alpha)
             {
                 byte[] pixelData = new byte[width * height * 4];
                 for (int y = 0; y < height; y++)
@@ -584,7 +589,7 @@ namespace BioLib
                             pixelData[4 * ind] = col.R;
                             pixelData[4 * ind + 1] = col.G;
                             pixelData[4 * ind + 2] = col.B;
-                            pixelData[4 * ind + 3] = 125;
+                            pixelData[4 * ind + 3] = alpha;
                         }
                         else
                             pixelData[4 * ind + 3] = 0;
@@ -593,11 +598,11 @@ namespace BioLib
                 colored = new Gdk.Pixbuf(pixelData, true, 8, width, height, width * 4);
                 updateColored = false;
             }
-            public Gdk.Pixbuf GetColored(AForge.Color col, bool forceUpdate = false)
+            public Gdk.Pixbuf GetColored(AForge.Color col, byte alpha, bool forceUpdate = false)
             {
                 if (updateColored || forceUpdate)
                 {
-                    UpdateColored(col);
+                    UpdateColored(col,alpha);
                     return colored;
                 }
                 else
@@ -737,7 +742,17 @@ namespace BioLib
         /// </returns>
         public PointD[] ImagePoints(Resolution res)
         {
-            return BioImage.ToImageSpace(PointsD, (int)res.StageSizeX, (int)res.StageSizeY, (int)res.PhysicalSizeX, (int)res.PhysicalSizeY);
+            if(type == Type.Rectangle || type == Type.Mask)
+            {
+                PointD[] pts = new PointD[4];
+                pts[0] = PointsD[0];
+                pts[1] = new PointD(PointsD[0].X + BoundingBox.W, PointsD[0].Y);
+                pts[2] = new PointD(PointsD[0].X + BoundingBox.W, PointsD[0].Y + BoundingBox.H);
+                pts[3] = new PointD(PointsD[0].X, PointsD[0].Y + BoundingBox.H);
+                return BioImage.ToImageSpace(pts.ToList(), res.StageSizeX, res.StageSizeY, res.PhysicalSizeX, res.PhysicalSizeY);
+            }
+            else
+                return BioImage.ToImageSpace(PointsD, res.StageSizeX, res.StageSizeY, res.PhysicalSizeX, res.PhysicalSizeY);
         }
         /// It returns an array of RectangleF objects that are used to draw the selection boxes around
         /// the points of the polygon
@@ -8076,7 +8091,7 @@ namespace BioLib
         /// <returns>
         /// The method is returning an array of PointD objects.
         /// </returns>
-        public static PointD[] ToImageSpace(List<PointD> p, int stageSizeX, int stageSizeY, int physicalSizeX, int physicalSizeY)
+        public static PointD[] ToImageSpace(List<PointD> p, double stageSizeX, double stageSizeY, double physicalSizeX, double physicalSizeY)
         {
             PointD[] ps = new PointD[p.Count];
             for (int i = 0; i < p.Count; i++)

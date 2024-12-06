@@ -21,8 +21,9 @@ namespace BioLib
         {
             if (!isInternal || Internal)
             {
-                string name = inf.DeclaringType.FullName.Replace("+<","").Replace(">d__24", "");
-                string code = name + "." + inf.Name + "(";
+                string name = inf.DeclaringType.FullName.Replace("<", "").Replace("+",".");
+                name = name.Substring(0, name.LastIndexOf('>'));
+                string code = name + "(";
                 for (int i = 0; i < args.Length; i++)
                 {
                     Type t = args[i].GetType();
@@ -88,6 +89,11 @@ namespace BioLib
                 Console.WriteLine(code);
                 rec.Add(code);
             }
+        }
+
+        public static void Record(string code)
+        {
+            rec.Add(code);
         }
         public static string[] Lines
         {

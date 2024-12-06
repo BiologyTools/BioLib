@@ -12,11 +12,8 @@ using System.Runtime.InteropServices;
 using BioLib;
 using ij;
 using RectangleD = AForge.RectangleD;
-using javax.swing.text.html;
 using ij.process;
 using java.awt.image;
-using java.nio.file.attribute;
-using org.checkerframework.common.returnsreceiver.qual;
 
 namespace BioLib
 {
@@ -438,7 +435,11 @@ namespace BioLib
             WindowManager.setTempCurrentImage(ip);
             Console.WriteLine("WindowManager.setTempCurrentImage(" + ip.ToString() + ")");
             IJ.runMacroFile(file, param);
-            return GetBioImage(ip, b.Volume, b.PhysicalSizeX, b.PhysicalSizeY, b.PhysicalSizeZ);
+            BioImage bm = GetBioImage(ip, b.Volume, b.PhysicalSizeX, b.PhysicalSizeY, b.PhysicalSizeZ);
+            int i = Images.GetImageCountByName(bm.Filename);
+            if (bm.Filename.EndsWith("-" + i))
+                bm.Filename.Replace("-" + i, "-" + (i + 1).ToString());
+            return bm;
         }
         /// It runs a macro in ImageJ
         /// 
@@ -518,6 +519,7 @@ namespace BioLib
             await BioImage.OpenAsync(f, true, true, true, 0);
             Console.WriteLine("GetImage: " + f);
             BioImage bm = Images.GetImage(f);
+            BioLib.Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, con, param, headless);
             return bm;
         }
         /// It runs a macro on the current image, saves the result as a new image, and then opens the
@@ -586,6 +588,7 @@ namespace BioLib
                 Task<BioImage> t = new Task<BioImage>(RunImageJ);
                 t.Start();
                 t.Wait();
+                BioLib.Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, con, index, headless, onTab, bioformats, resultInNewTab);
                 return t.Result;
             }
         }
@@ -612,6 +615,10 @@ namespace BioLib
                 Console.WriteLine(e.Message.ToString());
                 return null;
             }
+            Images.AddImage(b);
+            string s = Images.GetImageName(b.Filename);
+            b.Filename = s;
+            b.ID = s;
             return b;
         }
         public async static Task<BioImage> RunOnImage(BioImage b, string con, bool headless, bool onTab, bool useBioformats,bool resultInNewTab)
@@ -627,6 +634,7 @@ namespace BioLib
                 Fiji.headless = headless;
                 bioformats = useBioformats;
                 resultInNewTabs = resultInNewTab;
+                Recorder.Record(Recorder.GetCurrentMethodInfo(), false, b, con, headless, onTab, useBioformats, resultInNewTab);
                 return RunImageJ();
             }
             return bm;
