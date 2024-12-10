@@ -6720,15 +6720,18 @@ namespace BioLib
                     {
                         for (int c = 0; c < shape[1]; c++)
                         {
-                            Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Float);
-                            for (int y = 0; y < shape[4]; y++)
+                            for (int t = 0; t < shape[0]; t++)
                             {
-                                for (int x = 0;  x < shape[3];  x++)
+                                Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Float);
+                                for (int y = 0; y < shape[4]; y++)
                                 {
-                                    b.SetValue(x,y,fs[0, c, z, x, y]);
+                                    for (int x = 0;  x < shape[3];  x++)
+                                    {
+                                        b.SetValue(x,y,fs[t, c, z, x, y]);
+                                    }
                                 }
+                                bm.Buffers.Add(b);
                             }
-                            bm.Buffers.Add(b);
                         }
                     }
                 }
@@ -6739,20 +6742,24 @@ namespace BioLib
                     {
                         for (int c = 0; c < shape[1]; c++)
                         {
-                            Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Format8bppIndexed);
-                            for (int y = 0; y < shape[4]; y++)
+                            for (int t = 0; t < shape[0]; t++)
                             {
-                                for (int x = 0; x < shape[3]; x++)
+                                Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Format8bppIndexed);
+                                for (int y = 0; y < shape[4]; y++)
                                 {
-                                    b.SetValue(x, y, fs[0, c, z, x, y]);
+                                    for (int x = 0; x < shape[3]; x++)
+                                    {
+                                        b.SetValue(x, y, fs[t, c, z, x, y]);
+                                    }
                                 }
+                                bm.Buffers.Add(b);
                             }
-                            bm.Buffers.Add(b);
                         }
                     }
                 }
                 bm.sizeZ = shape[2];
                 bm.sizeC = shape[1];
+                bm.sizeT = shape[0];
             }
             else if (shape.Length == 4)
             {
@@ -6906,6 +6913,7 @@ namespace BioLib
                 bm.StackThreshold(false);
             bm.StackOrder = Order.ZCT;
             bm.ID = Path.GetFileName(file);
+            bm.Filename = bm.ID;
             bm.file = file;
             Images.AddImage(bm);
             return bm;

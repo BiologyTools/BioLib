@@ -18,7 +18,7 @@
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; </PackageTags>
-    <PackageReleaseNotes>Improved recording of function calls. </PackageReleaseNotes>
+    <PackageReleaseNotes>NumPy file saving. Improved recording of function calls. </PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
@@ -35,6 +35,7 @@
     </Content>
   </ItemGroup>
 	<ItemGroup>
+    <PackageReference Include="AForgeBio" Version="2.2.0" />
     <PackageReference Include="BioFormats.NET8" Version="8.0.1" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.649" />
     <PackageReference Include="CS-Script" Version="4.8.21" />
@@ -48,9 +49,6 @@
     <PackageReference Include="OpenSlideGTK" Version="2.0.0.1" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.6" />
   </ItemGroup>
-	<ItemGroup>
-	  <ProjectReference Include="..\..\..\Shared\AForgeBio\AForgeBio\AForgeBio\AForgeBio.csproj" />
-	</ItemGroup>
   <ItemGroup>
     <None Update="banner.jpg">
       <Pack>True</Pack>
