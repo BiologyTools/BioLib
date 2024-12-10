@@ -22,6 +22,7 @@ namespace BioLib
             if (!isInternal || Internal)
             {
                 string name = inf.DeclaringType.FullName.Replace("<", "").Replace("+",".");
+                if(name.Contains('<'))
                 name = name.Substring(0, name.LastIndexOf('>'));
                 string code = name + "(";
                 for (int i = 0; i < args.Length; i++)

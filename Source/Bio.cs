@@ -28,6 +28,7 @@ using System.Threading.Tasks;
 using OpenSlideGTK;
 using System.Reflection;
 using Newtonsoft.Json.Serialization;
+using loci.plugins;
 namespace BioLib
 {
     /* A class declaration. */
@@ -54,8 +55,8 @@ namespace BioLib
         {
             if (images.Contains(im))
                 return;
+            im.Filename = GetImageName(im.Filename);
             images.Add(im);
-            im.Filename = Path.GetFileName(im.ID);
         }
         /// It takes a string as an argument, and returns the number of times that string appears in the
         /// list of images
@@ -495,7 +496,7 @@ namespace BioLib
             public bool IsSelected(int x, int y)
             {
                 int ind = y * width + x;
-                if (ind > mask.Length)
+                if (ind >= mask.Length)
                     throw new ArgumentException("Point " + x + "," + y + " is outside the mask.");
                 if (mask[ind]>min)
                 {
@@ -2012,6 +2013,75 @@ namespace BioLib
             // Shape of the array (a tuple or array of integers)
             public int[] shape { get; set; }
         }
+        public static void SaveNumPy(BioImage b, string file)
+        {
+            float[] fs = new float[b.SizeT * b.SizeZ * b.SizeC * b.SizeX * b.SizeY];
+            // Fill the flattened array
+            int index = 0;
+            for (int t = 0; t < b.SizeT; t++)
+            {
+                for (int z = 0; z < b.SizeZ; z++)
+                {
+                    for (int c = 0; c < b.SizeC; c++)
+                    {
+                        for (int y = 0; y < b.SizeY; y++)
+                        {
+                            for (int x = 0; x < b.SizeX; x++)
+                            {
+                                fs[index++] = b.Buffers[b.Coords[z, c, t]].GetValue(x, y);
+                            }
+                        }
+                    }
+                }
+            }
+            SaveFloatArrayAsNpy(file, fs, new int[] { b.SizeT, b.SizeC, b.SizeZ, b.SizeX, b.SizeY });
+        }
+        private static void SaveFloatArrayAsNpy(string filePath, float[] array, int[] shape)
+        {
+            using (var writer = new BinaryWriter(File.Open(filePath, FileMode.Create)))
+            {
+                // Write the NPY file header
+                WriteNpyHeader(writer, shape);
+
+                // Write the data
+                foreach (var value in array)
+                {
+                    writer.Write(value);
+                }
+            }
+        }
+        private static void WriteNpyHeader(BinaryWriter writer, int[] shape)
+        {
+            // Magic string for NPY format
+            byte[] magicString = { 0x93, (byte)'N', (byte)'U', (byte)'M', (byte)'P', (byte)'Y' };
+            writer.Write(magicString);
+
+            // NPY version
+            writer.Write((byte)1); // Major version
+            writer.Write((byte)0); // Minor version
+
+            // Header dictionary
+            string shapeString = string.Join(", ", shape) + (shape.Length == 1 ? "," : ""); // Trailing comma for single-dim arrays
+            string header = string.Format(
+                "{{'descr': '<f4', 'fortran_order': False, 'shape': ({0}), }}",
+                shapeString
+            ).PadRight(64); // Ensure header is 64-byte aligned for simplicity
+
+            byte[] headerBytes = System.Text.Encoding.ASCII.GetBytes(header);
+
+            // Length of the header
+            ushort headerLength = (ushort)((headerBytes.Length + 63) & ~63); // Align to 64 bytes
+            writer.Write(headerLength);
+
+            // Write the header
+            writer.Write(headerBytes);
+
+            // Pad with spaces to align the header to 64 bytes
+            for (int i = headerBytes.Length; i < headerLength; i++)
+            {
+                writer.Write((byte)' ');
+            }
+        }
 
         /// <summary>
         /// Converts a flat array into a multi-dimensional array based on the given shape.
@@ -2022,29 +2092,29 @@ namespace BioLib
         /// <param name="shape">The shape of the target multi-dimensional array.</param>
         /// <returns>The multi-dimensional array.</returns>
         public static TArray ConvertToMultidimensional<T, TArray>(Array flatArray, int[] shape)
-        {
-            if (flatArray.Length != shape.Aggregate(1, (a, b) => a * b))
-                throw new ArgumentException("The shape does not match the length of the flat array.");
-
-            var result = (Array)Array.CreateInstance(typeof(T), shape);
-
-            int[] indices = new int[shape.Length];
-            for (int i = 0; i < flatArray.Length; i++)
             {
-                // Compute the multi-dimensional indices
-                int offset = i;
-                for (int j = shape.Length - 1; j >= 0; j--)
+                if (flatArray.Length != shape.Aggregate(1, (a, b) => a * b))
+                    throw new ArgumentException("The shape does not match the length of the flat array.");
+
+                var result = (Array)Array.CreateInstance(typeof(T), shape);
+
+                int[] indices = new int[shape.Length];
+                for (int i = 0; i < flatArray.Length; i++)
                 {
-                    indices[j] = offset % shape[j];
-                    offset /= shape[j];
+                    // Compute the multi-dimensional indices
+                    int offset = i;
+                    for (int j = shape.Length - 1; j >= 0; j--)
+                    {
+                        indices[j] = offset % shape[j];
+                        offset /= shape[j];
+                    }
+
+                    // Set the value in the multi-dimensional array
+                    result.SetValue(flatArray.GetValue(i), indices);
                 }
 
-                // Set the value in the multi-dimensional array
-                result.SetValue(flatArray.GetValue(i), indices);
+                return (TArray)(object)result;
             }
-
-            return (TArray)(object)result;
-        }
         static T ReadValue<T>(BinaryReader reader) where T : struct
         {
             if (typeof(T) == typeof(float))
@@ -2318,27 +2388,6 @@ namespace BioLib
 
             // Return the jagged array
             return (T)Convert.ChangeType(jaggedArray, typeof(T)); // Use Convert.ChangeType to cast System.Array to T
-        }
-
-        static void SaveNpyFile(string filePath, Array array)
-        {
-            using (var writer = new BinaryWriter(File.Open(filePath, FileMode.Create)))
-            {
-                // Write the magic string and version number
-                writer.Write(new byte[] { 0x93, 0x4E, 0x55, 0x4D, 0x50, 0x59 }); // \x93NUMPY
-                writer.Write((byte)1); // Major version (1)
-                writer.Write((byte)0); // Minor version (0)
-
-                // Write the header length (ushort)
-                string header = GetHeader(array);
-                writer.Write((ushort)header.Length);
-
-                // Write the header
-                writer.Write(Encoding.ASCII.GetBytes(header));
-
-                // Write the binary data
-                WriteArrayData(writer, array);
-            }
         }
 
         static string GetHeader(Array array)
@@ -3437,10 +3486,9 @@ namespace BioLib
                         bs[b].Dispose();
                     }
                     bs = null;
-                    GC.Collect();
-                    Statistics.CalcStatistics(br);
-                    Statistics.CalcStatistics(bg);
-                    Statistics.CalcStatistics(bb);
+                    br.Stats = Statistics.FromBytes(br);
+                    bg.Stats = Statistics.FromBytes(bg);
+                    bb.Stats = Statistics.FromBytes(bb);
                     bfs.Add(br);
                     bfs.Add(bg);
                     bfs.Add(bb);
@@ -3466,10 +3514,9 @@ namespace BioLib
                         bs[b] = null;
                     }
                     bs = null;
-                    GC.Collect();
-                    Statistics.CalcStatistics(br);
-                    Statistics.CalcStatistics(bg);
-                    Statistics.CalcStatistics(bb);
+                    br.Stats = Statistics.FromBytes(br);
+                    bg.Stats = Statistics.FromBytes(bg);
+                    bb.Stats = Statistics.FromBytes(bb);
                     bfs.Add(br);
                     bfs.Add(bg);
                     bfs.Add(bb);
@@ -3477,6 +3524,10 @@ namespace BioLib
                 }
                 Buffers = bfs;
                 UpdateCoords(SizeZ, 3, SizeT);
+                Channels.Clear();
+                Channels.Add(new Channel(0, 8, 1));
+                Channels.Add(new Channel(0, 8, 1));
+                Channels.Add(new Channel(0, 8, 1));
             }
             else
             if(px == PixelFormat.Format16bppGrayScale)
@@ -3626,7 +3677,7 @@ namespace BioLib
                     }
                 }
                 List<Bitmap> bfs = new List<Bitmap>();
-                if (Buffers.Count % 3 != 0 && Buffers.Count % 2 != 0)
+                if (Buffers.Count % 3 != 0)
                     for (int i = 0; i < Buffers.Count; i++)
                     {
                         Bitmap bs = new Bitmap(ID, SizeX, SizeY, Buffers[i].PixelFormat, Buffers[i].Bytes, new ZCT(Buffers[i].Coordinate.Z, 0, Buffers[i].Coordinate.T), i, Buffers[i].Plane);
@@ -3636,21 +3687,10 @@ namespace BioLib
                         bfs.Add(bbs);
                     }
                 else
-                    for (int i = 0; i < Buffers.Count; i += Channels.Count)
+                    for (int i = 0; i < Buffers.Count; i++)
                     {
-                        Bitmap[] bs = new Bitmap[3];
-                        bs[2] = new Bitmap(ID, SizeX, SizeY, Buffers[i].PixelFormat, Buffers[i].Bytes, new ZCT(Buffers[i].Coordinate.Z, 0, Buffers[i].Coordinate.T), i, Buffers[i].Plane);
-                        bs[1] = new Bitmap(ID, SizeX, SizeY, Buffers[i + 1].PixelFormat, Buffers[i + 1].Bytes, new ZCT(Buffers[i + 1].Coordinate.Z, 0, Buffers[i + 1].Coordinate.T), i + 1, Buffers[i + 1].Plane);
-                        if (Channels.Count > 2)
-                            bs[0] = new Bitmap(ID, SizeX, SizeY, Buffers[i + 2].PixelFormat, Buffers[i + 2].Bytes, new ZCT(Buffers[i + 2].Coordinate.Z, 0, Buffers[i + 2].Coordinate.T), i + 2, Buffers[i + 2].Plane);
-                        Bitmap bbs = Bitmap.RGB8To24(bs);
-                        for (int b = 0; b < 3; b++)
-                        {
-                            if (bs[b] != null)
-                                bs[b].Dispose();
-                            bs[b] = null;
-                        }
-                        bfs.Add(bbs);
+                        Bitmap bs = Bitmap.GetBitmapRGB(Buffers[i].SizeX, Buffers[i].SizeY, PixelFormat.Format24bppRgb, Buffers[i].Bytes);
+                        bfs.Add(bs);
                     }
                 Buffers = bfs;
                 UpdateCoords(SizeZ, 1, SizeT);
@@ -4310,7 +4350,7 @@ namespace BioLib
                     {
                         int ind = orig.GetFrameIndex(zs + zi, cs + ci, ts + ti);
                         Bitmap bf = new Bitmap(Images.GetImageName(orig.id), orig.SizeX, orig.SizeY, orig.Buffers[0].PixelFormat, orig.Buffers[ind].Bytes, new ZCT(zi, ci, ti), i);
-                        Statistics.CalcStatistics(bf);
+                        bf.Stats = Statistics.FromBytes(bf);
                         b.Buffers.Add(bf);
                         b.SetFrameIndex(zi, ci, ti, i);
                         i++;
@@ -4321,12 +4361,6 @@ namespace BioLib
             {
                 b.Channels.Add(orig.Channels[ci]);
             }
-            //We wait for threshold image statistics calculation
-            do
-            {
-                Thread.Sleep(100);
-            } while (b.Buffers[b.Buffers.Count - 1].Stats == null);
-            Statistics.ClearCalcBuffer();
             b.Resolutions.Add(new Resolution(b.Buffers[0].SizeX, b.Buffers[0].SizeY, b.Buffers[0].PixelFormat, b.PhysicalSizeX, b.PhysicalSizeY, b.PhysicalSizeZ, b.StageSizeX, b.StageSizeY, b.StageSizeZ));
             AutoThreshold(b, false);
             if (b.bitsPerPixel > 8)
@@ -4457,19 +4491,13 @@ namespace BioLib
                     }
                     Bitmap bf = new Bitmap(b.file, bm, new ZCT(0, c, t), ind);
                     bi.Buffers.Add(bf);
-                    Statistics.CalcStatistics(bf);
+                    bf.Stats = Statistics.FromBytes(bf);
                     ind++;
                 }
             }
             Images.AddImage(bi);
             bi.UpdateCoords(1, b.SizeC, b.SizeT);
             bi.Coordinate = new ZCT(0, 0, 0);
-            //We wait for threshold image statistics calculation
-            do
-            {
-                Thread.Sleep(100);
-            } while (bi.Buffers[bi.Buffers.Count - 1].Stats == null);
-            Statistics.ClearCalcBuffer();
             bi.Resolutions.Add(new Resolution(b.Buffers[0].SizeX, b.Buffers[0].SizeY, b.Buffers[0].PixelFormat, b.PhysicalSizeX, b.PhysicalSizeY, b.PhysicalSizeZ, b.StageSizeX, b.StageSizeY, b.StageSizeZ));
 
             AutoThreshold(bi, false);
@@ -4501,19 +4529,13 @@ namespace BioLib
                     }
                     Bitmap bf = new Bitmap(b.file, bm, new ZCT(z, c, 0), ind);
                     bi.Buffers.Add(bf);
-                    Statistics.CalcStatistics(bf);
+                    bf.Stats = Statistics.FromBytes(bf);
                     ind++;
                 }
             }
             Images.AddImage(bi);
             bi.UpdateCoords(1, b.SizeC, b.SizeT);
             bi.Coordinate = new ZCT(0, 0, 0);
-            //We wait for threshold image statistics calculation
-            do
-            {
-                Thread.Sleep(100);
-            } while (bi.Buffers[bi.Buffers.Count - 1].Stats == null);
-            Statistics.ClearCalcBuffer();
             bi.Resolutions.Add(new Resolution(b.Buffers[0].SizeX, b.Buffers[0].SizeY, b.Buffers[0].PixelFormat, b.PhysicalSizeX, b.PhysicalSizeY, b.PhysicalSizeZ, b.StageSizeX, b.StageSizeY, b.StageSizeZ));
             AutoThreshold(bi, false);
             if (bi.bitsPerPixel > 8)
@@ -4558,9 +4580,9 @@ namespace BioLib
                         ri.Buffers.Add(bfs[0]);
                         gi.Buffers.Add(bfs[1]);
                         bi.Buffers.Add(bfs[2]);
-                        Statistics.CalcStatistics(bfs[0]);
-                        Statistics.CalcStatistics(bfs[1]);
-                        Statistics.CalcStatistics(bfs[2]);
+                        bfs[0].Stats = Statistics.FromBytes(bfs[0]);
+                        bfs[1].Stats = Statistics.FromBytes(bfs[1]);
+                        bfs[2].Stats = Statistics.FromBytes(bfs[2]);
                         ri.SetFrameIndex(Buffers[i].Coordinate.Z, Buffers[i].Coordinate.C, Buffers[i].Coordinate.T,i);
                         gi.SetFrameIndex(Buffers[i].Coordinate.Z, Buffers[i].Coordinate.C, Buffers[i].Coordinate.T, i);
                         bi.SetFrameIndex(Buffers[i].Coordinate.Z, Buffers[i].Coordinate.C, Buffers[i].Coordinate.T, i);
@@ -4570,20 +4592,20 @@ namespace BioLib
 
                         Bitmap rImage = extractR.Apply(Buffers[i]);
                         Bitmap rbf = new Bitmap(ri.ID, rImage, Buffers[i].Coordinate, ind++);
-                        Statistics.CalcStatistics(rbf);
+                        rbf.Stats = Statistics.FromBytes(rbf);
                         ri.Buffers.Add(rbf);
                         ri.SetFrameIndex(Buffers[i].Coordinate.Z, Buffers[i].Coordinate.C, Buffers[i].Coordinate.T, i);
 
                         Bitmap gImage = extractG.Apply(Buffers[i]);
                         Bitmap gbf = new Bitmap(gi.ID, gImage, Buffers[i].Coordinate, ind++);
-                        Statistics.CalcStatistics(gbf);
+                        gbf.Stats = Statistics.FromBytes(gbf);
                         gi.Buffers.Add(gbf);
                         gi.SetFrameIndex(Buffers[i].Coordinate.Z, Buffers[i].Coordinate.C, Buffers[i].Coordinate.T, i);
 
                         Bitmap bImage = extractB.Apply(Buffers[i]);
                         //Clipboard.SetImage(bImage);
                         Bitmap bbf = new Bitmap(bi.ID, bImage, Buffers[i].Coordinate, ind++);
-                        Statistics.CalcStatistics(bbf);
+                        bbf.Stats = Statistics.FromBytes(bbf);
                         bi.Buffers.Add(bbf);
                         bi.SetFrameIndex(Buffers[i].Coordinate.Z, Buffers[i].Coordinate.C, Buffers[i].Coordinate.T,i);
 
@@ -4606,7 +4628,6 @@ namespace BioLib
                 Images.AddImage(ri);
                 Images.AddImage(gi);
                 Images.AddImage(bi);
-                Statistics.ClearCalcBuffer();
                 bms[0] = ri;
                 bms[1] = gi;
                 bms[2] = bi;
@@ -4620,7 +4641,6 @@ namespace BioLib
                     bms[c] = b;
                 }
             }
-            Statistics.ClearCalcBuffer();
             return bms;
         }
         /// > SplitChannels splits a BioImage into its constituent channels
@@ -5940,7 +5960,7 @@ namespace BioLib
                             {
                                 Bitmap bmp = GetTile(b, b.GetFrameIndex(z,c,t), series, tileX, tileY, tileSizeX, tileSizeY);
                                 b.Buffers.Add(bmp);
-                                Statistics.CalcStatistics(bmp);
+                                bmp.Stats = Statistics.FromBytes(bmp);
                             }
                         }
                     }
@@ -5960,7 +5980,7 @@ namespace BioLib
                         }
                         Bitmap inf = new Bitmap(file, SizeX, SizeY, b.Resolutions[series].PixelFormat, bytes, new ZCT(0, 0, 0), p, null, b.littleEndian, inter);
                         b.Buffers.Add(inf);
-                        Statistics.CalcStatistics(inf);
+                        inf.Stats = Statistics.FromBytes(inf);
                     }
                 }
                 image.Close();
@@ -5975,7 +5995,7 @@ namespace BioLib
                 b.bitsPerPixel = pf.BitsPerSample;
                 b.Buffers.Add(new Bitmap(pf.Width, pf.Height, pf.Width * pf.NChannels, px, pf.Pixels));
                 b.Buffers.Last().ID = Bitmap.CreateID(file, 0);
-                Statistics.CalcStatistics(b.Buffers.Last());
+                b.Buffers.Last().Stats = Statistics.FromBytes(b.Buffers.Last());
                 b.Channels.Add(new Channel(0, b.bitsPerPixel, b.RGBChannelCount));
                 b.Coords = new int[1, 1, 1];
                 b.sizeC = 1;
@@ -5996,13 +6016,6 @@ namespace BioLib
             {
                 b.Annotations.AddRange(OpenOMEROIs(file, series));
             }
-
-            //We wait for histogram image statistics calculation
-            do
-            {
-                Thread.Sleep(50);
-            } while (b.Buffers[b.Buffers.Count - 1].Stats == null);
-            Statistics.ClearCalcBuffer();
             AutoThreshold(b, false);
             if (b.bitsPerPixel > 8)
                 b.StackThreshold(true);
