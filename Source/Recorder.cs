@@ -24,7 +24,7 @@ namespace BioLib
                 string name = inf.DeclaringType.FullName.Replace("<", "").Replace("+",".");
                 if(name.Contains('<'))
                 name = name.Substring(0, name.LastIndexOf('>'));
-                string code = name + "(";
+                string code = name + "." + inf.Name + "(";
                 for (int i = 0; i < args.Length; i++)
                 {
                     Type t = args[i].GetType();

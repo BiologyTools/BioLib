@@ -3083,14 +3083,17 @@ namespace BioLib
                 else if (Resolutions.Count > 0)
                     return Resolutions[0].StageSizeX;
                 else
-                    return 0;
+                    return imageInfo.stageSizeX;
             }
-            set { imageInfo.StageSizeX = value; }
+            set 
+            {
+                imageInfo.StageSizeX = value;
+            }
         }
         public double StageSizeY
         {
             get {
-                if(isPyramidal)
+                if (isPyramidal)
                     return Resolutions[Level].StageSizeY;
                 else
                 if (Plate != null)
@@ -3098,7 +3101,7 @@ namespace BioLib
                 else if (Resolutions.Count > 0)
                     return Resolutions[0].StageSizeY;
                 else
-                    return 0;
+                    return imageInfo.stageSizeY;
             }
             set { imageInfo.StageSizeY = value; }
         }
@@ -3114,7 +3117,7 @@ namespace BioLib
                 else if (Resolutions.Count > 1)
                     return Resolutions[0].StageSizeZ;
                 else
-                    return 0;
+                    return imageInfo.stageSizeZ;
             }
             set { imageInfo.StageSizeZ = value; }
         }
@@ -6170,7 +6173,10 @@ namespace BioLib
                 ome.units.quantity.Length p2 = new ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeY), ome.units.UNITS.MICROMETER);
                 omexml.setPixelsPhysicalSizeY(p2, serie);
                 ome.units.quantity.Length p3 = new ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeZ), ome.units.UNITS.MICROMETER);
-                omexml.setPixelsPhysicalSizeZ(p3, serie);
+                if(b.PhysicalSizeZ == 0)
+                    omexml.setPixelsPhysicalSizeZ(new ome.units.quantity.Length(java.lang.Double.valueOf(1), ome.units.UNITS.MICROMETER), serie);
+                else
+                    omexml.setPixelsPhysicalSizeZ(new ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeZ), ome.units.UNITS.MICROMETER), serie);
                 ome.units.quantity.Length s1 = new ome.units.quantity.Length(java.lang.Double.valueOf(b.Volume.Location.X), ome.units.UNITS.MICROMETER);
                 omexml.setStageLabelX(s1, serie);
                 ome.units.quantity.Length s2 = new ome.units.quantity.Length(java.lang.Double.valueOf(b.Volume.Location.Y), ome.units.UNITS.MICROMETER);
@@ -6178,10 +6184,28 @@ namespace BioLib
                 ome.units.quantity.Length s3 = new ome.units.quantity.Length(java.lang.Double.valueOf(b.Volume.Location.Z), ome.units.UNITS.MICROMETER);
                 omexml.setStageLabelZ(s3, serie);
                 omexml.setStageLabelName("StageLabel:" + serie, serie);
-
-                for (int channel = 0; channel < b.Channels.Count; channel++)
+                List<Channel> chs = new List<Channel>();
+                if (b.Channels.Count == 1)
                 {
-                    Channel c = b.Channels[channel];
+                    if (b.Channels[0].range.Length == 3)
+                    {
+                        for (int c = 0; c < 3; c++)
+                        {
+                            Channel ch = b.Channels[0].Copy();
+                            ch.SamplesPerPixel = 1;
+                            ch.range = new IntRange[] { b.Channels[0].range[c] };
+                            chs.Add(ch);
+                        }
+                    }
+                    else
+                        chs.Add(b.Channels[0]);
+                }
+                else
+                    chs.AddRange(b.Channels);
+
+                for (int channel = 0; channel < chs.Count; channel++)
+                {
+                    Channel c =chs[channel];
                     for (int r = 0; r < c.range.Length; r++)
                     {
                         omexml.setChannelID("Channel:" + channel + ":" + serie, r, channel);
@@ -6240,7 +6264,10 @@ namespace BioLib
                         omexml.setROIID("ROI:" + i.ToString() + ":" + serie, i);
                     else
                         omexml.setROIID(an.roiID, i);
-                    omexml.setROIName(an.roiName, i);
+                    if (an.roiName != "")
+                        omexml.setROIName(an.roiName, i);
+                    else
+                        omexml.setROIName("ROI:" + i.ToString() + ":" + serie, i);
                     if (an.type == ROI.Type.Point)
                     {
                         if (an.id != "")
@@ -6422,6 +6449,7 @@ namespace BioLib
                             omexml.setMaskText(an.Text, i, serie);
                         else
                             omexml.setMaskText(i.ToString(), i, serie);
+
                         ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
                         omexml.setMaskFontSize(fl, i, serie);
                         ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
@@ -6434,7 +6462,7 @@ namespace BioLib
                         omexml.setMaskBinData(bts, i, serie);
                         omexml.setMaskBinDataBigEndian(new java.lang.Boolean(!BitConverter.IsLittleEndian), i, serie);
                         omexml.setMaskBinDataLength(new NonNegativeLong(new java.lang.Long(bts.Length)), i, serie);
-                        omexml.setMaskBinDataCompression(ome.xml.model.enums.Compression.ZLIB, i, serie);
+                        omexml.setMaskBinDataCompression(ome.xml.model.enums.Compression.NONE, i, serie);
                     }
 
                     i++;
@@ -7397,7 +7425,21 @@ namespace BioLib
             }
             if (b.Resolutions.Count == 0)
                 b.Resolutions.AddRange(ress);
-
+            try
+            {
+                string s = b.meta.getStageLabelName(serie);
+                if (s != null)
+                {
+                    b.StageSizeX = b.meta.getStageLabelX(serie).value().doubleValue();
+                    b.StageSizeY = b.meta.getStageLabelY(serie).value().doubleValue();
+                    b.StageSizeZ = b.meta.getStageLabelZ(serie).value().doubleValue();
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("No Stage Cooordinates");
+            }
+            
             b.Volume = new VolumeD(new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ), new Point3D(b.PhysicalSizeX * SizeX, b.PhysicalSizeY * SizeY, b.PhysicalSizeZ * SizeZ));
             int rc = b.meta.getROICount();
             for (int im = 0; im < rc; im++)
