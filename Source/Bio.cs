@@ -29,6 +29,7 @@ using OpenSlideGTK;
 using System.Reflection;
 using Newtonsoft.Json.Serialization;
 using loci.plugins;
+using sun.awt.image;
 namespace BioLib
 {
     /* A class declaration. */
@@ -329,8 +330,12 @@ namespace BioLib
                     return BoundingBox;
                 if (type == Type.Rectangle || type == Type.Ellipse)
                     return new RectangleD(Points[0].X, Points[0].Y, Points[1].X - Points[0].X, Points[2].Y - Points[0].Y);
+                if(type == Type.Mask)
+                {
+                    return new RectangleD(roiMask.X * roiMask.PhysicalSizeX, roiMask.Y * roiMask.PhysicalSizeY, roiMask.Width * roiMask.PhysicalSizeX, roiMask.Height * roiMask.PhysicalSizeY);
+                }
                 else
-                    return new RectangleD(Points[0].X, Points[0].Y, 1, 1);
+                    return new RectangleD(Points[0].X, Points[0].Y, W, H);
             }
             set
             {
@@ -472,6 +477,8 @@ namespace BioLib
             float[] mask;
             int width;
             int height;
+            public double X { get; set; }
+            public double Y { get; set; }
             public int Width { get { return width; } set { width = value; } }
             public int Height { get { return height; } set { height = value; } }
             public double PhysicalSizeX { get; set; }
@@ -487,17 +494,13 @@ namespace BioLib
                 set 
                 { 
                     selected = value;
-                    if (selected)
-                        UpdateColored(Color.Blue,100);
-                    else
-                        updateColored = true;
                 } 
             }
             public bool IsSelected(int x, int y)
             {
                 int ind = y * width + x;
                 if (ind >= mask.Length)
-                    throw new ArgumentException("Point " + x + "," + y + " is outside the mask.");
+                    return false;
                 if (mask[ind]>min)
                 {
                     return true;
@@ -520,28 +523,38 @@ namespace BioLib
                 updatePixbuf = true;
                 updateColored = true;
             }
-            public Mask(float[] fts, int width, int height, double physX, double physY)
+            public Mask(float[] fts, int width, int height, double physX, double physY, double x, double y)
             {
                 this.width = width;
                 this.height = height;
+                X = x; Y = y;
                 PhysicalSizeX = physX;
                 PhysicalSizeY = physY;
                 mask = fts;
+                byte[] bt = GetBytesCropped();
+                mask = new float[bt.Length];
+                for (int i = 0; i < bt.Length; i++)
+                {
+                    mask[i] = (float)bt[i];
+                }
             }
-            public Mask(byte[] bts, int width, int height, double physX, double physY)
+            public Mask(byte[] fts, int width, int height, double physX, double physY, double x, double y)
             {
-                this.width = width;
-                this.height = height;
+                this.width = width+1;
+                this.height = height+1;
+                this.X = x;
+                this.Y = y;
                 PhysicalSizeX = physX;
                 PhysicalSizeY = physY;
-                mask = new float[bts.Length];
-                for (int y = 0; y < height; y++)
+                mask = new float[fts.Length];
+                for (int i = 0; i < fts.Length; i++)
                 {
-                    for (int x = 0; x < width; x++)
-                    {
-                        int ind = y * width + x;
-                        mask[ind] = (float)BitConverter.ToSingle(bts, ind * 4);
-                    }
+                    mask[i] = (float)fts[i];
+                }
+                byte[] bt = GetBytesCropped();
+                for (int i = 0; i < bt.Length; i++)
+                {
+                    mask[i] = (float)bt[i];
                 }
             }
             public Gdk.Pixbuf Pixbuf
@@ -579,26 +592,40 @@ namespace BioLib
             }
             void UpdateColored(AForge.Color col, byte alpha)
             {
+                if (mask == null || mask.Length < width * height)
+                    throw new InvalidOperationException("Invalid mask size.");
+                // Get the minimum and maximum values of the mask for normalization
+                var (min, max) = GetMinAndMax(mask);
+                min = 0;
                 byte[] pixelData = new byte[width * height * 4];
+
                 for (int y = 0; y < height; y++)
                 {
                     for (int x = 0; x < width; x++)
                     {
                         int ind = y * width + x;
-                        if (mask[ind] > 0)
+
+                        if (ind < mask.Length)
                         {
-                            pixelData[4 * ind] = col.R;
-                            pixelData[4 * ind + 1] = col.G;
-                            pixelData[4 * ind + 2] = col.B;
-                            pixelData[4 * ind + 3] = alpha;
+                            float value = mask[ind];
+                            if (value > 0)
+                            {
+                                pixelData[4 * ind] = col.R;       // Red
+                                pixelData[4 * ind + 1] = col.G;  // Green
+                                pixelData[4 * ind + 2] = col.B;  // Blue
+                                pixelData[4 * ind + 3] = alpha;  // Alpha
+                            }
                         }
-                        else
-                            pixelData[4 * ind + 3] = 0;
                     }
                 }
+
+                // Create Gdk.Pixbuf with the updated pixel data
                 colored = new Gdk.Pixbuf(pixelData, true, 8, width, height, width * 4);
+
+                // Mark as updated
                 updateColored = false;
             }
+
             public Gdk.Pixbuf GetColored(AForge.Color col, byte alpha, bool forceUpdate = false)
             {
                 if (updateColored || forceUpdate)
@@ -609,23 +636,215 @@ namespace BioLib
                 else
                     return colored;
             }
-            public byte[] GetBytes()
+
+            /// <summary>
+            /// Crops a mask based on non-zero values and converts it to an 8-bit grayscale image.
+            /// </summary>
+            /// <param name="fullMask">The input float array representing the full image mask.</param>
+            /// <param name="imageWidth">The width of the full image.</param>
+            /// <param name="imageHeight">The height of the full image.</param>
+            /// <param name="threshold">The threshold to consider a pixel as part of the crop.</param>
+            /// <returns>
+            /// A tuple containing:
+            /// - 8-bit grayscale byte array.
+            /// - Width and height of the cropped region.
+            /// - Starting X and Y coordinates of the crop in the original image.
+            /// </returns>
+            public static (byte[] grayImage, int cropWidth, int cropHeight, int startX, int startY) OutputAs8BitImage(
+                float[] fullMask, int imageWidth, int imageHeight, float threshold = 0.0f)
             {
-                byte[] pixelData = new byte[width * height * 4];
-                for (int y = 0; y < height; y++)
+                if (fullMask == null || fullMask.Length != imageWidth * imageHeight)
+                    throw new ArgumentException("Invalid mask dimensions or null mask.");
+
+                // Crop the mask using the threshold
+                var cropResult = CropFullImageMask(fullMask, imageWidth, imageHeight, threshold);
+                float[] croppedMask = cropResult.croppedMask;
+
+                // Handle empty crop
+                if (croppedMask == null || croppedMask.Length == 0)
+                    return (Array.Empty<byte>(), 0, 0, 0, 0);
+
+                int cropWidth = cropResult.cropWidth;
+                int cropHeight = cropResult.cropHeight;
+
+                // Normalize and convert to 8-bit grayscale
+                byte[] grayImage = new byte[cropWidth * cropHeight];
+                for (int i = 0; i < croppedMask.Length; i++)
                 {
-                    for (int x = 0; x < width; x++)
+                    grayImage[i] = (byte)(Math.Clamp(croppedMask[i], 0.0f, 1.0f) * 255);
+                }
+
+                return (grayImage, cropWidth, cropHeight, cropResult.startX, cropResult.startY);
+            }
+            /// <summary>
+            /// Gets the minimum and maximum values from a float array.
+            /// </summary>
+            /// <param name="floatArray">The input float array.</param>
+            /// <returns>A tuple containing the minimum and maximum values.</returns>
+            public static (float min, float max) GetMinAndMax(float[] floatArray)
+            {
+                if (floatArray == null || floatArray.Length == 0)
+                    throw new ArgumentException("Input array must not be null or empty.");
+
+                float min = floatArray[0];
+                float max = floatArray[0];
+
+                foreach (float value in floatArray)
+                {
+                    if (value < min)
                     {
-                        int ind = y * width + x;
-                        byte[] bt = BitConverter.GetBytes(mask[ind]);
-                        pixelData[4 * ind] = bt[0];
-                        pixelData[4 * ind + 1] = bt[1];
-                        pixelData[4 * ind + 2] = bt[2];
-                        pixelData[4 * ind + 3] = bt[3];
+                        min = value;
+                    }
+                    if (value > max)
+                    {
+                        max = value;
                     }
                 }
-                return pixelData;
+
+                return (min, max);
             }
+            public byte[] GetBytesCropped()
+            {
+                // Crop the mask using a threshold of 0
+                var cropResult = CropFullImageMask(mask, this.Width, this.Height, 0.0f);
+                float[] croppedMask = cropResult.croppedMask;
+
+                // Handle empty mask case
+                if (croppedMask == null || croppedMask.Length == 0)
+                    return Array.Empty<byte>();
+
+                // Get the minimum and maximum values of the mask for normalization
+                var (min, max) = GetMinAndMax(croppedMask);
+                min = 0;
+                // Handle case where all values are equal (avoid division by zero)
+                if (Math.Abs(max - min) < float.Epsilon)
+                    return Array.Empty<byte>();
+
+                // Prepare the byte array for the normalized output
+                int cropWidth = cropResult.cropWidth;
+                int cropHeight = cropResult.cropHeight;
+                byte[] bytes = new byte[cropWidth * cropHeight];
+
+                // Normalize float values and convert to byte
+                for (int y = 0; y < cropHeight; y++)
+                {
+                    for (int x = 0; x < cropWidth; x++)
+                    {
+                        int index = y * cropWidth + x; // 1D index for the mask
+
+                        // Normalize the value: (value - min) / (max - min) * 255
+                        float normalized = (croppedMask[index] - min) / (max - min);
+                        bytes[index] = (byte)(normalized * 255);
+                    }
+                }
+                X = cropResult.startX;
+                Y = cropResult.startY;
+                width = cropWidth;
+                height = cropHeight;
+                return bytes;
+            }
+
+
+            public byte[] GetBytesRGBA()
+            {
+                // Crop the mask using the threshold of 0
+                var cropResult = CropFullImageMask(mask, this.Width, this.Height, 0.0f);
+                float[] croppedMask = cropResult.croppedMask;
+
+                // Handle empty mask case
+                if (croppedMask == null || croppedMask.Length == 0)
+                    return Array.Empty<byte>();
+
+                // Prepare the byte array for RGBA output
+                int cropWidth = cropResult.cropWidth;
+                int cropHeight = cropResult.cropHeight;
+                byte[] rgbaBytes = new byte[cropWidth * cropHeight * 4];
+
+                // Populate the RGBA byte array
+                for (int y = 0; y < cropHeight; y++)
+                {
+                    for (int x = 0; x < cropWidth; x++)
+                    {
+                        int index = y * cropWidth + x; // 1D index for the mask
+                        int rgbaIndex = index * 4;    // Index for RGBA array
+
+                        // Normalize the float mask value to a byte (0–255)
+                        byte value = (byte)(croppedMask[index] * 255);
+
+                        // Set RGBA channels
+                        rgbaBytes[rgbaIndex] = value;        // Red
+                        rgbaBytes[rgbaIndex + 1] = value;    // Green
+                        rgbaBytes[rgbaIndex + 2] = value;    // Blue
+                        rgbaBytes[rgbaIndex + 3] = 255;      // Alpha (fully opaque)
+                    }
+                }
+
+                return rgbaBytes;
+            }
+
+            /// <summary>
+            /// Crops the smallest rectangular region containing all "white" pixels (values above a threshold) from a full image mask.
+            /// </summary>
+            /// <param name="fullMask">The input float array representing the entire image mask.</param>
+            /// <param name="imageWidth">The width of the full image.</param>
+            /// <param name="imageHeight">The height of the full image.</param>
+            /// <param name="threshold">The threshold to consider a pixel as "white".</param>
+            /// <returns>
+            /// A tuple containing:
+            /// - Cropped float array mask.
+            /// - Crop width.
+            /// - Crop height.
+            /// - Starting X and Y coordinates of the crop in the original image.
+            /// </returns>
+            public static (float[] croppedMask, int cropWidth, int cropHeight, int startX, int startY) CropFullImageMask(
+                float[] fullMask, int imageWidth, int imageHeight, float threshold = 0.0f)
+            {
+                if (fullMask == null || fullMask.Length != imageWidth * imageHeight)
+                    throw new ArgumentException("Invalid mask dimensions or null mask.");
+
+                // Initialize bounding box values
+                int minX = imageWidth, minY = imageHeight, maxX = -1, maxY = -1;
+
+                // Find the bounding box of "white" pixels
+                for (int y = 0; y < imageHeight; y++)
+                {
+                    for (int x = 0; x < imageWidth; x++)
+                    {
+                        int index = y * imageWidth + x;
+                        if (fullMask[index] > threshold) // Pixel exceeds threshold, considered "white"
+                        {
+                            minX = Math.Min(minX, x);
+                            minY = Math.Min(minY, y);
+                            maxX = Math.Max(maxX, x);
+                            maxY = Math.Max(maxY, y);
+                        }
+                    }
+                }
+
+                // Handle cases where no white pixels are found
+                if (minX > maxX || minY > maxY)
+                    return (Array.Empty<float>(), 0, 0, 0, 0); // Return an empty mask
+
+                // Calculate the cropped region dimensions
+                int cropWidth = maxX - minX + 1;
+                int cropHeight = maxY - minY + 1;
+
+                // Extract the cropped region
+                float[] croppedMask = new float[cropWidth * cropHeight];
+                for (int y = 0; y < cropHeight; y++)
+                {
+                    for (int x = 0; x < cropWidth; x++)
+                    {
+                        int sourceIndex = (minY + y) * imageWidth + (minX + x);
+                        int targetIndex = y * cropWidth + x;
+
+                        croppedMask[targetIndex] = fullMask[sourceIndex];
+                    }
+                }
+
+                return (croppedMask, cropWidth, cropHeight, minX, minY);
+            }
+
             public void Dispose()
             {
                 if(pixbuf!=null)
@@ -888,18 +1107,34 @@ namespace BioLib
             ROI an = new ROI();
             an.coord = coord;
             an.type = Type.Mask;
-            an.roiMask = new Mask(mask, width, height,physicalX,physicalY);
+            an.roiMask = new Mask(mask, width, height,physicalX,physicalY,loc.X,loc.Y);
             an.AddPoint(loc);
+            an.X = loc.X + (an.roiMask.X * an.roiMask.PhysicalSizeX);
+            an.Y = loc.X + (an.roiMask.Y * an.roiMask.PhysicalSizeY);
             return an;
         }
-        public static ROI CreateMask(ZCT coord, byte[] mask,int width,int height,PointD loc,double physicalX,double physicalY)
+        public static ROI CreateMask(ZCT coord, Byte[] mask, int width, int height, PointD loc, double physicalX, double physicalY)
         {
             ROI an = new ROI();
             an.coord = coord;
             an.type = Type.Mask;
-            an.roiMask = new Mask(mask, width, height, physicalX, physicalY);
+            an.roiMask = new Mask(mask, width, height, physicalX, physicalY, loc.X,loc.Y);
             an.AddPoint(loc);
+            an.X = loc.X + an.roiMask.X;
+            an.Y = loc.X + an.roiMask.Y;
             return an;
+        }
+        // Calculate the center point of the ROI
+        public PointD GetCenter()
+        {
+            return new PointD(Rect.X + (Rect.W / 2.0), Rect.Y + (Rect.H / 2.0));
+        }
+
+        // Calculate the distance to another point
+        public double DistanceTo(PointD point)
+        {
+            var center = GetCenter();
+            return (float)Math.Sqrt(Math.Pow(center.X - point.X, 2) + Math.Pow(center.Y - point.Y, 2));
         }
         /// This function updates the point at the specified index
         /// 
@@ -1115,6 +1350,50 @@ namespace BioLib
             }
         }
     }
+
+    public class Cell
+    {
+        public List<ROI> ROIs = new List<ROI>();
+
+        public int Depth
+        {
+            get { return ROIs.Count; }
+        }
+        public VolumeD Volume
+        {
+            get; set;
+        }
+        public Cell(ROI first)
+        {
+            ROIs.Add(first);
+        }
+        public Cell FromROIs(ROI first, ROI[] rois)
+        {
+            if (first == null)
+                throw new ArgumentNullException(nameof(first), "First ROI cannot be null.");
+
+            if (rois == null || rois.Length == 0)
+                throw new ArgumentNullException(nameof(rois), "ROIs array cannot be null or empty.");
+
+            // Create the cell using the first ROI
+            var cell = new Cell(first);
+
+            // Maintain a set of unused ROIs
+            var unusedROIs = new List<ROI>(rois);
+
+            for (int i = 0; i < rois.Length; i++)
+            {
+                ROI r = rois[i];
+                if(r.Rect.IntersectsWith(first.GetCenter()))
+                {
+
+                }
+            }
+
+            return cell;
+        }
+    }
+
     /* It's a class that holds a string, an IFilter, and a Type */
     public class Filt
     {
@@ -2727,7 +3006,9 @@ namespace BioLib
                 return l;
             }
             set 
-            { 
+            {
+                if (value < 0)
+                    return;
                 if(Type == ImageType.well)
                 {
                     level = value;
@@ -6438,8 +6719,8 @@ namespace BioLib
                             omexml.setMaskID(an.id, i, serie);
                         else
                             omexml.setMaskID("Shape:" + i + ":" + serie, i, serie);
-                        omexml.setMaskX(java.lang.Double.valueOf(b.ToImageSpaceX(an.Rect.X)), i, serie);
-                        omexml.setMaskY(java.lang.Double.valueOf(b.ToImageSpaceY(an.Rect.Y)), i, serie);
+                        omexml.setMaskX(java.lang.Double.valueOf(b.ToImageSpaceX(an.BoundingBox.X)), i, serie);
+                        omexml.setMaskY(java.lang.Double.valueOf(b.ToImageSpaceY(an.BoundingBox.Y)), i, serie);
                         omexml.setMaskTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), i, serie);
                         omexml.setMaskTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), i, serie);
                         omexml.setMaskTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), i, serie);
@@ -6458,11 +6739,11 @@ namespace BioLib
                         omexml.setMaskStrokeWidth(sw, i, serie);
                         ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
                         omexml.setMaskFillColor(colf, i, serie);
-                        byte[] bts = an.roiMask.GetBytes();
+                        byte[] bts = an.roiMask.GetBytesCropped();
                         omexml.setMaskBinData(bts, i, serie);
                         omexml.setMaskBinDataBigEndian(new java.lang.Boolean(!BitConverter.IsLittleEndian), i, serie);
                         omexml.setMaskBinDataLength(new NonNegativeLong(new java.lang.Long(bts.Length)), i, serie);
-                        omexml.setMaskBinDataCompression(ome.xml.model.enums.Compression.NONE, i, serie);
+                        omexml.setMaskBinDataCompression(ome.xml.model.enums.Compression.ZLIB, i, serie);
                     }
 
                     i++;
@@ -7739,9 +8020,14 @@ namespace BioLib
                     {
                         byte[] bts = b.meta.getMaskBinData(im, sc);
                         bool end = b.meta.getMaskBinDataBigEndian(im, sc).booleanValue();
-                        an = ROI.CreateMask(co, bts, b.Resolutions[0].SizeX, b.Resolutions[0].SizeY,new PointD(b.StageSizeX,b.StageSizeY),b.PhysicalSizeX,b.PhysicalSizeY); 
+                        double h = b.meta.getMaskHeight(im, sc).doubleValue();
+                        double w = b.meta.getMaskWidth(im, sc).doubleValue();
+                        double x = b.meta.getMaskX(im, sc).doubleValue();
+                        double y = b.meta.getMaskY(im, sc).doubleValue();
+                        an = ROI.CreateMask(co, bts, (int)Math.Ceiling(w / b.PhysicalSizeX), (int)Math.Ceiling(h / b.PhysicalSizeY), new PointD(x * b.PhysicalSizeX, y * b.PhysicalSizeY) ,b.PhysicalSizeX,b.PhysicalSizeY); 
                         an.Text = b.meta.getMaskText(im, sc);
                         an.id = b.meta.getMaskID(im, sc);
+                        an.Rect = new RectangleD(an.X, an.Y, an.W, an.H);
                         ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getMaskTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
@@ -8975,7 +9261,7 @@ namespace BioLib
                     {
                         byte[] bts = meta.getMaskBinData(im, sc);
                         bool end = meta.getMaskBinDataBigEndian(im, sc).booleanValue();
-                        an = ROI.CreateMask(co, bts, SizeX, SizeY, new PointD(stageSizeX, stageSizeY),physicalSizeX,physicalSizeY);
+                        an = ROI.CreateMask(co, bts,(int)(an.W * physicalSizeX), (int)(an.H * physicalSizeY), new PointD(stageSizeX, stageSizeY),physicalSizeX,physicalSizeY);
                         an.Text = meta.getMaskText(im, sc);
                         an.id = meta.getMaskID(im, sc);
                         ome.xml.model.primitives.NonNegativeInteger nz = meta.getMaskTheZ(im, sc);
