@@ -312,6 +312,8 @@ namespace BioLib
         {
             get
             {
+                if (type == Type.Mask)
+                    return new PointD(roiMask.X * roiMask.PhysicalSizeX, roiMask.Y * roiMask.PhysicalSizeY);
                 return Points[0];
             }
             set
@@ -366,6 +368,10 @@ namespace BioLib
         {
             get
             {
+                if (type == Type.Mask)
+                {
+                    return roiMask.X * roiMask.PhysicalSizeX;
+                }
                 return Point.X;
             }
             set
@@ -377,6 +383,10 @@ namespace BioLib
         {
             get
             {
+                if (type == Type.Mask)
+                {
+                    return roiMask.Y * roiMask.PhysicalSizeY;
+                }
                 return Point.Y;
             }
             set
@@ -388,6 +398,10 @@ namespace BioLib
         {
             get
             {
+                if (type == Type.Mask)
+                {
+                    return roiMask.Width * roiMask.PhysicalSizeX;
+                }
                 if (type == Type.Point)
                     return strokeWidth;
                 else
@@ -402,6 +416,10 @@ namespace BioLib
         {
             get
             {
+                if(type == Type.Mask)
+                {
+                    return roiMask.Height * roiMask.PhysicalSizeY;
+                }
                 if (type == Type.Point)
                     return strokeWidth;
                 else
@@ -542,8 +560,8 @@ namespace BioLib
             {
                 this.width = width;
                 this.height = height;
-                this.X = x;
-                this.Y = y;
+                this.X = x / physX;
+                this.Y = y / physY;
                 PhysicalSizeX = physX;
                 PhysicalSizeY = physY;
                 mask = new float[fts.Length];
@@ -632,6 +650,28 @@ namespace BioLib
                     return colored;
             }
 
+            public byte[] GetColoredBytes(AForge.Color col)
+            {
+                byte[] pixelData = new byte[width * height];
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        int ind = y * width + x;
+
+                        if (ind < mask.Length)
+                        {
+                            float value = mask[ind];
+                            if (value > 0)
+                            {
+                                pixelData[ind] = (byte)value;
+                            }
+                        }
+                    }
+                }
+                return pixelData;
+            }
+
             /// <summary>
             /// Crops a mask based on non-zero values and converts it to an 8-bit grayscale image.
             /// </summary>
@@ -698,7 +738,7 @@ namespace BioLib
 
                 return (min, max);
             }
-            public byte[] GetBytesCropped()
+            private byte[] GetBytesCropped()
             {
                 // Crop the mask using a threshold of 0
                 var cropResult = CropFullImageMask(mask, this.Width, this.Height, 0.0f);
@@ -726,10 +766,12 @@ namespace BioLib
                     for (int x = 0; x < cropWidth; x++)
                     {
                         int index = y * cropWidth + x; // 1D index for the mask
-
-                        // Normalize the value: (value - min) / (max - min) * 255
-                        float normalized = (croppedMask[index] - min) / (max - min);
-                        bytes[index] = (byte)(normalized * 255);
+                        if (croppedMask[index] > 0)
+                        {
+                            // Normalize the value: (value - min) / (max - min) * 255
+                            float normalized = (croppedMask[index] - min) / (max - min);
+                            bytes[index] = (byte)(normalized * 255);
+                        }
                     }
                 }
                 X = cropResult.startX;
@@ -738,42 +780,18 @@ namespace BioLib
                 height = cropHeight;
                 return bytes;
             }
-
-
-            public byte[] GetBytesRGBA()
+            public byte[] GetBytes()
             {
-                // Crop the mask using the threshold of 0
-                var cropResult = CropFullImageMask(mask, this.Width, this.Height, 0.0f);
-                float[] croppedMask = cropResult.croppedMask;
-
-                // Handle empty mask case
-                if (croppedMask == null || croppedMask.Length == 0)
-                    return Array.Empty<byte>();
-
-                // Prepare the byte array for RGBA output
-                int cropWidth = cropResult.cropWidth;
-                int cropHeight = cropResult.cropHeight;
-                byte[] rgbaBytes = new byte[cropWidth * cropHeight * 4];
-
-                // Populate the RGBA byte array
-                for (int y = 0; y < cropHeight; y++)
+                byte[] rgbaBytes = new byte[width * height];
+                for (int y = 0; y < Height; y++)
                 {
-                    for (int x = 0; x < cropWidth; x++)
+                    for (int x = 0; x < Width; x++)
                     {
-                        int index = y * cropWidth + x; // 1D index for the mask
-                        int rgbaIndex = index * 4;    // Index for RGBA array
-
-                        // Normalize the float mask value to a byte (0–255)
-                        byte value = (byte)(croppedMask[index] * 255);
-
+                        int index = y * Width + x; // 1D index for the mask
                         // Set RGBA channels
-                        rgbaBytes[rgbaIndex] = value;        // Red
-                        rgbaBytes[rgbaIndex + 1] = value;    // Green
-                        rgbaBytes[rgbaIndex + 2] = value;    // Blue
-                        rgbaBytes[rgbaIndex + 3] = 255;      // Alpha (fully opaque)
+                        rgbaBytes[index] = (byte)mask[index];
                     }
                 }
-
                 return rgbaBytes;
             }
 
@@ -6734,7 +6752,7 @@ namespace BioLib
                         omexml.setMaskStrokeWidth(sw, i, serie);
                         ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
                         omexml.setMaskFillColor(colf, i, serie);
-                        byte[] bts = an.roiMask.GetBytesCropped();
+                        byte[] bts = an.roiMask.GetBytes();
                         omexml.setMaskBinData(bts, i, serie);
                         omexml.setMaskBinDataBigEndian(new java.lang.Boolean(!BitConverter.IsLittleEndian), i, serie);
                         omexml.setMaskBinDataLength(new NonNegativeLong(new java.lang.Long(bts.Length)), i, serie);
