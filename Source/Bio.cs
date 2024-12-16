@@ -540,8 +540,8 @@ namespace BioLib
             }
             public Mask(byte[] fts, int width, int height, double physX, double physY, double x, double y)
             {
-                this.width = width+1;
-                this.height = height+1;
+                this.width = width;
+                this.height = height;
                 this.X = x;
                 this.Y = y;
                 PhysicalSizeX = physX;
@@ -550,11 +550,6 @@ namespace BioLib
                 for (int i = 0; i < fts.Length; i++)
                 {
                     mask[i] = (float)fts[i];
-                }
-                byte[] bt = GetBytesCropped();
-                for (int i = 0; i < bt.Length; i++)
-                {
-                    mask[i] = (float)bt[i];
                 }
             }
             public Gdk.Pixbuf Pixbuf
@@ -6719,13 +6714,13 @@ namespace BioLib
                             omexml.setMaskID(an.id, i, serie);
                         else
                             omexml.setMaskID("Shape:" + i + ":" + serie, i, serie);
-                        omexml.setMaskX(java.lang.Double.valueOf(b.ToImageSpaceX(an.BoundingBox.X)), i, serie);
-                        omexml.setMaskY(java.lang.Double.valueOf(b.ToImageSpaceY(an.BoundingBox.Y)), i, serie);
+                        omexml.setMaskX(java.lang.Double.valueOf(b.ToImageSpaceX(b.StageSizeX + (an.roiMask.X * an.roiMask.PhysicalSizeX))), i, serie);
+                        omexml.setMaskY(java.lang.Double.valueOf(b.ToImageSpaceY(b.StageSizeY + (an.roiMask.Y * an.roiMask.PhysicalSizeY))), i, serie);
                         omexml.setMaskTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), i, serie);
                         omexml.setMaskTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), i, serie);
                         omexml.setMaskTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), i, serie);
-                        omexml.setMaskWidth(new java.lang.Double(an.W), i, serie);
-                        omexml.setMaskHeight(new java.lang.Double(an.H), i, serie);
+                        omexml.setMaskWidth(new java.lang.Double(an.roiMask.Width * an.roiMask.PhysicalSizeX), i, serie);
+                        omexml.setMaskHeight(new java.lang.Double(an.roiMask.Height * an.roiMask.PhysicalSizeY), i, serie);
                         if (an.Text != "")
                             omexml.setMaskText(an.Text, i, serie);
                         else
@@ -6743,7 +6738,7 @@ namespace BioLib
                         omexml.setMaskBinData(bts, i, serie);
                         omexml.setMaskBinDataBigEndian(new java.lang.Boolean(!BitConverter.IsLittleEndian), i, serie);
                         omexml.setMaskBinDataLength(new NonNegativeLong(new java.lang.Long(bts.Length)), i, serie);
-                        omexml.setMaskBinDataCompression(ome.xml.model.enums.Compression.ZLIB, i, serie);
+                        omexml.setMaskBinDataCompression(ome.xml.model.enums.Compression.NONE, i, serie);
                     }
 
                     i++;
@@ -8024,7 +8019,7 @@ namespace BioLib
                         double w = b.meta.getMaskWidth(im, sc).doubleValue();
                         double x = b.meta.getMaskX(im, sc).doubleValue();
                         double y = b.meta.getMaskY(im, sc).doubleValue();
-                        an = ROI.CreateMask(co, bts, (int)Math.Ceiling(w / b.PhysicalSizeX), (int)Math.Ceiling(h / b.PhysicalSizeY), new PointD(x * b.PhysicalSizeX, y * b.PhysicalSizeY) ,b.PhysicalSizeX,b.PhysicalSizeY); 
+                        an = ROI.CreateMask(co, bts, (int)Math.Round(w / b.PhysicalSizeX), (int)Math.Round(h / b.PhysicalSizeY), new PointD(x * b.PhysicalSizeX, y * b.PhysicalSizeY) ,b.PhysicalSizeX,b.PhysicalSizeY); 
                         an.Text = b.meta.getMaskText(im, sc);
                         an.id = b.meta.getMaskID(im, sc);
                         an.Rect = new RectangleD(an.X, an.Y, an.W, an.H);
