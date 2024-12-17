@@ -3008,6 +3008,8 @@ namespace BioLib
         {
             get 
             {
+                if (Type == ImageType.well)
+                    return level;
                 int l = 0;
                 if (openslideBase != null)
                     l = OpenSlideGTK.TileUtil.GetLevel(openslideBase.Schema.Resolutions, Resolution);
@@ -3022,25 +3024,7 @@ namespace BioLib
             {
                 if (value < 0)
                     return;
-                if(Type == ImageType.well)
-                {
-                    level = value;
-                    reader.setId(file);
-                    reader.setSeries(value);
-                    // read the image data bytes
-                    int pages = reader.getImageCount();
-                    bool inter = reader.isInterleaved();
-                    PixelFormat pf = Buffers[0].PixelFormat;
-                    int w = Buffers[0].SizeX; int h = Buffers[0].SizeY;
-                    Buffers.Clear();
-                    for (int p = 0; p < pages; p++)
-                    {
-                        Bitmap bf;
-                        byte[] bytes = reader.openBytes(p);
-                        bf = new Bitmap(file, w, h, pf, bytes, new ZCT(), p, null, littleEndian, inter);
-                        Buffers.Add(bf);
-                    }
-                }
+                level = value;
             }
         }
         public VolumeD Volume;
@@ -8193,8 +8177,8 @@ namespace BioLib
                 b.StackThreshold(false);
             try
             {
-                if(!b.isPyramidal)
-                reader.close();
+                if(b.Type == ImageType.stack)
+                    reader.close();
                 if (addToImages)
                     Images.AddImage(b);
             }
@@ -8704,6 +8688,46 @@ namespace BioLib
                         catch (Exception e)
                         {
                             Console.WriteLine(e.Message);
+                        }
+                    }
+                }
+                BioImage.AutoThreshold(this, false);
+                if (bitsPerPixel > 8)
+                    StackThreshold(true);
+                else
+                    StackThreshold(false);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+        }
+
+        public void UpdateBuffersWells()
+        {
+            try
+            {
+                if (Type != ImageType.well)
+                    return;
+                for (int i = 0; i < Buffers.Count; i++)
+                {
+                    Buffers[i].Dispose();
+                }
+                Buffers.Clear();
+                if(imRead.getSeries()!=Level)
+                this.imRead.setSeries(Level);
+                int w = imRead.getSizeX();
+                int h = imRead.getSizeY();
+                for (int z = 0; z < SizeZ; z++)
+                {
+                    for (int c = 0; c < SizeC; c++)
+                    {
+                        for (int t = 0; t < SizeT; t++)
+                        {
+                            byte[] bm = this.imRead.openBytes(Coords[z,c,t]);
+                            Bitmap bmp = new Bitmap(w, h, Resolutions[Level].PixelFormat, bm, new ZCT(z,c,t), "");
+                            bmp.Stats = Statistics.FromBytes(bmp);
+                            Buffers.Add(bmp);
                         }
                     }
                 }
