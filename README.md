@@ -59,7 +59,7 @@ BioImage.SaveFile("file","path");
 
 BioImage[] bms = new BioImage[]{BioImage.OpenFile("test.ome.tif")};
 QuPath.Project qp = QuPath.Project.FromImages(bms, "test.qpproj");
-QuPath.Project.SaveProject("myproj.qpproj", bms);
+QuPath.Project.SaveProject("myproj.qpproj", qp);
 
 //To convert between different pixel formats we can call for example To24Bit.
 b.To24Bit();
