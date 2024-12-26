@@ -28,8 +28,6 @@ using System.Threading.Tasks;
 using OpenSlideGTK;
 using System.Reflection;
 using Newtonsoft.Json.Serialization;
-using loci.plugins;
-using sun.awt.image;
 namespace BioLib
 {
     /* A class declaration. */

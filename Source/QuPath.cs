@@ -6,9 +6,6 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using System.IO;
 using AForge;
-using static com.fasterxml.jackson.databind.annotation.JsonAppend;
-using static loci.poi.hssf.util.HSSFColor;
-using org.w3c.dom.css;
 using System.Text.Json;
 using Newtonsoft.Json.Serialization;
 
