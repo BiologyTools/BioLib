@@ -1,12 +1,15 @@
-﻿using AForge;
+﻿extern alias BioFormats;
+using AForge;
 using AForge.Imaging;
 using AForge.Imaging.Filters;
 using BitMiracle.LibTiff.Classic;
-using loci.common.services;
-using loci.formats;
-using loci.formats.services;
-using ome.xml.model.primitives;
-using loci.formats.meta;
+using BioFormats::loci.common.services;
+using BioFormats::loci.formats;
+using BioFormats::loci.formats.services;
+using BioFormats::ome.xml.model.primitives;
+using BioFormats::loci.formats.meta;
+using BioFormats::ome.units.quantity;
+using BioFormats::ome;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -20,7 +23,7 @@ using System.Runtime.Serialization;
 using System.Text;
 using Bitmap = AForge.Bitmap;
 using Color = AForge.Color;
-using loci.formats.@in;
+using BioFormats::loci.formats.@in;
 using Gtk;
 using System.Linq;
 using NetVips;
@@ -80,7 +83,7 @@ namespace BioLib
             return i;
         }
         /// <summary>
-        /// Removes extensions from filename including multiple extensions like .ome.tif.
+        /// Removes extensions from filename including multiple extensions like .BioFormats::ome.tif.
         /// </summary>
         /// <param name="file"></param>
         /// <returns></returns>
@@ -89,7 +92,7 @@ namespace BioLib
             return Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(file));
         }
         /// <summary>
-        /// Return extensions of a file including multiple extensions like .ome.tif.
+        /// Return extensions of a file including multiple extensions like .BioFormats::ome.tif.
         /// </summary>
         /// <param name="file"></param>
         /// <returns></returns>
@@ -2967,7 +2970,7 @@ namespace BioLib
                         sa.ID = b.meta.getWellSampleID(b.series, i, s);
                         w.Samples.Add(sa);
                     }
-                    ome.xml.model.primitives.Color c = b.meta.getWellColor(b.series, i);
+                    BioFormats::ome.xml.model.primitives.Color c = b.meta.getWellColor(b.series, i);
                     if (c != null)
                         w.Color = System.Drawing.Color.FromArgb(c.getAlpha(), c.getRed(), c.getGreen(), c.getBlue());
                     Wells.Add(w);
@@ -6353,7 +6356,7 @@ namespace BioLib
         /// @return A boolean value.
         public static bool isOME(string file)
         {
-            if (file.EndsWith("ome.tif") || file.EndsWith("ome.tiff"))
+            if (file.EndsWith("BioFormats::ome.tif") || file.EndsWith("BioFormats::ome.tiff"))
             {
                 return true;
             }
@@ -6419,7 +6422,7 @@ namespace BioLib
         {
             if (File.Exists(f))
                 File.Delete(f);
-            loci.formats.meta.IMetadata omexml = service.createOMEXMLMetadata();
+            BioFormats::loci.formats.meta.IMetadata omexml = service.createOMEXMLMetadata();
             Status = "Saving OME Image Metadata.";
             for (int fi = 0; fi < files.Length; fi++)
             {
@@ -6430,11 +6433,11 @@ namespace BioLib
                 omexml.setImageID("Image:" + serie, serie);
                 omexml.setPixelsID("Pixels:" + serie, serie);
                 omexml.setPixelsInterleaved(java.lang.Boolean.TRUE, serie);
-                omexml.setPixelsDimensionOrder(ome.xml.model.enums.DimensionOrder.XYCZT, serie);
+                omexml.setPixelsDimensionOrder(BioFormats::ome.xml.model.enums.DimensionOrder.XYCZT, serie);
                 if (b.bitsPerPixel > 8)
-                    omexml.setPixelsType(ome.xml.model.enums.PixelType.UINT16, serie);
+                    omexml.setPixelsType(BioFormats::ome.xml.model.enums.PixelType.UINT16, serie);
                 else
-                    omexml.setPixelsType(ome.xml.model.enums.PixelType.UINT8, serie);
+                    omexml.setPixelsType(BioFormats::ome.xml.model.enums.PixelType.UINT8, serie);
                 omexml.setPixelsSizeX(new PositiveInteger(java.lang.Integer.valueOf(b.SizeX)), serie);
                 omexml.setPixelsSizeY(new PositiveInteger(java.lang.Integer.valueOf(b.SizeY)), serie);
                 omexml.setPixelsSizeZ(new PositiveInteger(java.lang.Integer.valueOf(b.SizeZ)), serie);
@@ -6444,20 +6447,20 @@ namespace BioLib
                     omexml.setPixelsBigEndian(java.lang.Boolean.FALSE, serie);
                 else
                     omexml.setPixelsBigEndian(java.lang.Boolean.TRUE, serie);
-                ome.units.quantity.Length p1 = new ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeX), ome.units.UNITS.MICROMETER);
+                BioFormats::ome.units.quantity.Length p1 = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeX), BioFormats::ome.units.UNITS.MICROMETER);
                 omexml.setPixelsPhysicalSizeX(p1, serie);
-                ome.units.quantity.Length p2 = new ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeY), ome.units.UNITS.MICROMETER);
+                BioFormats::ome.units.quantity.Length p2 = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeY), BioFormats::ome.units.UNITS.MICROMETER);
                 omexml.setPixelsPhysicalSizeY(p2, serie);
-                ome.units.quantity.Length p3 = new ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeZ), ome.units.UNITS.MICROMETER);
+                BioFormats::ome.units.quantity.Length p3 = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeZ), BioFormats::ome.units.UNITS.MICROMETER);
                 if(b.PhysicalSizeZ == 0)
-                    omexml.setPixelsPhysicalSizeZ(new ome.units.quantity.Length(java.lang.Double.valueOf(1), ome.units.UNITS.MICROMETER), serie);
+                    omexml.setPixelsPhysicalSizeZ(new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(1), BioFormats::ome.units.UNITS.MICROMETER), serie);
                 else
-                    omexml.setPixelsPhysicalSizeZ(new ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeZ), ome.units.UNITS.MICROMETER), serie);
-                ome.units.quantity.Length s1 = new ome.units.quantity.Length(java.lang.Double.valueOf(b.Volume.Location.X), ome.units.UNITS.MICROMETER);
+                    omexml.setPixelsPhysicalSizeZ(new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeZ), BioFormats::ome.units.UNITS.MICROMETER), serie);
+                BioFormats::ome.units.quantity.Length s1 = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.Volume.Location.X), BioFormats::ome.units.UNITS.MICROMETER);
                 omexml.setStageLabelX(s1, serie);
-                ome.units.quantity.Length s2 = new ome.units.quantity.Length(java.lang.Double.valueOf(b.Volume.Location.Y), ome.units.UNITS.MICROMETER);
+                BioFormats::ome.units.quantity.Length s2 = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.Volume.Location.Y), BioFormats::ome.units.UNITS.MICROMETER);
                 omexml.setStageLabelY(s2, serie);
-                ome.units.quantity.Length s3 = new ome.units.quantity.Length(java.lang.Double.valueOf(b.Volume.Location.Z), ome.units.UNITS.MICROMETER);
+                BioFormats::ome.units.quantity.Length s3 = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.Volume.Location.Z), BioFormats::ome.units.UNITS.MICROMETER);
                 omexml.setStageLabelZ(s3, serie);
                 omexml.setStageLabelName("StageLabel:" + serie, serie);
                 List<Channel> chs = new List<Channel>();
@@ -6489,44 +6492,44 @@ namespace BioLib
                         if (c.LightSourceWavelength != 0)
                         {
                             omexml.setChannelLightSourceSettingsID("LightSourceSettings:" + channel, r, channel);
-                            ome.units.quantity.Length lw = new ome.units.quantity.Length(java.lang.Double.valueOf(c.LightSourceWavelength), ome.units.UNITS.NANOMETER);
+                            BioFormats::ome.units.quantity.Length lw = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(c.LightSourceWavelength), BioFormats::ome.units.UNITS.NANOMETER);
                             omexml.setChannelLightSourceSettingsWavelength(lw, r, channel);
                             omexml.setChannelLightSourceSettingsAttenuation(PercentFraction.valueOf(c.LightSourceAttenuation), r, channel);
                         }
                         omexml.setChannelName(c.Name, r, channel);
                         if (c.Color != null)
                         {
-                            ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(c.Color.Value.R, c.Color.Value.G, c.Color.Value.B, c.Color.Value.A);
+                            BioFormats::ome.xml.model.primitives.Color col = new BioFormats::ome.xml.model.primitives.Color(c.Color.Value.R, c.Color.Value.G, c.Color.Value.B, c.Color.Value.A);
                             omexml.setChannelColor(col, r, channel);
                         }
                         if (c.Emission != 0)
                         {
-                            ome.units.quantity.Length em = new ome.units.quantity.Length(java.lang.Double.valueOf(c.Emission), ome.units.UNITS.NANOMETER);
+                            BioFormats::ome.units.quantity.Length em = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(c.Emission), BioFormats::ome.units.UNITS.NANOMETER);
                             omexml.setChannelEmissionWavelength(em, r, channel);
-                            ome.units.quantity.Length ex = new ome.units.quantity.Length(java.lang.Double.valueOf(c.Excitation), ome.units.UNITS.NANOMETER);
+                            BioFormats::ome.units.quantity.Length ex = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(c.Excitation), BioFormats::ome.units.UNITS.NANOMETER);
                             omexml.setChannelExcitationWavelength(ex, r, channel);
                         }
                         /*
                         if (c.ContrastMethod != null)
                         {
-                            ome.xml.model.enums.ContrastMethod cm = (ome.xml.model.enums.ContrastMethod)Enum.Parse(typeof(ome.xml.model.enums.ContrastMethod), c.ContrastMethod);
+                            BioFormats::ome.xml.model.enums.ContrastMethod cm = (BioFormats::ome.xml.model.enums.ContrastMethod)Enum.Parse(typeof(BioFormats::ome.xml.model.enums.ContrastMethod), c.ContrastMethod);
                             omexml.setChannelContrastMethod(cm, serie, channel + r);
                         }
                         if (c.IlluminationType != null)
                         {
-                            ome.xml.model.enums.IlluminationType il = (ome.xml.model.enums.IlluminationType)Enum.Parse(typeof(ome.xml.model.enums.IlluminationType), c.IlluminationType.ToUpper());
+                            BioFormats::ome.xml.model.enums.IlluminationType il = (BioFormats::ome.xml.model.enums.IlluminationType)Enum.Parse(typeof(BioFormats::ome.xml.model.enums.IlluminationType), c.IlluminationType.ToUpper());
                             omexml.setChannelIlluminationType(il, serie, channel + r);
                         }
                         if (c.AcquisitionMode != null)
                         {
-                            ome.xml.model.enums.AcquisitionMode am = (ome.xml.model.enums.AcquisitionMode)Enum.Parse(typeof(ome.xml.model.enums.AcquisitionMode), c.AcquisitionMode.ToUpper());
+                            BioFormats::ome.xml.model.enums.AcquisitionMode am = (BioFormats::ome.xml.model.enums.AcquisitionMode)Enum.Parse(typeof(BioFormats::ome.xml.model.enums.AcquisitionMode), c.AcquisitionMode.ToUpper());
                             omexml.setChannelAcquisitionMode(am, serie, channel + r);
                         }
                         */
                         omexml.setChannelFluor(c.Fluor, r, channel);
                         if (c.LightSourceIntensity != 0)
                         {
-                            ome.units.quantity.Power pw = new ome.units.quantity.Power(java.lang.Double.valueOf(c.LightSourceIntensity), ome.units.UNITS.VOLT);
+                            BioFormats::ome.units.quantity.Power pw = new BioFormats::ome.units.quantity.Power(java.lang.Double.valueOf(c.LightSourceIntensity), BioFormats::ome.units.UNITS.VOLT);
                             omexml.setLightEmittingDiodePower(pw, r, channel);
                             omexml.setLightEmittingDiodeID(c.DiodeName, r, channel);
                         }
@@ -6559,13 +6562,13 @@ namespace BioLib
                             omexml.setPointText(an.Text, i, serie);
                         else
                             omexml.setPointText(i.ToString(), i, serie);
-                        ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length fl = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setPointFontSize(fl, i, serie);
-                        ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
+                        BioFormats::ome.xml.model.primitives.Color col = new BioFormats::ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
                         omexml.setPointStrokeColor(col, i, serie);
-                        ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length sw = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setPointStrokeWidth(sw, i, serie);
-                        ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
+                        BioFormats::ome.xml.model.primitives.Color colf = new BioFormats::ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
                         omexml.setPointFillColor(colf, i, serie);
                     }
                     else
@@ -6583,13 +6586,13 @@ namespace BioLib
                             omexml.setPolygonText(an.Text, i, serie);
                         else
                             omexml.setPolygonText(i.ToString(), i, serie);
-                        ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length fl = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setPolygonFontSize(fl, i, serie);
-                        ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
+                        BioFormats::ome.xml.model.primitives.Color col = new BioFormats::ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
                         omexml.setPolygonStrokeColor(col, i, serie);
-                        ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length sw = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setPolygonStrokeWidth(sw, i, serie);
-                        ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
+                        BioFormats::ome.xml.model.primitives.Color colf = new BioFormats::ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
                         omexml.setPolygonFillColor(colf, i, serie);
                     }
                     else
@@ -6611,13 +6614,13 @@ namespace BioLib
                             omexml.setRectangleText(an.Text, i, serie);
                         else
                             omexml.setRectangleText(i.ToString(), i, serie);
-                        ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length fl = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setRectangleFontSize(fl, i, serie);
-                        ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
+                        BioFormats::ome.xml.model.primitives.Color col = new BioFormats::ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
                         omexml.setRectangleStrokeColor(col, i, serie);
-                        ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length sw = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setRectangleStrokeWidth(sw, i, serie);
-                        ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
+                        BioFormats::ome.xml.model.primitives.Color colf = new BioFormats::ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
                         omexml.setRectangleFillColor(colf, i, serie);
                     }
                     else
@@ -6638,13 +6641,13 @@ namespace BioLib
                             omexml.setLineText(an.Text, i, serie);
                         else
                             omexml.setLineText(i.ToString(), i, serie);
-                        ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length fl = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setLineFontSize(fl, i, serie);
-                        ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
+                        BioFormats::ome.xml.model.primitives.Color col = new BioFormats::ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
                         omexml.setLineStrokeColor(col, i, serie);
-                        ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length sw = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setLineStrokeWidth(sw, i, serie);
-                        ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
+                        BioFormats::ome.xml.model.primitives.Color colf = new BioFormats::ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
                         omexml.setLineFillColor(colf, i, serie);
                     }
                     else
@@ -6672,13 +6675,13 @@ namespace BioLib
                             omexml.setEllipseText(an.Text, i, serie);
                         else
                             omexml.setEllipseText(i.ToString(), i, serie);
-                        ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length fl = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setEllipseFontSize(fl, i, serie);
-                        ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
+                        BioFormats::ome.xml.model.primitives.Color col = new BioFormats::ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
                         omexml.setEllipseStrokeColor(col, i, serie);
-                        ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length sw = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setEllipseStrokeWidth(sw, i, serie);
-                        ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
+                        BioFormats::ome.xml.model.primitives.Color colf = new BioFormats::ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
                         omexml.setEllipseFillColor(colf, i, serie);
                     }
                     else
@@ -6698,13 +6701,13 @@ namespace BioLib
                             omexml.setLabelText(an.Text, i, serie);
                         else
                             omexml.setLabelText(i.ToString(), i, serie);
-                        ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length fl = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setLabelFontSize(fl, i, serie);
-                        ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
+                        BioFormats::ome.xml.model.primitives.Color col = new BioFormats::ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
                         omexml.setLabelStrokeColor(col, i, serie);
-                        ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length sw = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setLabelStrokeWidth(sw, i, serie);
-                        ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
+                        BioFormats::ome.xml.model.primitives.Color colf = new BioFormats::ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
                         omexml.setLabelFillColor(colf, i, serie);
                     }
                     else
@@ -6726,19 +6729,19 @@ namespace BioLib
                         else
                             omexml.setMaskText(i.ToString(), i, serie);
 
-                        ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length fl = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setMaskFontSize(fl, i, serie);
-                        ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
+                        BioFormats::ome.xml.model.primitives.Color col = new BioFormats::ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
                         omexml.setMaskStrokeColor(col, i, serie);
-                        ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
+                        BioFormats::ome.units.quantity.Length sw = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), BioFormats::ome.units.UNITS.PIXEL);
                         omexml.setMaskStrokeWidth(sw, i, serie);
-                        ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
+                        BioFormats::ome.xml.model.primitives.Color colf = new BioFormats::ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
                         omexml.setMaskFillColor(colf, i, serie);
                         byte[] bts = an.roiMask.GetBytes();
                         omexml.setMaskBinData(bts, i, serie);
                         omexml.setMaskBinDataBigEndian(new java.lang.Boolean(!BitConverter.IsLittleEndian), i, serie);
                         omexml.setMaskBinDataLength(new NonNegativeLong(new java.lang.Long(bts.Length)), i, serie);
-                        omexml.setMaskBinDataCompression(ome.xml.model.enums.Compression.NONE, i, serie);
+                        omexml.setMaskBinDataCompression(BioFormats::ome.xml.model.enums.Compression.NONE, i, serie);
                     }
 
                     i++;
@@ -6750,17 +6753,17 @@ namespace BioLib
                         //Correct order of parameters.
                         if (b.Buffers[bu].Plane.Delta != 0)
                         {
-                            ome.units.quantity.Time t = new ome.units.quantity.Time(java.lang.Double.valueOf(b.Buffers[bu].Plane.Delta), ome.units.UNITS.MILLISECOND);
+                            BioFormats::ome.units.quantity.Time t = new BioFormats::ome.units.quantity.Time(java.lang.Double.valueOf(b.Buffers[bu].Plane.Delta), BioFormats::ome.units.UNITS.MILLISECOND);
                             omexml.setPlaneDeltaT(t, serie, bu);
                         }
                         if (b.Buffers[bu].Plane.Exposure != 0)
                         {
-                            ome.units.quantity.Time et = new ome.units.quantity.Time(java.lang.Double.valueOf(b.Buffers[bu].Plane.Exposure), ome.units.UNITS.MILLISECOND);
+                            BioFormats::ome.units.quantity.Time et = new BioFormats::ome.units.quantity.Time(java.lang.Double.valueOf(b.Buffers[bu].Plane.Exposure), BioFormats::ome.units.UNITS.MILLISECOND);
                             omexml.setPlaneExposureTime(et, serie, bu);
                         }
-                        ome.units.quantity.Length lx = new ome.units.quantity.Length(java.lang.Double.valueOf(b.Buffers[bu].Plane.Location.X), ome.units.UNITS.MICROMETER);
-                        ome.units.quantity.Length ly = new ome.units.quantity.Length(java.lang.Double.valueOf(b.Buffers[bu].Plane.Location.Y), ome.units.UNITS.MICROMETER);
-                        ome.units.quantity.Length lz = new ome.units.quantity.Length(java.lang.Double.valueOf(b.Buffers[bu].Plane.Location.Z), ome.units.UNITS.MICROMETER);
+                        BioFormats::ome.units.quantity.Length lx = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.Buffers[bu].Plane.Location.X), BioFormats::ome.units.UNITS.MICROMETER);
+                        BioFormats::ome.units.quantity.Length ly = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.Buffers[bu].Plane.Location.Y), BioFormats::ome.units.UNITS.MICROMETER);
+                        BioFormats::ome.units.quantity.Length lz = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.Buffers[bu].Plane.Location.Z), BioFormats::ome.units.UNITS.MICROMETER);
                         omexml.setPlanePositionX(lx, serie, bu);
                         omexml.setPlanePositionY(ly, serie, bu);
                         omexml.setPlanePositionZ(lz, serie, bu);
@@ -6909,7 +6912,7 @@ namespace BioLib
             string met = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>" +
                 "<OME xmlns=\"http://www.openmicroscopy.org/Schemas/OME/2016-06\" " +
                 "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" " +
-                "xsi:schemaLocation=\"http://www.openmicroscopy.org/Schemas/OME/2016-06 http://www.openmicroscopy.org/Schemas/OME/2016-06/ome.xsd\">";
+                "xsi:schemaLocation=\"http://www.openmicroscopy.org/Schemas/OME/2016-06 http://www.openmicroscopy.org/Schemas/OME/2016-06/BioFormats::ome.xsd\">";
             NetVips.Image img = null;
             int ib = 0;
 
@@ -7572,7 +7575,7 @@ namespace BioLib
                         ch.Fluor = b.meta.getChannelFluor(serie, i);
                     if (b.meta.getChannelColor(serie, i) != null)
                     {
-                        ome.xml.model.primitives.Color cc = b.meta.getChannelColor(serie, i);
+                        BioFormats::ome.xml.model.primitives.Color cc = b.meta.getChannelColor(serie, i);
                         ch.Color = Color.FromArgb(cc.getRed(), cc.getGreen(), cc.getBlue());
                     }
                     if (b.meta.getChannelIlluminationType(serie, i) != null)
@@ -7748,29 +7751,29 @@ namespace BioLib
                         double dy = b.meta.getPointY(im, sc).doubleValue();
                         an.AddPoint(b.ToStageSpace(new PointD(dx, dy)));
                         an.coord = new ZCT();
-                        ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getPointTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getPointTheZ(im, sc);
                         if (nz != null)
                             an.coord.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getPointTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getPointTheC(im, sc);
                         if (nc != null)
                             an.coord.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getPointTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getPointTheT(im, sc);
                         if (nt != null)
                             an.coord.T = nt.getNumberValue().intValue();
                         an.Text = b.meta.getPointText(im, sc);
-                        ome.units.quantity.Length fl = b.meta.getPointFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = b.meta.getPointFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
-                        ome.xml.model.enums.FontFamily ff = b.meta.getPointFontFamily(im, sc);
+                        BioFormats::ome.xml.model.enums.FontFamily ff = b.meta.getPointFontFamily(im, sc);
                         if (ff != null)
                             an.family = ff.name();
-                        ome.xml.model.primitives.Color col = b.meta.getPointStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = b.meta.getPointStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = b.meta.getPointStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = b.meta.getPointStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = b.meta.getPointStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = b.meta.getPointStrokeColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
@@ -7785,30 +7788,30 @@ namespace BioLib
                         double py2 = b.meta.getLineY2(im, sc).doubleValue();
                         an.AddPoint(b.ToStageSpace(new PointD(px1, py1)));
                         an.AddPoint(b.ToStageSpace(new PointD(px2, py2)));
-                        ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getLineTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getLineTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getLineTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getLineTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getLineTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getLineTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
                         an.Text = b.meta.getLineText(im, sc);
-                        ome.units.quantity.Length fl = b.meta.getLineFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = b.meta.getLineFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
-                        ome.xml.model.enums.FontFamily ff = b.meta.getLineFontFamily(im, sc);
+                        BioFormats::ome.xml.model.enums.FontFamily ff = b.meta.getLineFontFamily(im, sc);
                         if (ff != null)
                             an.family = ff.name();
-                        ome.xml.model.primitives.Color col = b.meta.getLineStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = b.meta.getLineStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = b.meta.getLineStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = b.meta.getLineStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = b.meta.getLineFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = b.meta.getLineFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
@@ -7822,34 +7825,34 @@ namespace BioLib
                         double pw = b.meta.getRectangleWidth(im, sc).doubleValue();
                         double ph = b.meta.getRectangleHeight(im, sc).doubleValue();
                         an.Rect = b.ToStageSpace(new RectangleD(px, py, pw, ph));
-                        ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getRectangleTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getRectangleTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getRectangleTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getRectangleTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getRectangleTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getRectangleTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
 
                         an.Text = b.meta.getRectangleText(im, sc);
-                        ome.units.quantity.Length fl = b.meta.getRectangleFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = b.meta.getRectangleFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
-                        ome.xml.model.enums.FontFamily ff = b.meta.getRectangleFontFamily(im, sc);
+                        BioFormats::ome.xml.model.enums.FontFamily ff = b.meta.getRectangleFontFamily(im, sc);
                         if (ff != null)
                             an.family = ff.name();
-                        ome.xml.model.primitives.Color col = b.meta.getRectangleStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = b.meta.getRectangleStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = b.meta.getRectangleStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = b.meta.getRectangleStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = b.meta.getRectangleFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = b.meta.getRectangleFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
-                        ome.xml.model.enums.FillRule fr = b.meta.getRectangleFillRule(im, sc);
+                        BioFormats::ome.xml.model.enums.FillRule fr = b.meta.getRectangleFillRule(im, sc);
 
                     }
                     else
@@ -7867,30 +7870,30 @@ namespace BioLib
                         double x = px - ew;
                         double y = py - eh;
                         an.Rect = b.ToStageSpace(new RectangleD(x, y, w, h));
-                        ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getEllipseTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getEllipseTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getEllipseTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getEllipseTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getEllipseTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getEllipseTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
                         an.Text = b.meta.getEllipseText(im, sc);
-                        ome.units.quantity.Length fl = b.meta.getEllipseFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = b.meta.getEllipseFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
-                        ome.xml.model.enums.FontFamily ff = b.meta.getEllipseFontFamily(im, sc);
+                        BioFormats::ome.xml.model.enums.FontFamily ff = b.meta.getEllipseFontFamily(im, sc);
                         if (ff != null)
                             an.family = ff.name();
-                        ome.xml.model.primitives.Color col = b.meta.getEllipseStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = b.meta.getEllipseStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = b.meta.getEllipseStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = b.meta.getEllipseStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = b.meta.getEllipseFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = b.meta.getEllipseFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
@@ -7908,30 +7911,30 @@ namespace BioLib
                             an.type = ROI.Type.Freeform;
                         }
                         an.AddPoints(pts);
-                        ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getPolygonTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getPolygonTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getPolygonTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getPolygonTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getPolygonTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getPolygonTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
                         an.Text = b.meta.getPolygonText(im, sc);
-                        ome.units.quantity.Length fl = b.meta.getPolygonFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = b.meta.getPolygonFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
-                        ome.xml.model.enums.FontFamily ff = b.meta.getPolygonFontFamily(im, sc);
+                        BioFormats::ome.xml.model.enums.FontFamily ff = b.meta.getPolygonFontFamily(im, sc);
                         if (ff != null)
                             an.family = ff.name();
-                        ome.xml.model.primitives.Color col = b.meta.getPolygonStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = b.meta.getPolygonStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = b.meta.getPolygonStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = b.meta.getPolygonStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = b.meta.getPolygonFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = b.meta.getPolygonFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
@@ -7947,30 +7950,30 @@ namespace BioLib
                             pts[pi] = b.ToStageSpace(pts[pi]);
                         }
                         an.AddPoints(an.stringToPoints(pxs));
-                        ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getPolylineTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getPolylineTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getPolylineTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getPolylineTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getPolylineTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getPolylineTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
                         an.Text = b.meta.getPolylineText(im, sc);
-                        ome.units.quantity.Length fl = b.meta.getPolylineFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = b.meta.getPolylineFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
-                        ome.xml.model.enums.FontFamily ff = b.meta.getPolylineFontFamily(im, sc);
+                        BioFormats::ome.xml.model.enums.FontFamily ff = b.meta.getPolylineFontFamily(im, sc);
                         if (ff != null)
                             an.family = ff.name();
-                        ome.xml.model.primitives.Color col = b.meta.getPolylineStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = b.meta.getPolylineStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = b.meta.getPolylineStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = b.meta.getPolylineStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = b.meta.getPolylineFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = b.meta.getPolylineFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
@@ -7980,30 +7983,30 @@ namespace BioLib
                         an.type = ROI.Type.Label;
                         an.id = b.meta.getLabelID(im, sc);
 
-                        ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getLabelTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getLabelTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getLabelTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getLabelTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getLabelTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getLabelTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
 
-                        ome.units.quantity.Length fl = b.meta.getLabelFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = b.meta.getLabelFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
-                        ome.xml.model.enums.FontFamily ff = b.meta.getLabelFontFamily(im, sc);
+                        BioFormats::ome.xml.model.enums.FontFamily ff = b.meta.getLabelFontFamily(im, sc);
                         if (ff != null)
                             an.family = ff.name();
-                        ome.xml.model.primitives.Color col = b.meta.getLabelStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = b.meta.getLabelStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = b.meta.getLabelStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = b.meta.getLabelStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = b.meta.getLabelFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = b.meta.getLabelFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                         PointD p = new PointD(b.meta.getLabelX(im, sc).doubleValue(), b.meta.getLabelY(im, sc).doubleValue());
@@ -8023,30 +8026,30 @@ namespace BioLib
                         an.Text = b.meta.getMaskText(im, sc);
                         an.id = b.meta.getMaskID(im, sc);
                         an.Rect = new RectangleD(an.X, an.Y, an.W, an.H);
-                        ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getMaskTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getMaskTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getMaskTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = b.meta.getMaskTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getMaskTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getMaskTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
 
-                        ome.units.quantity.Length fl = b.meta.getMaskFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = b.meta.getMaskFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
-                        ome.xml.model.enums.FontFamily ff = b.meta.getMaskFontFamily(im, sc);
+                        BioFormats::ome.xml.model.enums.FontFamily ff = b.meta.getMaskFontFamily(im, sc);
                         if (ff != null)
                             an.family = ff.name();
-                        ome.xml.model.primitives.Color col = b.meta.getMaskStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = b.meta.getMaskStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = b.meta.getMaskStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = b.meta.getMaskStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = b.meta.getMaskFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = b.meta.getMaskFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
@@ -8065,7 +8068,7 @@ namespace BioLib
                 {
 
                     string st = OpenSlideImage.DetectVendor(file);
-                    if (st != null && !file.EndsWith("ome.tif") && useOpenSlide)
+                    if (st != null && !file.EndsWith("BioFormats::ome.tif") && useOpenSlide)
                     {
                         Status = "Opening file with OpenSlide.";
                         b.openSlideImage = OpenSlideImage.Open(file);
@@ -8318,10 +8321,10 @@ namespace BioLib
         public BioImage GetRegion(int x, int y, int w, int h)
         {
             string id = System.IO.Path.GetFileNameWithoutExtension(Filename);
-            id.Replace(".ome", "");
+            id.Replace(".BioFormats::ome", "");
             BioImage bm = Copy();
-            bm.ID = id + ".ome.tif";
-            bm.Filename = id + ".ome.tif";
+            bm.ID = id + ".BioFormats::ome.tif";
+            bm.Filename = id + ".BioFormats::ome.tif";
             bm.Volume = new VolumeD(new Point3D(StageSizeX + (PhysicalSizeX * PyramidalOrigin.X), StageSizeY + (PhysicalSizeY * PyramidalOrigin.Y), StageSizeZ),
                 new Point3D(w * PhysicalSizeX, h * PhysicalSizeY, SizeZ * PhysicalSizeZ));
             bm.Resolutions.Add(new Resolution(w, h, bm.Buffers[0].PixelFormat, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ, StageSizeX, StageSizeY, StageSizeZ));
@@ -8482,24 +8485,24 @@ namespace BioLib
         /// @param rgbChannelCount The `rgbChannelCount` parameter represents the number of channels in
         /// the RGB color model. It can have a value of either 1 (for grayscale images) or 3 (for RGB
         /// color images).
-        /// @param px The parameter "px" is of type ome.xml.model.enums.PixelType. It represents the
+        /// @param px The parameter "px" is of type BioFormats::ome.xml.model.enums.PixelType. It represents the
         /// pixel type of the image, such as INT8, UINT8, INT16, or UINT16.
         /// 
         /// @return The method returns a PixelFormat value based on the input parameters.
-        public static PixelFormat GetPixelFormat(int rgbChannelCount, ome.xml.model.enums.PixelType px)
+        public static PixelFormat GetPixelFormat(int rgbChannelCount, BioFormats::ome.xml.model.enums.PixelType px)
         {
             if (rgbChannelCount == 1)
             {
-                if (px == ome.xml.model.enums.PixelType.INT8 || px == ome.xml.model.enums.PixelType.UINT8)
+                if (px == BioFormats::ome.xml.model.enums.PixelType.INT8 || px == BioFormats::ome.xml.model.enums.PixelType.UINT8)
                     return PixelFormat.Format8bppIndexed;
-                else if (px == ome.xml.model.enums.PixelType.INT16 || px == ome.xml.model.enums.PixelType.UINT16)
+                else if (px == BioFormats::ome.xml.model.enums.PixelType.INT16 || px == BioFormats::ome.xml.model.enums.PixelType.UINT16)
                     return PixelFormat.Format16bppGrayScale;
             }
             else if (rgbChannelCount == 3)
             {
-                if (px == ome.xml.model.enums.PixelType.INT8 || px == ome.xml.model.enums.PixelType.UINT8)
+                if (px == BioFormats::ome.xml.model.enums.PixelType.INT8 || px == BioFormats::ome.xml.model.enums.PixelType.UINT8)
                     return PixelFormat.Format24bppRgb;
-                else if (px == ome.xml.model.enums.PixelType.INT16 || px == ome.xml.model.enums.PixelType.UINT16)
+                else if (px == BioFormats::ome.xml.model.enums.PixelType.INT16 || px == BioFormats::ome.xml.model.enums.PixelType.UINT16)
                     return PixelFormat.Format48bppRgb;
             }
             else
@@ -8601,7 +8604,7 @@ namespace BioLib
             for (int i = 0; i < files.Length; i++)
             {
                 string str = Path.GetFileNameWithoutExtension(files[i]);
-                str = str.Replace(".ome", "");
+                str = str.Replace(".BioFormats::ome", "");
                 string[] st = str.Split('_');
                 if (st.Length > 3)
                 {
@@ -8812,7 +8815,7 @@ namespace BioLib
         /// location or format for the saved file.</param>
         /// <param name="serie">The "serie" parameter is an integer that represents a series or sequence
         /// number. It is used as a parameter in the SaveAsync method.</param>
-        /// <param name="ome">The "ome" parameter is a boolean value that determines whether or not to
+        /// <param name="BioFormats::ome">The "ome" parameter is a boolean value that determines whether or not to
         /// perform a specific action in the saving process.</param>
         public static async Task SaveAsync(string file, string id, int serie, bool ome)
         {
@@ -8928,7 +8931,7 @@ namespace BioLib
         private static OMEXMLService service;
         private static ImageReader reader;
         private static ImageWriter writer;
-        private loci.formats.meta.IMetadata meta;
+        private BioFormats::loci.formats.meta.IMetadata meta;
 
         //We use UNIX type line endings since they are supported by ImageJ & BioGTK.
         public const char NewLine = '\n';
@@ -8960,7 +8963,7 @@ namespace BioLib
             // create OME-XML metadata store
             ServiceFactory factory = new ServiceFactory();
             OMEXMLService service = (OMEXMLService)factory.getInstance(typeof(OMEXMLService));
-            loci.formats.ome.OMEXMLMetadata meta = service.createOMEXMLMetadata();
+            BioFormats::loci.formats.ome.OMEXMLMetadata meta = service.createOMEXMLMetadata();
             // create format reader
             ImageReader imageReader = new ImageReader();
             imageReader.setMetadataStore(meta);
@@ -9044,27 +9047,27 @@ namespace BioLib
                         double dy = meta.getPointY(im, sc).doubleValue();
                         an.AddPoint(ToStageSpace(new PointD(dx, dy), physicalSizeX, physicalSizeY, volume.Location.X, volume.Location.Y));
                         an.coord = new ZCT();
-                        ome.xml.model.primitives.NonNegativeInteger nz = meta.getPointTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = meta.getPointTheZ(im, sc);
                         if (nz != null)
                             an.coord.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = meta.getPointTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = meta.getPointTheC(im, sc);
                         if (nc != null)
                             an.coord.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = meta.getPointTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = meta.getPointTheT(im, sc);
                         if (nt != null)
                             an.coord.T = nt.getNumberValue().intValue();
                         an.Text = meta.getPointText(im, sc);
-                        ome.units.quantity.Length fl = meta.getPointFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = meta.getPointFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
                         an.family = meta.getPointFontFamily(im, sc).name();
-                        ome.xml.model.primitives.Color col = meta.getPointStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = meta.getPointStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = meta.getPointStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = meta.getPointStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = meta.getPointStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = meta.getPointStrokeColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
@@ -9079,28 +9082,28 @@ namespace BioLib
                         double py2 = meta.getLineY2(im, sc).doubleValue();
                         an.AddPoint(ToStageSpace(new PointD(px1, py1), physicalSizeX, physicalSizeY, volume.Location.X, volume.Location.Y));
                         an.AddPoint(ToStageSpace(new PointD(px2, py2), physicalSizeX, physicalSizeY, volume.Location.X, volume.Location.Y));
-                        ome.xml.model.primitives.NonNegativeInteger nz = meta.getLineTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = meta.getLineTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = meta.getLineTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = meta.getLineTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = meta.getLineTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = meta.getLineTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
                         an.Text = meta.getLineText(im, sc);
-                        ome.units.quantity.Length fl = meta.getLineFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = meta.getLineFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
                         an.family = meta.getPointFontFamily(im, sc).name();
-                        ome.xml.model.primitives.Color col = meta.getLineStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = meta.getLineStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = meta.getLineStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = meta.getLineStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = meta.getLineFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = meta.getLineFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
@@ -9114,32 +9117,32 @@ namespace BioLib
                         double pw = meta.getRectangleWidth(im, sc).doubleValue();
                         double ph = meta.getRectangleHeight(im, sc).doubleValue();
                         an.Rect = ToStageSpace(new RectangleD(px, py, pw, ph), physicalSizeX, physicalSizeY, volume.Location.X, volume.Location.Y);
-                        ome.xml.model.primitives.NonNegativeInteger nz = meta.getRectangleTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = meta.getRectangleTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = meta.getRectangleTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = meta.getRectangleTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = meta.getRectangleTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = meta.getRectangleTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
 
                         an.Text = meta.getRectangleText(im, sc);
-                        ome.units.quantity.Length fl = meta.getRectangleFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = meta.getRectangleFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
                         an.family = meta.getPointFontFamily(im, sc).name();
-                        ome.xml.model.primitives.Color col = meta.getRectangleStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = meta.getRectangleStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = meta.getRectangleStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = meta.getRectangleStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = meta.getRectangleFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = meta.getRectangleFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
-                        ome.xml.model.enums.FillRule fr = meta.getRectangleFillRule(im, sc);
+                        BioFormats::ome.xml.model.enums.FillRule fr = meta.getRectangleFillRule(im, sc);
                     }
                     else
                     if (type == "Ellipse")
@@ -9156,28 +9159,28 @@ namespace BioLib
                         double x = px - ew;
                         double y = py - eh;
                         an.Rect = ToStageSpace(new RectangleD(px, py, w, h), physicalSizeX, physicalSizeY, volume.Location.X, volume.Location.Y);
-                        ome.xml.model.primitives.NonNegativeInteger nz = meta.getEllipseTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = meta.getEllipseTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = meta.getEllipseTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = meta.getEllipseTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = meta.getEllipseTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = meta.getEllipseTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
                         an.Text = meta.getEllipseText(im, sc);
-                        ome.units.quantity.Length fl = meta.getEllipseFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = meta.getEllipseFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
                         an.family = meta.getPointFontFamily(im, sc).name();
-                        ome.xml.model.primitives.Color col = meta.getEllipseStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = meta.getEllipseStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = meta.getEllipseStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = meta.getEllipseStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = meta.getEllipseFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = meta.getEllipseFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
@@ -9195,28 +9198,28 @@ namespace BioLib
                             an.type = ROI.Type.Freeform;
                         }
                         an.AddPoints(pts);
-                        ome.xml.model.primitives.NonNegativeInteger nz = meta.getPolygonTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = meta.getPolygonTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = meta.getPolygonTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = meta.getPolygonTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = meta.getPolygonTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = meta.getPolygonTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
                         an.Text = meta.getPolygonText(im, sc);
-                        ome.units.quantity.Length fl = meta.getPolygonFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = meta.getPolygonFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
                         an.family = meta.getPointFontFamily(im, sc).name();
-                        ome.xml.model.primitives.Color col = meta.getPolygonStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = meta.getPolygonStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = meta.getPolygonStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = meta.getPolygonStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = meta.getPolygonFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = meta.getPolygonFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
@@ -9232,28 +9235,28 @@ namespace BioLib
                             pts[pi] = ToStageSpace(pts[pi], physicalSizeX, physicalSizeY, volume.Location.X, volume.Location.Y);
                         }
                         an.AddPoints(an.stringToPoints(pxs));
-                        ome.xml.model.primitives.NonNegativeInteger nz = meta.getPolylineTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = meta.getPolylineTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = meta.getPolylineTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = meta.getPolylineTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = meta.getPolylineTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = meta.getPolylineTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
                         an.Text = meta.getPolylineText(im, sc);
-                        ome.units.quantity.Length fl = meta.getPolylineFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = meta.getPolylineFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
                         an.family = meta.getPointFontFamily(im, sc).name();
-                        ome.xml.model.primitives.Color col = meta.getPolylineStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = meta.getPolylineStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = meta.getPolylineStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = meta.getPolylineStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = meta.getPolylineFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = meta.getPolylineFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
@@ -9263,28 +9266,28 @@ namespace BioLib
                         an.type = ROI.Type.Label;
                         an.id = meta.getLabelID(im, sc);
 
-                        ome.xml.model.primitives.NonNegativeInteger nz = meta.getLabelTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = meta.getLabelTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = meta.getLabelTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = meta.getLabelTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = meta.getLabelTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = meta.getLabelTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
 
-                        ome.units.quantity.Length fl = meta.getLabelFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = meta.getLabelFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
                         an.family = meta.getPointFontFamily(im, sc).name();
-                        ome.xml.model.primitives.Color col = meta.getLabelStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = meta.getLabelStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = meta.getLabelStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = meta.getLabelStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = meta.getLabelFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = meta.getLabelFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                         PointD p = new PointD(meta.getLabelX(im, sc).doubleValue(), meta.getLabelY(im, sc).doubleValue());
@@ -9299,30 +9302,30 @@ namespace BioLib
                         an = ROI.CreateMask(co, bts,(int)(an.W * physicalSizeX), (int)(an.H * physicalSizeY), new PointD(stageSizeX, stageSizeY),physicalSizeX,physicalSizeY);
                         an.Text = meta.getMaskText(im, sc);
                         an.id = meta.getMaskID(im, sc);
-                        ome.xml.model.primitives.NonNegativeInteger nz = meta.getMaskTheZ(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = meta.getMaskTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nc = meta.getMaskTheC(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nc = meta.getMaskTheC(im, sc);
                         if (nc != null)
                             co.C = nc.getNumberValue().intValue();
-                        ome.xml.model.primitives.NonNegativeInteger nt = meta.getMaskTheT(im, sc);
+                        BioFormats::ome.xml.model.primitives.NonNegativeInteger nt = meta.getMaskTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
                         an.coord = co;
 
-                        ome.units.quantity.Length fl = meta.getMaskFontSize(im, sc);
+                        BioFormats::ome.units.quantity.Length fl = meta.getMaskFontSize(im, sc);
                         if (fl != null)
                             an.fontSize = fl.value().intValue();
-                        ome.xml.model.enums.FontFamily ff = meta.getMaskFontFamily(im, sc);
+                        BioFormats::ome.xml.model.enums.FontFamily ff = meta.getMaskFontFamily(im, sc);
                         if (ff != null)
                             an.family = ff.name();
-                        ome.xml.model.primitives.Color col = meta.getMaskStrokeColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color col = meta.getMaskStrokeColor(im, sc);
                         if (col != null)
                             an.strokeColor = Color.FromArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
-                        ome.units.quantity.Length fw = meta.getMaskStrokeWidth(im, sc);
+                        BioFormats::ome.units.quantity.Length fw = meta.getMaskStrokeWidth(im, sc);
                         if (fw != null)
                             an.strokeWidth = (float)fw.value().floatValue();
-                        ome.xml.model.primitives.Color colf = meta.getMaskFillColor(im, sc);
+                        BioFormats::ome.xml.model.primitives.Color colf = meta.getMaskFillColor(im, sc);
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }

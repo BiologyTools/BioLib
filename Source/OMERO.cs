@@ -1,12 +1,13 @@
-﻿using AForge;
-using omero.api;
-using omero.constants;
-using omero.gateway.facility;
-using omero.gateway.model;
-using omero.gateway;
-using omero.log;
-using omero.model;
-using omero;
+﻿extern alias Omero;
+using AForge;
+using Omero::omero.api;
+using Omero::omero.constants;
+using Omero::omero.gateway.facility;
+using Omero::omero.gateway.model;
+using Omero::omero.gateway;
+using Omero::omero.log;
+using Omero::omero.model;
+using Omero::omero;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,7 +19,7 @@ namespace BioLib
     public class OMERO
     {
         public static string host, username;
-        private static string password;
+        public static string password;
         public static int port;
         public static client client;
         public static ServiceFactoryPrx session;
@@ -32,6 +33,19 @@ namespace BioLib
             OMERO.port = port;
             OMERO.username = username;
             OMERO.password = password;
+            client = new client(host, port);
+            session = client.createSession(username, password);
+            // Initialize OMERO client and gateway
+            gateway = new Gateway(new SimpleLogger());
+            LoginCredentials credentials = new LoginCredentials();
+            credentials.getServer().setHostname(host);
+            credentials.getServer().setPort(port);
+            credentials.getUser().setUsername(username);
+            credentials.getUser().setPassword(password);
+            experimenter = gateway.connect(credentials);
+        }
+        public static void Connect()
+        {
             client = new client(host, port);
             session = client.createSession(username, password);
             // Initialize OMERO client and gateway
@@ -77,7 +91,7 @@ namespace BioLib
                 do
                 {
                     java.util.ArrayList list = new java.util.ArrayList();
-                    omero.gateway.model.ImageData o = (omero.gateway.model.ImageData)itr.next();
+                    Omero::omero.gateway.model.ImageData o = (Omero::omero.gateway.model.ImageData)itr.next();
                     string name = o.getName();
                     if (name != filename)
                         continue;
@@ -124,7 +138,7 @@ namespace BioLib
                             else if (pxx == AForge.PixelFormat.Format32bppArgb)
                                 cch = new AForge.Channel(i, bits, 4);
                             cch.Fluor = ch.getFluor();
-                            var em = ch.getEmissionWavelength(omero.model.enums.UnitsLength.NANOMETER);
+                            var em = ch.getEmissionWavelength(Omero::omero.model.enums.UnitsLength.NANOMETER);
                             if (em != null)
                                 cch.Emission = (int)em.getValue();
                             cch.Color = col;
@@ -266,7 +280,7 @@ namespace BioLib
                             // Set the pixels ID for the image
                             long pixelId = img.getDefaultPixels().getId();
                             store.setPixelsId(pixelId);
-                            byte[] thumbnailBytes = store.getThumbnail(omero.rtypes.rint(width), omero.rtypes.rint(height));
+                            byte[] thumbnailBytes = store.getThumbnail(Omero::omero.rtypes.rint(width), Omero::omero.rtypes.rint(height));
                             Bitmap bm = new Bitmap(width, height, PixelFormat.Format32bppArgb, thumbnailBytes, new ZCT(), "");
                             images.Add(bm);
                         }
@@ -301,8 +315,16 @@ namespace BioLib
             }
             return files;
         }
-        public static List<string> GetDatabases()
+        public static List<string> GetDatasets()
         {
+            // Initialize OMERO client and gateway
+            gateway = new Gateway(new SimpleLogger());
+            LoginCredentials credentials = new LoginCredentials();
+            credentials.getServer().setHostname(host);
+            credentials.getServer().setPort(port);
+            credentials.getUser().setUsername(username);
+            credentials.getUser().setPassword(password);
+            experimenter = gateway.connect(credentials);
             var meta = session.getMetadataService();
             ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
             RLong id = sec.getId();
@@ -317,6 +339,25 @@ namespace BioLib
             {
                 DatasetData dd = (DatasetData)itr.next();
                 dbs.Add(dd.getName());
+            }
+            return dbs;
+        }
+        public static List<DatasetData> GetDatasetsData()
+        {
+            var meta = session.getMetadataService();
+            ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
+            RLong id = sec.getId();
+            SecurityContext sc = new SecurityContext(id.getValue());
+            // Access BrowseFacility
+            BrowseFacility facility = (BrowseFacility)gateway.getFacility(brFacility);
+            MetadataFacility mf = (MetadataFacility)gateway.getFacility(metaFacility);
+            var d = facility.getDatasets(sc);
+            var itr = d.iterator();
+            List<DatasetData> dbs = new List<DatasetData>();
+            while (itr.hasNext())
+            {
+                DatasetData dd = (DatasetData)itr.next();
+                dbs.Add(dd);
             }
             return dbs;
         }
@@ -338,15 +379,16 @@ namespace BioLib
             }
             return dbs;
         }
-        public static List<string> GetDatabaseFiles(string db)
+        public static List<string> GetDatasetFiles(string db)
         {
             var meta = session.getMetadataService();
             ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
             RLong id = sec.getId();
             SecurityContext sc = new SecurityContext(id.getValue());
             // Access BrowseFacility
-            BrowseFacility facility = (BrowseFacility)gateway.getFacility(brFacility);
             MetadataFacility mf = (MetadataFacility)gateway.getFacility(metaFacility);
+            BrowseFacility facility = (BrowseFacility)gateway.getFacility(brFacility);
+            
             var d = facility.getDatasets(sc);
             var itr = d.iterator();
             while (itr.hasNext())
@@ -369,7 +411,7 @@ namespace BioLib
             }
             return null;
         }
-        public static List<string> GetDatabaseFiles(long dbid)
+        public static List<string> GetDatasetFiles(long dbid)
         {
             var meta = session.getMetadataService();
             ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
