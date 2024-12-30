@@ -3428,7 +3428,7 @@ namespace BioLib
         OpenSlideBase openslideBase;
         public OpenSlideBase OpenSlideBase { get { return openslideBase; } }
         SlideBase slideBase;
-        public SlideBase SlideBase { get { return slideBase; } }
+        public SlideBase SlideBase { get { return slideBase; } set { slideBase = value; } }
         public Channel RChannel
         {
             get
@@ -8068,7 +8068,7 @@ namespace BioLib
                 {
 
                     string st = OpenSlideImage.DetectVendor(file);
-                    if (st != null && !file.EndsWith("BioFormats::ome.tif") && useOpenSlide)
+                    if (st != null && !file.EndsWith("ome.tif") && useOpenSlide)
                     {
                         Status = "Opening file with OpenSlide.";
                         b.openSlideImage = OpenSlideImage.Open(file);
@@ -8243,6 +8243,13 @@ namespace BioLib
         /// @return A Bitmap object.
         public static Bitmap GetTile(BioImage b, int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
         {
+            if(b.Tag != null)
+            {
+                if (b.Tag.ToString() != "OMERO")
+                    return null;
+                //This is a OMERO file we need to update it.
+                return OMERO.GetTile(b, b.Coordinate, tilex, tiley, tileSizeX, tileSizeY);
+            }
             if (vips && b.vipPages.Count > 0)
             {
                 //We can get a tile faster with libvips rather than bioformats.
@@ -8646,7 +8653,6 @@ namespace BioLib
         {
             try
             {
-                
                 if (Type != ImageType.pyramidal)
                     return;
                 for (int i = 0; i < Buffers.Count; i++)

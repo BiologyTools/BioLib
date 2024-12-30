@@ -1,4 +1,6 @@
 ﻿extern alias Omero;
+extern alias BioFormats;
+
 using AForge;
 using Omero::omero.api;
 using Omero::omero.constants;
@@ -13,6 +15,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Gdk;
+using Omero::ome.api;
+using Omero::omero.romio;
+using Omero::omero.sys;
+using Omero::org.python.compiler;
+
 
 namespace BioLib
 {
@@ -25,6 +33,14 @@ namespace BioLib
         public static ServiceFactoryPrx session;
         public static Gateway gateway;
         public static ExperimenterData experimenter;
+        public static IMetadataPrx meta;
+        public static BrowseFacility browsefacil;
+        public static MetadataFacility metafacil;
+        public static SecurityContext sc;
+        public static Omero::omero.api.RawPixelsStorePrx store;
+        public static java.util.Collection datasets;
+        public static java.util.Collection folders;
+        public static java.util.Collection images;
         private static java.lang.Class brFacility = java.lang.Class.forName("omero.gateway.facility.BrowseFacility");
         private static java.lang.Class metaFacility = java.lang.Class.forName("omero.gateway.facility.MetadataFacility");
         public static void Connect(string host, int port, string username, string password)
@@ -43,6 +59,7 @@ namespace BioLib
             credentials.getUser().setUsername(username);
             credentials.getUser().setPassword(password);
             experimenter = gateway.connect(credentials);
+            Init();
         }
         public static void Connect()
         {
@@ -56,6 +73,20 @@ namespace BioLib
             credentials.getUser().setUsername(username);
             credentials.getUser().setPassword(password);
             experimenter = gateway.connect(credentials);
+            Init();
+        }
+        private static void Init()
+        {
+            meta = session.getMetadataService();
+            ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
+            RLong id = sec.getId();
+            sc = new SecurityContext(id.getValue());
+            browsefacil = (BrowseFacility)gateway.getFacility(brFacility);
+            metafacil = (MetadataFacility)gateway.getFacility(metaFacility);
+            folders = browsefacil.getFolders(sc);
+            datasets = browsefacil.getDatasets(sc);
+            images = browsefacil.getUserImages(sc);
+            store = gateway.getPixelsStore(sc);
         }
         public static void ReConnect()
         {
@@ -91,19 +122,21 @@ namespace BioLib
                 do
                 {
                     java.util.ArrayList list = new java.util.ArrayList();
-                    Omero::omero.gateway.model.ImageData o = (Omero::omero.gateway.model.ImageData)itr.next();
+                    ImageData o = (ImageData)itr.next();
                     string name = o.getName();
                     if (name != filename)
                         continue;
-                    b.Filename = name;
-                    b.ID = name;
-                    RawPixelsStorePrx store = gateway.getPixelsStore(sc);
                     PixelsData pd = o.getDefaultPixels();
                     int xs = pd.getSizeX();
                     int ys = pd.getSizeY();
                     int zs = pd.getSizeZ();
                     int cs = pd.getSizeC();
                     int ts = pd.getSizeT();
+                    long pid = o.getId();
+
+                    b.Filename = name;
+                    b.ID = name;
+                    RawPixelsStorePrx store = gateway.getPixelsStore(sc);
                     long ind = o.getId();
                     long ll = pd.getId();
                     list.add(java.lang.Long.valueOf(ind));
@@ -111,6 +144,8 @@ namespace BioLib
                     {
                         var acq = mf.getChannelData(sc, ind);
                         int s = acq.size();
+                        if (s == 1)
+                            s = 2;
                         for (int i = 0; i < s - 1; i++)
                         {
                             var ch = (ChannelData)acq.get(i);
@@ -119,17 +154,7 @@ namespace BioLib
                             AForge.Color col = AForge.Color.FromArgb(chan.getRed().getValue(), chan.getGreen().getValue(), chan.getBlue().getValue());
                             var px = pd.asPixels().getPixelsType();
                             int bits = px.getBitSize().getValue();
-                            AForge.PixelFormat pxx = AForge.PixelFormat.Format8bppIndexed;
-                            if (bits == 8)
-                                pxx = AForge.PixelFormat.Format8bppIndexed;
-                            else if (bits < 16 || bits == 16)
-                                pxx = AForge.PixelFormat.Format16bppGrayScale;
-                            else if (bits == 24)
-                                pxx = AForge.PixelFormat.Format24bppRgb;
-                            else if (bits == 32)
-                                pxx = AForge.PixelFormat.Format32bppArgb;
-                            else if (bits > 32)
-                                pxx = AForge.PixelFormat.Format48bppRgb;
+                            AForge.PixelFormat pxx = GetPixelFormat(bits);
                             AForge.Channel cch = null;
                             if (pxx == AForge.PixelFormat.Format8bppIndexed || pxx == AForge.PixelFormat.Format16bppGrayScale)
                                 cch = new AForge.Channel(i, bits, 1);
@@ -151,36 +176,74 @@ namespace BioLib
                         Console.WriteLine(exx.Message);
                     }
                     var stage = o.asImage().getStageLabel();
+                    
                     try
                     {
-                        for (int l = 0; l < store.getResolutionLevels(); l++)
+                        int i = 0;
+                        while(true)
                         {
-                            store.setResolutionLevel(l);
-                            ResolutionDescription[] res = store.getResolutionDescriptions();
+                            Omero.omero.RInt rint = rtypes.rint(i);
+                            Image im = o.asImage();
+                            im.setSeries(rint);
+                            RInt rin = im.getSeries();
                             AForge.PixelFormat px = AForge.PixelFormat.Format8bppIndexed;
-                            Pixels pxs = pd.asPixels();
-                            var pxt = pxs.getPixelsType();
-                            int bits = pxt.getBitSize().getValue();
-                            if (bits == 8)
-                                px = AForge.PixelFormat.Format8bppIndexed;
-                            else if (bits < 16 || bits == 16)
-                                px = AForge.PixelFormat.Format16bppGrayScale;
-                            else if (bits > 16 && bits <= 32)
-                                px = AForge.PixelFormat.Format32bppArgb;
-                            else if (bits > 32)
-                                px = AForge.PixelFormat.Format48bppRgb;
-                            double pxx = pxs.getPhysicalSizeX().getValue();
-                            double pyy = pxs.getPhysicalSizeX().getValue();
-                            double pzz = pxs.getPhysicalSizeX().getValue();
-                            if (stage.isLoaded())
+                            Pixels pxs = im.getPixels(0);
+                            store.setPixelsId(pxs.getId().getValue(),true);
+                            if(!store.requiresPixelsPyramid())
                             {
-                                Length? sxx = stage.getPositionX();
-                                Length? syy = stage.getPositionY();
-                                Length? szz = stage.getPositionZ();
-                                b.Resolutions.Add(new Resolution(xs, ys, px, pxx, pyy, pzz, sxx.getValue(), syy.getValue(), szz.getValue()));
+                                var pxto = pxs.getPixelsType();
+                                int bitso = pxto.getBitSize().getValue();
+                                int wo = pxs.getSizeX().getValue();
+                                int ho = pxs.getSizeY().getValue();
+                                px = GetPixelFormat(bitso);
+                                double pxxo = pxs.getPhysicalSizeX().getValue();
+                                double pyyo = pxs.getPhysicalSizeY().getValue();
+                                double pzzo = 0;
+                                var pzo = pxs.getPhysicalSizeZ();
+                                if (pzo != null)
+                                    pzzo = pzo.getValue();
+                                if (stage != null)
+                                {
+                                    var sta = (StageLabel)session.getQueryService().get("StageLabel", o.asImage().getStageLabel().getId().getValue());
+                                    Length? sxxo = sta.getPositionX();
+                                    Length? syyo = sta.getPositionY();
+                                    Length? szzo = sta.getPositionZ();
+                                    b.Resolutions.Add(new Resolution(wo, ho, px, pxxo * wo, pyyo * ho, pzzo, sxxo.getValue(), syyo.getValue(), szzo.getValue()));
+                                }
+                                else
+                                    b.Resolutions.Add(new Resolution(wo, ho, px, pxxo * wo, pyyo * ho, pzzo, 0, 0, 0));
+                                break;
                             }
                             else
-                                b.Resolutions.Add(new Resolution(xs, ys, px, pxx, pyy, pzz, 0, 0, 0));
+                            {
+                                b.Type = BioImage.ImageType.pyramidal;
+                            }
+                            if (i == store.getResolutionLevels())
+                                break;
+                            var ress = store.getResolutionDescriptions();
+                            var re = ress[i];
+                            var pxt = pxs.getPixelsType();
+                            int bits = pxt.getBitSize().getValue();
+                            int w = re.sizeX;
+                            int h = re.sizeY;
+                            px = GetPixelFormat(bits);
+                            double pxx = pxs.getPhysicalSizeX().getValue();
+                            double pyy = pxs.getPhysicalSizeY().getValue();
+                            double pzz = 0;
+                            var pz = pxs.getPhysicalSizeZ();
+                            if(pz != null)
+                                pzz = pz.getValue();
+                            if (stage != null)
+                            {
+                                var sta = (StageLabel)session.getQueryService().get("StageLabel", o.asImage().getStageLabel().getId().getValue());
+                                Length? sxx = sta.getPositionX();
+                                Length? syy = sta.getPositionY();
+                                Length? szz = sta.getPositionZ();
+                                b.Resolutions.Add(new Resolution(w, h, px, pxx * w, pyy * h, pzz, sxx.getValue(), syy.getValue(), szz.getValue()));
+                            }
+                            else
+                                b.Resolutions.Add(new Resolution(w, h, px, pxx * w, pyy * h, pzz, 0, 0, 0));
+                            i++;
                         }
                     }
                     catch (Exception ex)
@@ -188,23 +251,22 @@ namespace BioLib
                         AForge.PixelFormat px = AForge.PixelFormat.Format8bppIndexed;
                         var pxt = pd.asPixels().getPixelsType();
                         int bits = pxt.getBitSize().getValue();
-                        if (bits == 8)
-                            px = AForge.PixelFormat.Format8bppIndexed;
-                        else if (bits < 16 || bits == 16)
-                            px = AForge.PixelFormat.Format16bppGrayScale;
-                        else if (bits > 16 && bits <= 32)
-                            px = AForge.PixelFormat.Format32bppArgb;
-                        else if (bits > 32)
-                            px = AForge.PixelFormat.Format48bppRgb;
+                        px = GetPixelFormat(bits);
                         double pxx = pd.asPixels().getPhysicalSizeX().getValue();
-                        double pyy = pd.asPixels().getPhysicalSizeX().getValue();
-                        double pzz = pd.asPixels().getPhysicalSizeX().getValue();
-                        if (stage.isLoaded())
+                        double pyy = pd.asPixels().getPhysicalSizeY().getValue();
+                        double pzz = 0;
+                        var pz = pd.asPixels().getPhysicalSizeZ();
+                        if (pz != null)
+                            pzz = pz.getValue();
+                        if (stage != null)
                         {
-                            Length? sxx = stage.getPositionX();
-                            Length? syy = stage.getPositionY();
-                            Length? szz = stage.getPositionZ();
-                            b.Resolutions.Add(new Resolution(xs, ys, px, pxx, pyy, pzz, sxx.getValue(), syy.getValue(), szz.getValue()));
+                            if (stage.isLoaded())
+                            {
+                                Length? sxx = stage.getPositionX();
+                                Length? syy = stage.getPositionY();
+                                Length? szz = stage.getPositionZ();
+                                b.Resolutions.Add(new Resolution(xs, ys, px, pxx, pyy, pzz, sxx.getValue(), syy.getValue(), szz.getValue()));
+                            }
                         }
                         else
                             b.Resolutions.Add(new Resolution(xs, ys, px, pxx, pyy, pzz, 0, 0, 0));
@@ -216,22 +278,43 @@ namespace BioLib
                         {
                             for (int t = 0; t < ts; t++)
                             {
-                                Pixels ps = pd.asPixels();
-                                int chc = ps.sizeOfChannels();
-                                store.setPixelsId(ps.getId().getValue(), true);
-                                byte[] bts = store.getPlane(z, c, t);
-                                PixelsType pxt = ps.getPixelsType();
-                                AForge.PixelFormat px = AForge.PixelFormat.Format8bppIndexed;
-                                int bits = pxt.getBitSize().getValue();
-                                if (bits == 8)
-                                    px = AForge.PixelFormat.Format8bppIndexed;
-                                else if (bits < 16 || bits == 16)
-                                    px = AForge.PixelFormat.Format16bppGrayScale;
-                                else if (bits > 16 && bits <= 32)
-                                    px = AForge.PixelFormat.Format32bppArgb;
-                                else if (bits > 32)
-                                    px = AForge.PixelFormat.Format48bppRgb;
-                                b.Buffers.Add(new AForge.Bitmap(xs, ys, px, bts, new AForge.ZCT(z, c, t), ""));
+                                if (b.isPyramidal)
+                                {
+                                    Pixels ps = pd.asPixels();
+                                    int chc = ps.sizeOfChannels();
+                                    store.setPixelsId(ps.getId().getValue(), true);
+                                    store.setResolutionLevel(0);
+                                    if (xs > 1920 || ys > 1080)
+                                    {
+                                        byte[] bts = store.getTile(z, c, t, 0, 0, 1920, 1080);
+                                        PixelsType pxt = ps.getPixelsType();
+                                        AForge.PixelFormat px = AForge.PixelFormat.Format8bppIndexed;
+                                        int bits = pxt.getBitSize().getValue();
+                                        px = GetPixelFormat(bits);
+                                        b.Buffers.Add(new AForge.Bitmap("", 1920, 1080, px, bts, new AForge.ZCT(z, c, t), 0, null, false));
+                                    }
+                                    else
+                                    {
+                                        byte[] bts = store.getTile(z, c, t, 0, 0, xs, ys);
+                                        PixelsType pxt = ps.getPixelsType();
+                                        AForge.PixelFormat px = AForge.PixelFormat.Format8bppIndexed;
+                                        int bits = pxt.getBitSize().getValue();
+                                        px = GetPixelFormat(bits);
+                                        b.Buffers.Add(new AForge.Bitmap("", xs, ys, px, bts, new AForge.ZCT(z, c, t), 0, null, false));
+                                    }
+                                }
+                                else
+                                {
+                                    Pixels ps = pd.asPixels();
+                                    int chc = ps.sizeOfChannels();
+                                    store.setPixelsId(ps.getId().getValue(), true);
+                                    byte[] bts = store.getPlane(z, c, t);
+                                    PixelsType pxt = ps.getPixelsType();
+                                    AForge.PixelFormat px = AForge.PixelFormat.Format8bppIndexed;
+                                    int bits = pxt.getBitSize().getValue();
+                                    px = GetPixelFormat(bits);
+                                    b.Buffers.Add(new AForge.Bitmap("", xs, ys, px, bts, new AForge.ZCT(z, c, t), 0, null, false));
+                                }
                             }
                         }
                     }
@@ -244,6 +327,11 @@ namespace BioLib
                         b.StackThreshold(true);
                     else
                         b.StackThreshold(false);
+                    b.Tag = "OMERO";
+                    if(b.isPyramidal)
+                    {
+                        b.SlideBase = new SlideBase(b, SlideImage.Open(b));
+                    }
                     return b;
                 }
                 while (itr.hasNext());
@@ -254,8 +342,49 @@ namespace BioLib
             }
             return null;
         }
-        public static Bitmap[] GetThumbnails(string[] filenames, int width, int height)
+        public static BioImage GetImage(long id)
         {
+            string n = browsefacil.getImage(sc, id).getName();
+            return GetImage(n);
+        }
+        public static Bitmap GetTile(BioImage b, ZCT coord, int x, int y, int width, int height)
+        {
+            var itr = images.iterator();
+            java.util.List li = new java.util.ArrayList();
+            java.util.ArrayList imgs = new java.util.ArrayList();
+            do
+            {
+                java.util.ArrayList list = new java.util.ArrayList();
+                ImageData o = (ImageData)itr.next();
+                string name = o.getName();
+                if (name != b.Filename)
+                    continue;
+                PixelsData pd = o.getDefaultPixels();
+                int zs = pd.getSizeZ();
+                int cs = pd.getSizeC();
+                int ts = pd.getSizeT();
+                long pid = o.getId();
+                b.Filename = name;
+                b.ID = name;
+                long ind = o.getId();
+                long ll = pd.getId();
+                list.add(java.lang.Long.valueOf(ind));
+                Pixels ps = pd.asPixels();
+                int chc = ps.sizeOfChannels();
+                store.setPixelsId(ps.getId().getValue(), true);
+                store.setResolutionLevel(0);
+                byte[] bts = store.getTile(coord.Z, coord.C, coord.T, x, y, width, height);
+                PixelsType pxt = ps.getPixelsType();
+                AForge.PixelFormat px = AForge.PixelFormat.Format8bppIndexed;
+                int bits = pxt.getBitSize().getValue();
+                px = GetPixelFormat(bits);
+                return new AForge.Bitmap("", width, height, px, bts, coord, 0, null, false);
+            } while (itr.hasNext());
+            return null;
+        }
+        public static Dictionary<long,Pixbuf> GetThumbnails(string[] filenames, int width, int height)
+        {
+            Dictionary<long, Pixbuf> dict = new Dictionary<long, Pixbuf>();
             try
             {
                 var meta = session.getMetadataService();
@@ -268,7 +397,7 @@ namespace BioLib
                 BrowseFacility facility = (BrowseFacility)gateway.getFacility(brFacility);
                 var uims = facility.getUserImages(sc);
                 var itr = uims.iterator();
-                List<Bitmap> images = new List<Bitmap>();   
+                List<Pixbuf> images = new List<Pixbuf>();   
                 while (itr.hasNext())
                 {
                     var img = (ImageData)itr.next();
@@ -281,12 +410,12 @@ namespace BioLib
                             long pixelId = img.getDefaultPixels().getId();
                             store.setPixelsId(pixelId);
                             byte[] thumbnailBytes = store.getThumbnail(Omero::omero.rtypes.rint(width), Omero::omero.rtypes.rint(height));
-                            Bitmap bm = new Bitmap(width, height, PixelFormat.Format32bppArgb, thumbnailBytes, new ZCT(), "");
-                            images.Add(bm);
+                            Pixbuf pf = new Pixbuf(thumbnailBytes);
+                            dict.Add(img.getId(), pf);
                         }
                     }
                 }
-                return images.ToArray();
+                return dict;
             }
             catch (Exception e)
             {
@@ -294,9 +423,29 @@ namespace BioLib
                 return null;
             }
         }
+        public static string GetNameFromID(long id)
+        {
+            return browsefacil.getImage(sc, id).getName();
+        }
+        private static PixelFormat GetPixelFormat(int bits)
+        {
+            PixelFormat px = PixelFormat.Format8bppIndexed;
+            if (bits == 8)
+                px = AForge.PixelFormat.Format8bppIndexed;
+            else if (bits < 16 || bits == 16)
+                px = AForge.PixelFormat.Format16bppGrayScale;
+            else if (bits > 16 && bits <= 24)
+                px = AForge.PixelFormat.Format24bppRgb;
+            else if (bits == 32)
+                px = PixelFormat.Format32bppArgb;
+            else if (bits > 32)
+                px = AForge.PixelFormat.Format48bppRgb;
+            return px;
+        }
         public static List<string> GetAllFiles()
         {
             var meta = session.getMetadataService();
+
             ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
             RLong id = sec.getId();
             SecurityContext sc = new SecurityContext(id.getValue());
@@ -317,14 +466,6 @@ namespace BioLib
         }
         public static List<string> GetDatasets()
         {
-            // Initialize OMERO client and gateway
-            gateway = new Gateway(new SimpleLogger());
-            LoginCredentials credentials = new LoginCredentials();
-            credentials.getServer().setHostname(host);
-            credentials.getServer().setPort(port);
-            credentials.getUser().setUsername(username);
-            credentials.getUser().setPassword(password);
-            experimenter = gateway.connect(credentials);
             var meta = session.getMetadataService();
             ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
             RLong id = sec.getId();
@@ -344,14 +485,7 @@ namespace BioLib
         }
         public static List<DatasetData> GetDatasetsData()
         {
-            var meta = session.getMetadataService();
-            ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
-            RLong id = sec.getId();
-            SecurityContext sc = new SecurityContext(id.getValue());
-            // Access BrowseFacility
-            BrowseFacility facility = (BrowseFacility)gateway.getFacility(brFacility);
-            MetadataFacility mf = (MetadataFacility)gateway.getFacility(metaFacility);
-            var d = facility.getDatasets(sc);
+            var d = browsefacil.getDatasets(sc);
             var itr = d.iterator();
             List<DatasetData> dbs = new List<DatasetData>();
             while (itr.hasNext())
@@ -363,14 +497,7 @@ namespace BioLib
         }
         public static List<string> GetFolders()
         {
-            var meta = session.getMetadataService();
-            ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
-            RLong id = sec.getId();
-            SecurityContext sc = new SecurityContext(id.getValue());
-            // Access BrowseFacility
-            BrowseFacility facility = (BrowseFacility)gateway.getFacility(brFacility);
-            MetadataFacility mf = (MetadataFacility)gateway.getFacility(metaFacility);
-            var d = facility.getFolders(sc);
+            var d = browsefacil.getFolders(sc);
             var itr = d.iterator();
             List<string> dbs = new List<string>();
             while (itr.hasNext())
@@ -381,15 +508,7 @@ namespace BioLib
         }
         public static List<string> GetDatasetFiles(string db)
         {
-            var meta = session.getMetadataService();
-            ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
-            RLong id = sec.getId();
-            SecurityContext sc = new SecurityContext(id.getValue());
-            // Access BrowseFacility
-            MetadataFacility mf = (MetadataFacility)gateway.getFacility(metaFacility);
-            BrowseFacility facility = (BrowseFacility)gateway.getFacility(brFacility);
-            
-            var d = facility.getDatasets(sc);
+            var d = browsefacil.getDatasets(sc);
             var itr = d.iterator();
             while (itr.hasNext())
             {
@@ -398,7 +517,7 @@ namespace BioLib
                 {
                     java.util.ArrayList ar = new java.util.ArrayList();
                     ar.add(java.lang.Long.valueOf(idr.getId()));
-                    var ims = facility.getImagesForDatasets(sc,ar);
+                    var ims = browsefacil.getImagesForDatasets(sc,ar);
                     var itr2 = ims.iterator();
                     List<string> fs = new List<string>();
                     while (itr2.hasNext())
@@ -413,29 +532,46 @@ namespace BioLib
         }
         public static List<string> GetDatasetFiles(long dbid)
         {
-            var meta = session.getMetadataService();
-            ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
-            RLong id = sec.getId();
-            SecurityContext sc = new SecurityContext(id.getValue());
-            // Access BrowseFacility
-            BrowseFacility facility = (BrowseFacility)gateway.getFacility(brFacility);
-            MetadataFacility mf = (MetadataFacility)gateway.getFacility(metaFacility);
-            var d = facility.getDatasets(sc);
+            var d = browsefacil.getDatasets(sc);
             var itr = d.iterator();
             while (itr.hasNext())
             {
-                Dataset idr = (Dataset)itr.next();
-                if (dbid == idr.getId().getValue())
+                DatasetData idr = (DatasetData)itr.next();
+                if (dbid == idr.getId())
                 {
                     java.util.ArrayList ar = new java.util.ArrayList();
-                    ar.add(idr);
-                    var imgs = facility.getImagesForDatasets(sc,ar);
+                    ar.add(java.lang.Long.valueOf(idr.getId()));
+                    var imgs = browsefacil.getImagesForDatasets(sc,ar);
                     var itr2 = imgs.iterator();
                     List<string> str = new List<string>();
                     while (itr2.hasNext())
                     {
                         ImageData imageData = (ImageData)itr2.next();
                         str.Add(imageData.getName());
+                    }
+                    return str;
+                }
+            }
+            return null;
+        }
+        public static List<long> GetDatasetIds(long dbid)
+        {
+            var d = browsefacil.getDatasets(sc);
+            var itr = d.iterator();
+            while (itr.hasNext())
+            {
+                DatasetData idr = (DatasetData)itr.next();
+                if (dbid == idr.getId())
+                {
+                    java.util.ArrayList ar = new java.util.ArrayList();
+                    ar.add(java.lang.Long.valueOf(idr.getId()));
+                    var imgs = browsefacil.getImagesForDatasets(sc, ar);
+                    var itr2 = imgs.iterator();
+                    List<long> str = new List<long>();
+                    while (itr2.hasNext())
+                    {
+                        ImageData imageData = (ImageData)itr2.next();
+                        str.Add(imageData.getId());
                     }
                     return str;
                 }
