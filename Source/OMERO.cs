@@ -137,9 +137,7 @@ namespace BioLib
                     {
                         var acq = metafacil.getChannelData(sc, ind);
                         int s = acq.size();
-                        if (s == 1)
-                            s = 2;
-                        for (int i = 0; i < s - 1; i++)
+                        for (int i = 0; i < s; i++)
                         {
                             var ch = (ChannelData)acq.get(i);
                             var ac = metafacil.getImageAcquisitionData(sc, ind);
@@ -161,6 +159,8 @@ namespace BioLib
                                 cch.Emission = (int)em.getValue();
                             cch.Color = color;
                             cch.Name = ch.getName();
+                            if (cch.Name == null)
+                                cch.Name = i.ToString();
                             b.Channels.Add(cch);
                         }
                     }
