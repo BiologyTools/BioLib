@@ -49,8 +49,7 @@
 		<PackageReference Include="OMERO.NET" Version="1.0.4">
 			<Aliases>Omero</Aliases>
 		</PackageReference>
-		
-    <PackageReference Include="OpenSlideGTK" Version="2.1.1" />
+		<PackageReference Include="OpenSlideGTK" Version="2.1.1" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.6" />
   </ItemGroup>
   <ItemGroup>

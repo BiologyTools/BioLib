@@ -123,7 +123,7 @@ namespace BioLib
             string ext = GetExtensions(s);
             if (name.EndsWith("-" + i))
                 name = name.Substring(name.LastIndexOf('-'), name.Length - name.LastIndexOf('-'));
-            return name + "-" + (i+1) + ext;
+            return name + "-" + (i + 1) + ext;
         }
         /// This function removes an image from the table
         /// 
@@ -333,7 +333,7 @@ namespace BioLib
                     return BoundingBox;
                 if (type == Type.Rectangle || type == Type.Ellipse)
                     return new RectangleD(Points[0].X, Points[0].Y, Points[1].X - Points[0].X, Points[2].Y - Points[0].Y);
-                if(type == Type.Mask)
+                if (type == Type.Mask)
                 {
                     return new RectangleD(roiMask.X * roiMask.PhysicalSizeX, roiMask.Y * roiMask.PhysicalSizeY, roiMask.Width * roiMask.PhysicalSizeX, roiMask.Height * roiMask.PhysicalSizeY);
                 }
@@ -417,7 +417,7 @@ namespace BioLib
         {
             get
             {
-                if(type == Type.Mask)
+                if (type == Type.Mask)
                 {
                     return roiMask.Height * roiMask.PhysicalSizeY;
                 }
@@ -473,17 +473,17 @@ namespace BioLib
         public int shapeIndex = 0;
         public bool closed = false;
         bool selected = false;
-        public bool Selected 
-        { 
-            get { return selected; } 
-            set 
-            { 
+        public bool Selected
+        {
+            get { return selected; }
+            set
+            {
                 if (roiMask != null)
-                roiMask.Selected = value;
+                    roiMask.Selected = value;
                 selected = value;
-                if(!selected)
-                selectedPoints.Clear();
-            } 
+                if (!selected)
+                    selectedPoints.Clear();
+            }
         }
         public bool subPixel = false;
         public Mask roiMask { get; set; }
@@ -507,20 +507,20 @@ namespace BioLib
             Gdk.Pixbuf pixbuf;
             Gdk.Pixbuf colored;
             bool selected = false;
-            internal bool Selected 
-            { 
-                get { return selected; } 
-                set 
-                { 
+            internal bool Selected
+            {
+                get { return selected; }
+                set
+                {
                     selected = value;
-                } 
+                }
             }
             public bool IsSelected(int x, int y)
             {
                 int ind = y * width + x;
                 if (ind >= mask.Length)
                     return false;
-                if (mask[ind]>min)
+                if (mask[ind] > min)
                 {
                     return true;
                 }
@@ -644,7 +644,7 @@ namespace BioLib
             {
                 if (updateColored || forceUpdate)
                 {
-                    UpdateColored(col,alpha);
+                    UpdateColored(col, alpha);
                     return colored;
                 }
                 else
@@ -861,9 +861,9 @@ namespace BioLib
 
             public void Dispose()
             {
-                if(pixbuf!=null)
+                if (pixbuf != null)
                     pixbuf.Dispose();
-                if(colored!=null)
+                if (colored != null)
                     colored.Dispose();
                 mask = null;
             }
@@ -948,7 +948,7 @@ namespace BioLib
         /// @param scale the scale of the image
         /// 
         /// @return A rectangle with the following properties:
-        public RectangleD GetSelectBound(double scaleX,double scaleY)
+        public RectangleD GetSelectBound(double scaleX, double scaleY)
         {
             if (type == Type.Mask)
                 return BoundingBox;
@@ -976,7 +976,7 @@ namespace BioLib
         /// </returns>
         public PointD[] ImagePoints(Resolution res)
         {
-            if(type == Type.Rectangle || type == Type.Mask)
+            if (type == Type.Rectangle || type == Type.Mask)
             {
                 PointD[] pts = new PointD[4];
                 pts[0] = PointsD[0];
@@ -1116,12 +1116,12 @@ namespace BioLib
             an.closed = true;
             return an;
         }
-        public static ROI CreateMask(ZCT coord, float[] mask,int width,int height,PointD loc, double physicalX, double physicalY)
+        public static ROI CreateMask(ZCT coord, float[] mask, int width, int height, PointD loc, double physicalX, double physicalY)
         {
             ROI an = new ROI();
             an.coord = coord;
             an.type = Type.Mask;
-            an.roiMask = new Mask(mask, width, height,physicalX,physicalY,loc.X,loc.Y);
+            an.roiMask = new Mask(mask, width, height, physicalX, physicalY, loc.X, loc.Y);
             an.AddPoint(loc);
             an.X = loc.X + (an.roiMask.X * an.roiMask.PhysicalSizeX);
             an.Y = loc.X + (an.roiMask.Y * an.roiMask.PhysicalSizeY);
@@ -1132,7 +1132,7 @@ namespace BioLib
             ROI an = new ROI();
             an.coord = coord;
             an.type = Type.Mask;
-            an.roiMask = new Mask(mask, width, height, physicalX, physicalY, loc.X,loc.Y);
+            an.roiMask = new Mask(mask, width, height, physicalX, physicalY, loc.X, loc.Y);
             an.AddPoint(loc);
             an.X = loc.X + an.roiMask.X;
             an.Y = loc.X + an.roiMask.Y;
@@ -1304,7 +1304,7 @@ namespace BioLib
         /// 
         public void UpdateBoundingBox()
         {
-            if(type == Type.Mask)
+            if (type == Type.Mask)
             {
                 double minx = double.MaxValue;
                 double miny = double.MaxValue;
@@ -1358,7 +1358,7 @@ namespace BioLib
         }
         public void Dispose()
         {
-            if(roiMask!=null)
+            if (roiMask != null)
             {
                 roiMask.Dispose();
             }
@@ -1398,7 +1398,7 @@ namespace BioLib
             for (int i = 0; i < rois.Length; i++)
             {
                 ROI r = rois[i];
-                if(r.Rect.IntersectsWith(first.GetCenter()))
+                if (r.Rect.IntersectsWith(first.GetCenter()))
                 {
 
                 }
@@ -2385,29 +2385,29 @@ namespace BioLib
         /// <param name="shape">The shape of the target multi-dimensional array.</param>
         /// <returns>The multi-dimensional array.</returns>
         public static TArray ConvertToMultidimensional<T, TArray>(Array flatArray, int[] shape)
+        {
+            if (flatArray.Length != shape.Aggregate(1, (a, b) => a * b))
+                throw new ArgumentException("The shape does not match the length of the flat array.");
+
+            var result = (Array)Array.CreateInstance(typeof(T), shape);
+
+            int[] indices = new int[shape.Length];
+            for (int i = 0; i < flatArray.Length; i++)
             {
-                if (flatArray.Length != shape.Aggregate(1, (a, b) => a * b))
-                    throw new ArgumentException("The shape does not match the length of the flat array.");
-
-                var result = (Array)Array.CreateInstance(typeof(T), shape);
-
-                int[] indices = new int[shape.Length];
-                for (int i = 0; i < flatArray.Length; i++)
+                // Compute the multi-dimensional indices
+                int offset = i;
+                for (int j = shape.Length - 1; j >= 0; j--)
                 {
-                    // Compute the multi-dimensional indices
-                    int offset = i;
-                    for (int j = shape.Length - 1; j >= 0; j--)
-                    {
-                        indices[j] = offset % shape[j];
-                        offset /= shape[j];
-                    }
-
-                    // Set the value in the multi-dimensional array
-                    result.SetValue(flatArray.GetValue(i), indices);
+                    indices[j] = offset % shape[j];
+                    offset /= shape[j];
                 }
 
-                return (TArray)(object)result;
+                // Set the value in the multi-dimensional array
+                result.SetValue(flatArray.GetValue(i), indices);
             }
+
+            return (TArray)(object)result;
+        }
         static T ReadValue<T>(BinaryReader reader) where T : struct
         {
             if (typeof(T) == typeof(float))
@@ -3007,7 +3007,7 @@ namespace BioLib
         int level = 0;
         public int Level
         {
-            get 
+            get
             {
                 if (Type == ImageType.well)
                     return level;
@@ -3016,12 +3016,12 @@ namespace BioLib
                     l = OpenSlideGTK.TileUtil.GetLevel(openslideBase.Schema.Resolutions, Resolution);
                 else
                     if (slideBase != null)
-                        l = LevelFromResolution(Resolution);
+                    l = LevelFromResolution(Resolution);
                 if (l < 0)
                     return 0;
                 return l;
             }
-            set 
+            set
             {
                 if (value < 0)
                     return;
@@ -3074,15 +3074,15 @@ namespace BioLib
         private int sizeZ, sizeC, sizeT;
         private Statistics statistics;
         private double resolution = 1;
-        public double Resolution 
-        { 
+        public double Resolution
+        {
             get { return resolution; }
-            set 
+            set
             {
                 if (value < 0)
                     return;
                 resolution = value;
-            } 
+            }
         }
         public static float Progress = 0;
         ImageInfo imageInfo = new ImageInfo();
@@ -3266,7 +3266,7 @@ namespace BioLib
         {
             int l = 0;
             double[] ds = GetLevelDownsamples();
-            if(MacroResolution.HasValue)
+            if (MacroResolution.HasValue)
             {
                 for (int i = 0; i < MacroResolution.Value; i++)
                 {
@@ -3307,7 +3307,7 @@ namespace BioLib
         }
         public double PhysicalSizeX
         {
-            get 
+            get
             {
                 if (isPyramidal)
                     return Resolutions[Level].PhysicalSizeX;
@@ -3364,14 +3364,15 @@ namespace BioLib
                 else
                     return imageInfo.stageSizeX;
             }
-            set 
+            set
             {
                 imageInfo.StageSizeX = value;
             }
         }
         public double StageSizeY
         {
-            get {
+            get
+            {
                 if (isPyramidal)
                     return Resolutions[Level].StageSizeY;
                 else
@@ -3646,13 +3647,13 @@ namespace BioLib
         }
         public double Magnification
         {
-            get;set;
+            get; set;
         }
         public Order StackOrder
         {
-            get;set;
+            get; set;
         }
-        public object Tag { get;set; }
+        public object Tag { get; set; }
         public IntRange RRange
         {
             get
@@ -3779,7 +3780,7 @@ namespace BioLib
                 Buffers = bfs;
                 UpdateCoords(SizeZ, 3, SizeT);
             }
-            else 
+            else
             if (px == PixelFormat.Format24bppRgb)
             {
                 List<Bitmap> bfs = new List<Bitmap>();
@@ -3812,7 +3813,7 @@ namespace BioLib
                 Channels.Add(new Channel(0, 8, 1));
             }
             else
-            if(px == PixelFormat.Format16bppGrayScale)
+            if (px == PixelFormat.Format16bppGrayScale)
             {
                 foreach (var item in Buffers)
                 {
@@ -3824,7 +3825,7 @@ namespace BioLib
             {
                 foreach (var item in Buffers)
                 {
-                    if(Statistics.StackMax <= 1)
+                    if (Statistics.StackMax <= 1)
                         item.To8Bit(true);
                     else
                         item.To8Bit(false);
@@ -3894,7 +3895,7 @@ namespace BioLib
             {
                 for (int i = 0; i < Buffers.Count; i++)
                 {
-                    if(Statistics.StackMax <= 1)
+                    if (Statistics.StackMax <= 1)
                         Buffers[i].To16Bit(true);
                     else
                         Buffers[i].To16Bit(false);
@@ -4035,7 +4036,7 @@ namespace BioLib
                         bs[0] = new Bitmap(ID, SizeX, SizeY, Buffers[i].PixelFormat, Buffers[i].Bytes, new ZCT(Buffers[i].Coordinate.Z, 0, Buffers[i].Coordinate.T), i, Buffers[i].Plane);
                         bs[1] = new Bitmap(ID, SizeX, SizeY, Buffers[i + 1].PixelFormat, Buffers[i + 1].Bytes, new ZCT(Buffers[i + 1].Coordinate.Z, 0, Buffers[i + 1].Coordinate.T), i + 1, Buffers[i + 1].Plane);
                         if (Channels.Count > 2)
-                            bs[2] = new Bitmap(ID, SizeX, SizeY, Buffers[i+2].PixelFormat, Buffers[i+2].Bytes, new ZCT(Buffers[i].Coordinate.Z, 0, Buffers[i+2].Coordinate.T), i+2, Buffers[i].Plane);
+                            bs[2] = new Bitmap(ID, SizeX, SizeY, Buffers[i + 2].PixelFormat, Buffers[i + 2].Bytes, new ZCT(Buffers[i].Coordinate.Z, 0, Buffers[i + 2].Coordinate.T), i + 2, Buffers[i].Plane);
                         Bitmap bbs = Bitmap.RGB16To48(bs);
                         for (int b = 0; b < 3; b++)
                         {
@@ -4108,8 +4109,8 @@ namespace BioLib
             AutoThreshold(this, true);
             StackThreshold(false);
         }
-        public int? MacroResolution { get;set; }
-        public int? LabelResolution { get;set; }
+        public int? MacroResolution { get; set; }
+        public int? LabelResolution { get; set; }
         /*
         void SetLabelMacroResolutions(Resolution[] ress, List<Tuple<int, int>> prs, int serie)
         {
@@ -4187,7 +4188,7 @@ namespace BioLib
                 ZCT co = Buffers[i].Coordinate;
                 UnmanagedImage b = GetFiltered(i, rf, gf, bf);
                 Bitmap inf = new Bitmap(bm.ID, b, co, i);
-                bm.SetFrameIndex(co.Z, co.C, co.T,i);
+                bm.SetFrameIndex(co.Z, co.C, co.T, i);
                 bm.Buffers.Add(inf);
             }
             foreach (Channel item in bm.Channels)
@@ -4214,7 +4215,7 @@ namespace BioLib
             for (int im = 0; im < Buffers.Count; im++)
             {
                 ZCT co = new ZCT(z, c, t);
-                SetFrameIndex(co.Z, co.C, co.T,im);
+                SetFrameIndex(co.Z, co.C, co.T, im);
                 Buffers[im].Coordinate = co;
                 if (c < SizeC - 1)
                     c++;
@@ -4252,7 +4253,7 @@ namespace BioLib
             for (int im = 0; im < Buffers.Count; im++)
             {
                 ZCT co = new ZCT(z, c, t);
-                SetFrameIndex(co.Z, co.C, co.T,im);
+                SetFrameIndex(co.Z, co.C, co.T, im);
                 Buffers[im].Coordinate = co;
                 if (c < SizeC - 1)
                     c++;
@@ -4293,7 +4294,7 @@ namespace BioLib
                 for (int im = 0; im < fr; im++)
                 {
                     ZCT co = new ZCT(z, c, t);
-                    SetFrameIndex(co.Z, co.C, co.T,im);
+                    SetFrameIndex(co.Z, co.C, co.T, im);
                     if (c < SizeC - 1)
                         c++;
                     else
@@ -4317,7 +4318,7 @@ namespace BioLib
                 for (int im = 0; im < fr; im++)
                 {
                     ZCT co = new ZCT(z, c, t);
-                    SetFrameIndex(co.Z, co.C, co.T,im);
+                    SetFrameIndex(co.Z, co.C, co.T, im);
                     if (z < SizeZ - 1)
                         z++;
                     else
@@ -4342,7 +4343,7 @@ namespace BioLib
                 for (int im = 0; im < fr; im++)
                 {
                     ZCT co = new ZCT(z, c, t);
-                    SetFrameIndex(co.Z, co.C, co.T,im);
+                    SetFrameIndex(co.Z, co.C, co.T, im);
                     if (t < SizeT - 1)
                         t++;
                     else
@@ -4674,7 +4675,7 @@ namespace BioLib
             res.imagesPerSeries = res.ImageCount / res.seriesCount;
             res.Coords = new int[res.SizeZ, res.SizeC, res.SizeT];
             res.Resolutions.Add(b2.Resolutions[0]);
-            res.Volume = new VolumeD(new Point3D(res.StageSizeX, res.StageSizeY, res.StageSizeZ), new Point3D(b2.SizeX,b2.SizeY,b2.SizeZ));
+            res.Volume = new VolumeD(new Point3D(res.StageSizeX, res.StageSizeY, res.StageSizeZ), new Point3D(b2.SizeX, b2.SizeY, b2.SizeZ));
             int i = 0;
             for (int ci = 0; ci < res.SizeC; ci++)
             {
@@ -4720,8 +4721,8 @@ namespace BioLib
             {
                 res.Channels.Add(b2.Channels[ci].Copy());
             }
-                res.rgbChannels[0] = 0;
-            if(res.Channels.Count > 1)
+            res.rgbChannels[0] = 0;
+            if (res.Channels.Count > 1)
                 res.rgbChannels[1] = 1;
             if (res.Channels.Count > 2)
                 res.rgbChannels[2] = 2;
@@ -4865,7 +4866,7 @@ namespace BioLib
                         bfs[0].Stats = Statistics.FromBytes(bfs[0]);
                         bfs[1].Stats = Statistics.FromBytes(bfs[1]);
                         bfs[2].Stats = Statistics.FromBytes(bfs[2]);
-                        ri.SetFrameIndex(Buffers[i].Coordinate.Z, Buffers[i].Coordinate.C, Buffers[i].Coordinate.T,i);
+                        ri.SetFrameIndex(Buffers[i].Coordinate.Z, Buffers[i].Coordinate.C, Buffers[i].Coordinate.T, i);
                         gi.SetFrameIndex(Buffers[i].Coordinate.Z, Buffers[i].Coordinate.C, Buffers[i].Coordinate.T, i);
                         bi.SetFrameIndex(Buffers[i].Coordinate.Z, Buffers[i].Coordinate.C, Buffers[i].Coordinate.T, i);
                     }
@@ -4889,7 +4890,7 @@ namespace BioLib
                         Bitmap bbf = new Bitmap(bi.ID, bImage, Buffers[i].Coordinate, ind++);
                         bbf.Stats = Statistics.FromBytes(bbf);
                         bi.Buffers.Add(bbf);
-                        bi.SetFrameIndex(Buffers[i].Coordinate.Z, Buffers[i].Coordinate.C, Buffers[i].Coordinate.T,i);
+                        bi.SetFrameIndex(Buffers[i].Coordinate.Z, Buffers[i].Coordinate.C, Buffers[i].Coordinate.T, i);
 
                     }
                 }
@@ -5071,7 +5072,7 @@ namespace BioLib
         /// @return The value of the pixel at the given coordinates.
         public ushort GetValue(int z, int c, int t, int x, int y)
         {
-            return GetValueRGB(new ZCTXY(z, c, t, x, y),0);
+            return GetValueRGB(new ZCTXY(z, c, t, x, y), 0);
         }
         /// > Get the value of a pixel at a given coordinate, x, y, and RGB index
         /// 
@@ -5566,7 +5567,7 @@ namespace BioLib
             if (inf && inr && inw)
                 initialized = true;
         }
-       
+
         private static List<Resolution> GetResolutions(BioImage b)
         {
             ImageReader re = b.imRead;
@@ -5639,10 +5640,10 @@ namespace BioLib
                                 catch (Exception ex)
                                 {
                                     Console.WriteLine(ex.Message);
-                                        res.StageSizeX = 0;
-                                        res.StageSizeY = 0;
+                                    res.StageSizeX = 0;
+                                    res.StageSizeY = 0;
                                 }
-                                
+
                             }
                             if (b.frameInterval == 0 && meta.getPixelsPhysicalSizeZ(r) != null)
                             {
@@ -5685,13 +5686,13 @@ namespace BioLib
                                     else
                                     res.StageSizeZ = 1;
                                     */
-                                    
+
                                 }
                                 catch (Exception ex)
                                 {
                                     Console.WriteLine(ex);
                                 }
-                                
+
                             }
 
                         }
@@ -6034,13 +6035,13 @@ namespace BioLib
             bool tiled = IsTiffTiled(file);
             Console.WriteLine("IsTiled=" + tiled.ToString());
             tile = tiled;
-            
+
             Stopwatch st = new Stopwatch();
             st.Start();
             Status = "Opening Image";
             progFile = file;
             BioImage b = new BioImage(file);
-            if(tiled && file.EndsWith(".tif") && !file.EndsWith(".ome.tif"))
+            if (tiled && file.EndsWith(".tif") && !file.EndsWith(".ome.tif"))
             {
                 //To open this we need libvips
                 vips = VipsSupport(b.file);
@@ -6240,7 +6241,7 @@ namespace BioLib
                         {
                             for (int z = 0; z < b.SizeZ; z++)
                             {
-                                Bitmap bmp = GetTile(b, b.GetFrameIndex(z,c,t), series, tileX, tileY, tileSizeX, tileSizeY);
+                                Bitmap bmp = GetTile(b, b.GetFrameIndex(z, c, t), b.level, tileX, tileY, tileSizeX, tileSizeY);
                                 b.Buffers.Add(bmp);
                                 bmp.Stats = Statistics.FromBytes(bmp);
                             }
@@ -6273,7 +6274,7 @@ namespace BioLib
                 Gdk.Pixbuf pf = new Gdk.Pixbuf(file);
                 b.littleEndian = BitConverter.IsLittleEndian;
                 PixelFormat px = GetPixelFormat(pf.NChannels, pf.BitsPerSample);
-                b.Resolutions.Add(new Resolution(pf.Width, pf.Height,px,96 * (1/2.54) / 1000, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000,0,0,0));
+                b.Resolutions.Add(new Resolution(pf.Width, pf.Height, px, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 0, 0, 0));
                 b.bitsPerPixel = pf.BitsPerSample;
                 b.Buffers.Add(new Bitmap(pf.Width, pf.Height, pf.Width * pf.NChannels, px, pf.Pixels));
                 b.Buffers.Last().ID = Bitmap.CreateID(file, 0);
@@ -6452,7 +6453,7 @@ namespace BioLib
                 BioFormats::ome.units.quantity.Length p2 = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeY), BioFormats::ome.units.UNITS.MICROMETER);
                 omexml.setPixelsPhysicalSizeY(p2, serie);
                 BioFormats::ome.units.quantity.Length p3 = new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeZ), BioFormats::ome.units.UNITS.MICROMETER);
-                if(b.PhysicalSizeZ == 0)
+                if (b.PhysicalSizeZ == 0)
                     omexml.setPixelsPhysicalSizeZ(new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(1), BioFormats::ome.units.UNITS.MICROMETER), serie);
                 else
                     omexml.setPixelsPhysicalSizeZ(new BioFormats::ome.units.quantity.Length(java.lang.Double.valueOf(b.PhysicalSizeZ), BioFormats::ome.units.UNITS.MICROMETER), serie);
@@ -6484,7 +6485,7 @@ namespace BioLib
 
                 for (int channel = 0; channel < chs.Count; channel++)
                 {
-                    Channel c =chs[channel];
+                    Channel c = chs[channel];
                     for (int r = 0; r < c.range.Length; r++)
                     {
                         omexml.setChannelID("Channel:" + channel + ":" + serie, r, channel);
@@ -6809,7 +6810,7 @@ namespace BioLib
             {
                 Console.WriteLine(e.Message);
             }
-            
+
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, files, f, planes);
         }
         /// <summary>
@@ -7032,9 +7033,9 @@ namespace BioLib
                                 Bitmap b = new Bitmap(shape[3], shape[4], PixelFormat.Float);
                                 for (int y = 0; y < shape[4]; y++)
                                 {
-                                    for (int x = 0;  x < shape[3];  x++)
+                                    for (int x = 0; x < shape[3]; x++)
                                     {
-                                        b.SetValue(x,y,fs[t, c, z, x, y]);
+                                        b.SetValue(x, y, fs[t, c, z, x, y]);
                                     }
                                 }
                                 bm.Buffers.Add(b);
@@ -7042,7 +7043,7 @@ namespace BioLib
                         }
                     }
                 }
-                else if(dataType == NumPy.NpyDataType.UInt8)
+                else if (dataType == NumPy.NpyDataType.UInt8)
                 {
                     uint[,,,,] fs = NumPy.ConvertToMultidimensional<uint, uint[,,,,]>(data, shape);
                     for (int z = 0; z < shape[2]; z++)
@@ -7196,7 +7197,7 @@ namespace BioLib
             bm.Coords = new int[bm.SizeZ, bm.SizeC, bm.SizeT];
             bm.UpdateCoords();
             bm.bitsPerPixel = 8;
-            if(dataType == NumPy.NpyDataType.Float32)
+            if (dataType == NumPy.NpyDataType.Float32)
                 bm.Resolutions.Add(new Resolution(bm.SizeX, bm.SizeY, PixelFormat.Float, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 0, 0, 0));
             else
             if (dataType == NumPy.NpyDataType.UInt32)
@@ -7301,7 +7302,7 @@ namespace BioLib
             try
             {
                 List<NetVips.Image> ims = new List<NetVips.Image>();
-                for (int i = 0; i < b.seriesCount;  i++)
+                for (int i = 0; i < b.seriesCount; i++)
                 {
                     b.vipPages.Add(NetVips.Image.Tiffload(b.file, i));
                 }
@@ -7311,7 +7312,7 @@ namespace BioLib
             {
                 Console.WriteLine(e.Message);
             }
-            
+
         }
         private static NetVips.Image[] SortImagesBySizeDescending(NetVips.Image[] images)
         {
@@ -7592,7 +7593,7 @@ namespace BioLib
                         ch.DiodeName = b.meta.getLightEmittingDiodeID(serie, i);
                     if (b.meta.getChannelLightSourceSettingsAttenuation(serie, i) != null)
                         ch.LightSourceAttenuation = b.meta.getChannelLightSourceSettingsAttenuation(serie, i).toString();
-                    
+
 
                 }
                 catch (Exception e)
@@ -7605,7 +7606,7 @@ namespace BioLib
             }
             try
             {
-                if(b.meta.getObjectiveNominalMagnification(serie, 0) != null)
+                if (b.meta.getObjectiveNominalMagnification(serie, 0) != null)
                 {
                     b.Magnification = b.meta.getObjectiveNominalMagnification(serie, 0).intValue();
                 }
@@ -7614,7 +7615,7 @@ namespace BioLib
             {
                 Console.WriteLine(e.Message);
             }
-            
+
             //If the file doens't have channels we initialize them.
             if (b.Channels.Count == 0)
             {
@@ -7679,7 +7680,7 @@ namespace BioLib
                     }
                     if (prs[serie].Item2 == 0)
                     {
-                        prs[serie] = new Tuple<int, int>(prs[serie].Item1, b.seriesCount-1);
+                        prs[serie] = new Tuple<int, int>(prs[serie].Item1, b.seriesCount - 1);
                     }
                 }
             }
@@ -7718,7 +7719,7 @@ namespace BioLib
             {
                 Console.WriteLine("No Stage Cooordinates");
             }
-            
+
             b.Volume = new VolumeD(new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ), new Point3D(b.PhysicalSizeX * SizeX, b.PhysicalSizeY * SizeY, b.PhysicalSizeZ * SizeZ));
             int rc = b.meta.getROICount();
             for (int im = 0; im < rc; im++)
@@ -7737,7 +7738,7 @@ namespace BioLib
                 }
                 for (int sc = 0; sc < scount; sc++)
                 {
-                    Status = "Reading ROI " + (sc+1).ToString() + "/" + scount;
+                    Status = "Reading ROI " + (sc + 1).ToString() + "/" + scount;
                     string typ = b.meta.getShapeType(im, sc);
                     ROI an = new ROI();
                     an.roiID = roiID;
@@ -8022,7 +8023,7 @@ namespace BioLib
                         double w = b.meta.getMaskWidth(im, sc).doubleValue();
                         double x = b.meta.getMaskX(im, sc).doubleValue();
                         double y = b.meta.getMaskY(im, sc).doubleValue();
-                        an = ROI.CreateMask(co, bts, (int)Math.Round(w / b.PhysicalSizeX), (int)Math.Round(h / b.PhysicalSizeY), new PointD(x * b.PhysicalSizeX, y * b.PhysicalSizeY) ,b.PhysicalSizeX,b.PhysicalSizeY); 
+                        an = ROI.CreateMask(co, bts, (int)Math.Round(w / b.PhysicalSizeX), (int)Math.Round(h / b.PhysicalSizeY), new PointD(x * b.PhysicalSizeX, y * b.PhysicalSizeY), b.PhysicalSizeX, b.PhysicalSizeY);
                         an.Text = b.meta.getMaskText(im, sc);
                         an.id = b.meta.getMaskID(im, sc);
                         an.Rect = new RectangleD(an.X, an.Y, an.W, an.H);
@@ -8063,7 +8064,7 @@ namespace BioLib
             b.Buffers = new List<Bitmap>();
             if (b.Type == ImageType.pyramidal)
             {
-                
+
                 try
                 {
 
@@ -8111,7 +8112,7 @@ namespace BioLib
                 {
                     Console.WriteLine(ex.Message);
                 }
-                
+
             }
             else
             {
@@ -8120,7 +8121,7 @@ namespace BioLib
                 for (int p = 0; p < pages; p++)
                 {
                     Progress = ((float)p / (float)pages) * 100;
-                    b.Buffers.Add(GetTile(b, p, serie, tilex, tiley, tileSizeX, tileSizeY));
+                    b.Buffers.Add(GetTile(b, p, b.Level, tilex, tiley, tileSizeX, tileSizeY));
                 }
             }
             int pls;
@@ -8158,16 +8159,16 @@ namespace BioLib
                     if (b.meta.getPlaneExposureTime(serie, bi) != null)
                         pl.Exposure = b.meta.getPlaneExposureTime(serie, bi).value().doubleValue();
                     b.Buffers[bi].Plane = pl;
-                } 
+                }
             //Bioformats gives a size of 3 for C when saved in ImageJ as RGB. We need to correct for this as C should be 1 for RGB.
             if (RGBChannelCount >= 3)
             {
                 b.sizeC = sumSamples / b.Channels[0].SamplesPerPixel;
             }
             string ord = reader.getDimensionOrder();
-            if(ord == "XYZCT")
+            if (ord == "XYZCT")
                 b.UpdateCoords(b.SizeZ, b.SizeC, b.SizeT, Order.ZCT);
-            else if(ord == "XYCZT")
+            else if (ord == "XYCZT")
                 b.UpdateCoords(b.SizeZ, b.SizeC, b.SizeT, Order.CZT);
             else if (ord == "XYTCZ")
                 b.UpdateCoords(b.SizeZ, b.SizeC, b.SizeT, Order.TCZ);
@@ -8178,7 +8179,7 @@ namespace BioLib
                 b.StackThreshold(false);
             try
             {
-                if(b.Type == ImageType.stack)
+                if (b.Type == ImageType.stack)
                     reader.close();
                 if (addToImages)
                     Images.AddImage(b);
@@ -8188,15 +8189,15 @@ namespace BioLib
                 Console.WriteLine(e.Message);
             }
             b.Loading = false;
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),false, file, serie, tab, addToImages, tile, tilex, tiley, tileSizeX, tileSizeY);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, serie, tab, addToImages, tile, tilex, tiley, tileSizeX, tileSizeY);
             return b;
         }
-        
-        public int GetFrameIndex(int z,int c, int t)
+
+        public int GetFrameIndex(int z, int c, int t)
         {
             try
             {
-                if(StackOrder == Order.ZCT)
+                if (StackOrder == Order.ZCT)
                 {
                     return Coords[z, c, t];
                 }
@@ -8211,7 +8212,7 @@ namespace BioLib
             {
                 return 0;
             }
-            
+
         }
         public void SetFrameIndex(int z, int c, int t, int val)
         {
@@ -8243,12 +8244,12 @@ namespace BioLib
         /// @return A Bitmap object.
         public static Bitmap GetTile(BioImage b, int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
         {
-            if(b.Tag != null)
+            if (b.Tag != null)
             {
                 if (b.Tag.ToString() != "OMERO")
                     return null;
                 //This is a OMERO file we need to update it.
-                return OMERO.GetTile(b, b.Coordinate, tilex, tiley, tileSizeX, tileSizeY);
+                return OMERO.GetTile(b, b.Coordinate, tilex, tiley, tileSizeX, tileSizeY, level);
             }
             if (vips && b.vipPages.Count > 0)
             {
@@ -8263,7 +8264,7 @@ namespace BioLib
             if (b.openSlideImage != null)
             {
                 byte[] bts = b.openSlideImage.ReadRegion(level, tilex, tiley, tileSizeX, tileSizeY);
-                Bitmap bm = new Bitmap("",tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0, null, true, true);
+                Bitmap bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0, null, true, true);
                 return bm;
             }
 
@@ -8336,7 +8337,7 @@ namespace BioLib
                 new Point3D(w * PhysicalSizeX, h * PhysicalSizeY, SizeZ * PhysicalSizeZ));
             bm.Resolutions.Add(new Resolution(w, h, bm.Buffers[0].PixelFormat, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ, StageSizeX, StageSizeY, StageSizeZ));
             bm.Resolutions.RemoveAt(0);
-            Recorder.AddLine("BioLib.Images.GetImage(\"" + bm.ID + "\").GetRegion("+ x + "," + y + "," + w + "," + h + ");",false);
+            Recorder.AddLine("BioLib.Images.GetImage(\"" + bm.ID + "\").GetRegion(" + x + "," + y + "," + w + "," + h + ");", false);
             return bm;
         }
         /// This function sets the minimum and maximum values of the image to the minimum and maximum
@@ -8577,7 +8578,7 @@ namespace BioLib
         {
             foreach (string file in files)
             {
-                await OpenAsync(file, OME, tab, images,0);
+                await OpenAsync(file, OME, tab, images, 0);
             }
         }
         /// It opens a file
@@ -8678,10 +8679,10 @@ namespace BioLib
                     }
                     else
                     {
-                        start:
+                    start:
                         int lev = LevelFromResolution(this.Resolution);
-                        byte[] bts = await slideBase.GetSlice(new BioLib.SliceInfo(Math.Round(PyramidalOrigin.X), Math.Round(PyramidalOrigin.Y), PyramidalSize.Width, PyramidalSize.Height, resolution,Coordinate));
-                        if(bts == null)
+                        byte[] bts = await slideBase.GetSlice(new BioLib.SliceInfo(Math.Round(PyramidalOrigin.X), Math.Round(PyramidalOrigin.Y), PyramidalSize.Width, PyramidalSize.Height, resolution, Coordinate));
+                        if (bts == null)
                         {
                             pyramidalOrigin = new PointD(0, 0);
                             Resolution = GetUnitPerPixel(lev) * 1.1f;
@@ -8689,7 +8690,7 @@ namespace BioLib
                         }
                         try
                         {
-                            Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), "");
+                            Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), "");
                             Buffers.Add(bmp);
                         }
                         catch (Exception e)
@@ -8721,8 +8722,8 @@ namespace BioLib
                     Buffers[i].Dispose();
                 }
                 Buffers.Clear();
-                if(imRead.getSeries()!=Level)
-                this.imRead.setSeries(Level);
+                if (imRead.getSeries() != Level)
+                    this.imRead.setSeries(Level);
                 int w = imRead.getSizeX();
                 int h = imRead.getSizeY();
                 for (int z = 0; z < SizeZ; z++)
@@ -8731,8 +8732,8 @@ namespace BioLib
                     {
                         for (int t = 0; t < SizeT; t++)
                         {
-                            byte[] bm = this.imRead.openBytes(Coords[z,c,t]);
-                            Bitmap bmp = new Bitmap(w, h, Resolutions[Level].PixelFormat, bm, new ZCT(z,c,t), "");
+                            byte[] bm = this.imRead.openBytes(Coords[z, c, t]);
+                            Bitmap bmp = new Bitmap(w, h, Resolutions[Level].PixelFormat, bm, new ZCT(z, c, t), "");
                             bmp.Stats = Statistics.FromBytes(bmp);
                             Buffers.Add(bmp);
                         }
@@ -8777,7 +8778,7 @@ namespace BioLib
                     Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), ""));
                 }
             }
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), true, x, y,w,h,resolution);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), true, x, y, w, h, resolution);
             return Buffers.ToArray();
         }
         /// > Update() is a function that calls the Update() function of the parent class
@@ -8785,7 +8786,7 @@ namespace BioLib
         {
             Update(this);
         }
-        
+
         public void Rename(string name)
         {
             this.Filename = Path.GetFileName(name);
@@ -8796,8 +8797,8 @@ namespace BioLib
         static int serie;
         static void OpenThread()
         {
-            if(omes)
-                OpenOME(openfile,serie,tab,add,false,0,0,0,0);
+            if (omes)
+                OpenOME(openfile, serie, tab, add, false, 0, 0, 0, 0);
             else
                 OpenFile(openfile, serie, tab, add);
         }
@@ -8847,15 +8848,15 @@ namespace BioLib
             else
                 SaveSeries(sts.ToArray(), savefile);
         }
-       /// <summary>
-       /// The function `SaveSeriesAsync` saves a series of `BioImage` objects to a file asynchronously.
-       /// </summary>
-       /// <param name="imgs">imgs is an array of BioImage objects.</param>
-       /// <param name="file">The "file" parameter is a string that represents the file path where the
-       /// series of BioImages will be saved.</param>
-       /// <param name="ome">The "ome" parameter is a boolean flag that indicates whether the images
-       /// should be saved in OME-TIFF format or not. If "ome" is set to true, the images will be saved
-       /// in OME-TIFF format. If "ome" is set to false, the images will be</param>
+        /// <summary>
+        /// The function `SaveSeriesAsync` saves a series of `BioImage` objects to a file asynchronously.
+        /// </summary>
+        /// <param name="imgs">imgs is an array of BioImage objects.</param>
+        /// <param name="file">The "file" parameter is a string that represents the file path where the
+        /// series of BioImages will be saved.</param>
+        /// <param name="ome">The "ome" parameter is a boolean flag that indicates whether the images
+        /// should be saved in OME-TIFF format or not. If "ome" is set to true, the images will be saved
+        /// in OME-TIFF format. If "ome" is set to false, the images will be</param>
         public static async Task SaveSeriesAsync(BioImage[] imgs, string file, bool ome)
         {
             sts.Clear();
@@ -8868,7 +8869,7 @@ namespace BioLib
             await Task.Run(SaveSeriesThread);
         }
         static Enums.ForeignTiffCompression comp;
-        static int compLev= 0;
+        static int compLev = 0;
         static BioImage[] bms;
         static void SavePyramidalThread()
         {
@@ -9305,7 +9306,7 @@ namespace BioLib
                     {
                         byte[] bts = meta.getMaskBinData(im, sc);
                         bool end = meta.getMaskBinDataBigEndian(im, sc).booleanValue();
-                        an = ROI.CreateMask(co, bts,(int)(an.W * physicalSizeX), (int)(an.H * physicalSizeY), new PointD(stageSizeX, stageSizeY),physicalSizeX,physicalSizeY);
+                        an = ROI.CreateMask(co, bts, (int)(an.W * physicalSizeX), (int)(an.H * physicalSizeY), new PointD(stageSizeX, stageSizeY), physicalSizeX, physicalSizeY);
                         an.Text = meta.getMaskText(im, sc);
                         an.id = meta.getMaskID(im, sc);
                         BioFormats::ome.xml.model.primitives.NonNegativeInteger nz = meta.getMaskTheZ(im, sc);
@@ -9551,7 +9552,7 @@ namespace BioLib
             string con = columns;
             con += ROIsToString(Annotations);
             File.WriteAllText(filename, con);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false,filename, Annotations);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, filename, Annotations);
         }
         /// It reads the CSV file and converts each line into a ROI object
         /// 
@@ -9659,11 +9660,11 @@ namespace BioLib
                     for (int t = 0; t < b.SizeT; t++)
                     {
                         int ind;
-                        if(b.Channels.Count > b.SizeC)
+                        if (b.Channels.Count > b.SizeC)
                         {
                             ind = b.GetFrameIndex(z, 0, t);
                         }
-                        else 
+                        else
                             ind = b.GetFrameIndex(z, c, t);
                         if (b.Buffers[ind].RGBChannelsCount == 1)
                             sts[0].AddStatistics(b.Buffers[ind].Stats[0]);
@@ -9735,7 +9736,7 @@ namespace BioLib
                 }
             }
 
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),false, im, Channel, Time);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, im, Channel, Time);
             return fr;
         }
         /// The function calculates the focus quality of a given bitmap image.
@@ -9772,7 +9773,7 @@ namespace BioLib
                         sum += p;
                         sumOfSquares += p * p;
                     }
-                Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(),true,b);
+                Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), true, b);
                 return sumOfSquares * b.SizeX * b.SizeY - sum * sum;
             }
         }
@@ -9917,5 +9918,5 @@ namespace BioLib
             }
             return a;
         }
-        }
+    }
 }

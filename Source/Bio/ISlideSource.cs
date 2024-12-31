@@ -9,13 +9,17 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using AForge;
 using Image = SixLabors.ImageSharp.Image;
-using OpenSlideGTK;
 namespace BioLib
 {
-    public class LruCache<TKey, TValue>
+    public class LruCache<TileInformation, TValue>
     {
+        public class Info
+        {
+            public ZCT Coordinate { get; set; }
+            public TileIndex Index { get; set; }
+        }
         private readonly int capacity;
-        public Dictionary<Info, LinkedListNode<(Info key, TValue value)>> cacheMap = new Dictionary<Info, LinkedListNode<(Info key, TValue value)>>();
+        private Dictionary<Info, LinkedListNode<(Info key, TValue value)>> cacheMap = new Dictionary<Info, LinkedListNode<(Info key, TValue value)>>();
         private LinkedList<(Info key, TValue value)> lruList = new LinkedList<(Info key, TValue value)>();
 
         public LruCache(int capacity)
@@ -28,7 +32,7 @@ namespace BioLib
             foreach (LinkedListNode<(Info key, TValue value)> item in cacheMap.Values)
             {
                 Info k = item.Value.key;
-                if (k.Coordinate == key.Coordinate && k.Index == key.Index)
+                if(k.Coordinate == key.Coordinate && k.Index == key.Index)
                 {
                     lruList.Remove(item);
                     lruList.AddLast(item);
@@ -67,80 +71,43 @@ namespace BioLib
             }
         }
     }
-    public class Info
-    {
-        public int Level { get; set; }
-        public ZCT Coordinate { get; set; }
-        public TileIndex Index { get; set; }
-        public Extent Extent { get; set; }
-        public Info(ZCT coordinate, TileIndex index, Extent extent, int level)
-        {
-            Coordinate = coordinate;
-            Index = index;
-            Extent = extent;
-            Level = level;
-        }
-    }
     public class TileCache
     {
-        public LruCache<Info, byte[]> cache;
+        private LruCache<TileInformation, byte[]> cache;
         private int capacity;
         SlideSourceBase source = null;
         public TileCache(SlideSourceBase source, int capacity = 1000)
         {
             this.source = source;
             this.capacity = capacity;
-            this.cache = new LruCache<Info, byte[]>(capacity);
+            this.cache = new LruCache<TileInformation, byte[]>(capacity);
         }
 
-        public async Task<byte[]> GetTile(Info inf)
+        public async Task<byte[]> GetTile(TileInformation info)
         {
+            LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
+            inf.Coordinate = info.Coordinate;
+            inf.Index = info.Index;
             byte[] data = cache.Get(inf);
             if (data != null)
             {
                 return data;
             }
-            byte[] tile = await LoadTile(inf);
-            if (tile != null)
-                AddTile(inf, tile);
+            byte[] tile = await LoadTile(info);
+            if(tile!=null)
+            AddTile(info, tile);
             return tile;
         }
 
-        public byte[] GetTileSync(Info inf,double unitsPerPixel)
+        private void AddTile(TileInformation tileId, byte[] tile)
         {
-            try
-            {
-                if (SlideSourceBase.useGPU)
-                {
-                    TileInfo tf = new TileInfo();
-                    tf.Index = inf.Index;
-                    tf.Extent = inf.Extent;
-                    if (this.source.Image.BioImage.SlideBase.stitch.HasTile(tf))
-                        return null;
-                }
-            }
-            catch (Exception)
-            {
-                SlideSourceBase.useGPU = false;
-            }
-            
-            byte[] data = cache.Get(inf);
-            if (data != null)
-            {
-                return data;
-            }
-            byte[] tile = LoadTileSync(inf);
-            if (tile != null && !SlideSourceBase.useGPU)
-                AddTile(inf, tile);
-            return tile;
+            LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
+            inf.Coordinate = tileId.Coordinate;
+            inf.Index = tileId.Index;
+            cache.Add(inf, tile);
         }
 
-        private void AddTile(Info tileId, byte[] tile)
-        {
-            cache.Add(tileId, tile);
-        }
-
-        private async Task<byte[]> LoadTile(Info tileId)
+        private async Task<byte[]> LoadTile(TileInformation tileId)
         {
             try
             {
@@ -151,21 +118,17 @@ namespace BioLib
                 return null;
             }
         }
-        private byte[] LoadTileSync(Info tileId)
-        {
-            try
-            {
-                return source.GetTile(tileId);
-            }
-            catch (Exception e)
-            {
-                return null;
-            }
-        }
         public void Dispose()
         {
             cache.Dispose();
         }
+    }
+
+    public class TileInformation
+    {
+        public TileIndex Index { get; set; }
+        public Extent Extent { get; set; }
+        public ZCT Coordinate { get; set; }
     }
 
     public abstract class SlideSourceBase : ISlideSource, IDisposable
@@ -188,7 +151,7 @@ namespace BioLib
 
         public static ISlideSource Create(BioImage source, SlideImage im, bool enableCache = true)
         {
-
+            
             var ext = Path.GetExtension(source.file).ToUpper();
             try
             {
@@ -198,12 +161,12 @@ namespace BioLib
                 if (!string.IsNullOrEmpty(SlideBase.DetectVendor(source.file)))
                 {
                     SlideBase b = new SlideBase(source, im, enableCache);
-
+                    
                 }
             }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
+            catch (Exception e) 
+            { 
+                Console.WriteLine(e.Message); 
             }
             return null;
         }
@@ -214,66 +177,23 @@ namespace BioLib
         public static double curUnitsPerPixel = 1;
         public static bool UseVips = true;
         public TileCache cache = null;
-        public Stitch stitch = new Stitch();
-        public static bool useGPU = false;
-        private static byte[] Convert32bppToRgb24(byte[] rgbaBytes)
-        {
-            // Calculate the number of pixels in the 32bpp image
-            int pixelCount = rgbaBytes.Length / 4;
-
-            // Create an array for the 24bpp image (3 bytes per pixel)
-            byte[] rgbBytes = new byte[pixelCount * 3];
-
-            // Copy RGB channels from the 32bpp array to the 24bpp array
-            for (int i = 0, j = 0; i < rgbaBytes.Length; i += 4, j += 3)
-            {
-                rgbBytes[j] = rgbaBytes[i];       // Red
-                rgbBytes[j + 1] = rgbaBytes[i + 1]; // Green
-                rgbBytes[j + 2] = rgbaBytes[i + 2]; // Blue
-                                                    // Skip the alpha channel (rgbaBytes[i + 3])
-            }
-
-            return rgbBytes;
-        }
         public async Task<byte[]> GetSlice(SliceInfo sliceInfo)
         {
             if (cache == null)
                 cache = new TileCache(this);
             var curLevel = Image.BioImage.LevelFromResolution(sliceInfo.Resolution);
-            var curUnitsPerPixel = sliceInfo.Resolution;
+            var curUnitsPerPixel = Schema.Resolutions[curLevel].UnitsPerPixel;
             var tileInfos = Schema.GetTileInfos(sliceInfo.Extent, curLevel);
             List<Tuple<Extent, byte[]>> tiles = new List<Tuple<Extent, byte[]>>();
-           
             foreach (BruTile.TileInfo t in tileInfos)
             {
-                Info tf = new Info(sliceInfo.Coordinate, t.Index, t.Extent, curLevel);
-                byte[] c = cache.GetTileSync(tf, curUnitsPerPixel);
-                if (c != null)
-                {
-                    if (c.Length == 4 * 256 * 256)
-                    {
-                        c = Convert32bppToRgb24(c);
-                    }
-                    else
-                    if (c.Length == 2 * 256 * 256)
-                    {
-                        c = Convert16BitToRGB(c);
-                    }
-                    else
-                    if (c.Length == 6 * 256 * 256)
-                    {
-                        c = Convert48BitToRGB(c);
-                    }
-                    if (useGPU)
-                    {
-                        TileInfo tileInfo = new TileInfo();
-                        tileInfo.Extent = t.Extent.WorldToPixelInvertedY(curUnitsPerPixel);
-                        tileInfo.Index = t.Index;
-                        stitch.AddTile(Tuple.Create(tileInfo,c));
-                    }
-                    else
-                        tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
-                }
+                TileInformation tf = new TileInformation();
+                tf.Extent = t.Extent;
+                tf.Coordinate = sliceInfo.Coordinate;
+                tf.Index = t.Index;
+                byte[] c = await cache.GetTile(tf);
+                if(c!=null)
+                tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
             }
             var srcPixelExtent = sliceInfo.Extent.WorldToPixelInvertedY(curUnitsPerPixel);
             var dstPixelExtent = sliceInfo.Extent.WorldToPixelInvertedY(sliceInfo.Resolution);
@@ -281,24 +201,15 @@ namespace BioLib
             var dstPixelWidth = sliceInfo.Parame.DstPixelWidth > 0 ? sliceInfo.Parame.DstPixelWidth : dstPixelExtent.Width;
             destExtent = new Extent(0, 0, dstPixelWidth, dstPixelHeight);
             sourceExtent = srcPixelExtent;
-            if (useGPU)
-            {
-                try
-                {
-                    return stitch.StitchImages(tileInfos.ToList(),(int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY),curUnitsPerPixel);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.Message.ToString());
-                    UseVips = true;
-                    useGPU = false;
-                }
-            }
             if (UseVips)
             {
                 try
                 {
-                    NetVips.Image im = ImageUtil.JoinVipsRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
+                    NetVips.Image im = null;
+                    if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
+                        im = ImageUtil.JoinVips16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
+                    else if(this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
+                        im = ImageUtil.JoinVipsRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
                     return im.WriteToMemory();
                 }
                 catch (Exception e)
@@ -310,10 +221,28 @@ namespace BioLib
             }
             try
             {
-                Image im = ImageUtil.JoinRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                byte[] bts = GetRgb24Bytes((Image<Rgb24>)im);
-                im.Dispose();
-                return bts;
+                Image im = null;
+                if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
+                {
+                    im = ImageUtil.Join16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
+                    byte[] bts = Get16Bytes((Image<L16>)im);
+                    im.Dispose();
+                    return bts;
+                }
+                else if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
+                {
+                    im = ImageUtil.JoinRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
+                    byte[] bts = GetRgb24Bytes((Image<Rgb24>)im);
+                    im.Dispose();
+                    return bts;
+                }
+                else if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format8bppIndexed)
+                {
+                    im = ImageUtil.Join8Bit(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
+                    byte[] bts = Get8BitBytes((Image<L8>)im);
+                    im.Dispose();
+                    return bts;
+                }
             }
             catch (Exception er)
             {
@@ -322,63 +251,24 @@ namespace BioLib
             }
             return null;
         }
-        public byte[] Convert16BitToRGB(byte[] input16BitGrayscale)
+        public byte[] Get8BitBytes(Image<L8> image)
         {
-            if (input16BitGrayscale.Length % 2 != 0)
+            int width = image.Width;
+            int height = image.Height;
+            byte[] rgbBytes = new byte[width * height]; // 3 bytes per pixel (RGB)
+
+            int byteIndex = 0;
+            for (int y = 0; y < height; y++)
             {
-                throw new ArgumentException("Input data length must be even, as each grayscale value is 2 bytes.");
+                for (int x = 0; x < width; x++)
+                {
+                    L8 pixel = image[x, y];
+                    rgbBytes[byteIndex++] = pixel.PackedValue;
+                }
             }
 
-            int pixelCount = input16BitGrayscale.Length / 2;
-            byte[] rgbData = new byte[pixelCount * 3];
-
-            for (int i = 0, j = 0; i < input16BitGrayscale.Length; i += 2, j += 3)
-            {
-                // Combine the two bytes into a single 16-bit grayscale value
-                ushort grayscale16 = (ushort)((input16BitGrayscale[i + 1] << 8) | input16BitGrayscale[i]);
-
-                // Convert the 16-bit grayscale value to an 8-bit value
-                byte grayscale8 = (byte)(grayscale16 >> 8); // Normalize to 8-bit by shifting
-
-                // Set the RGB values (R = G = B = grayscale)
-                rgbData[j] = grayscale8;     // Red channel
-                rgbData[j + 1] = grayscale8; // Green channel
-                rgbData[j + 2] = grayscale8; // Blue channel
-            }
-
-            return rgbData;
+            return rgbBytes;
         }
-        public byte[] Convert48BitToRGB(byte[] input48BitData)
-        {
-            if (input48BitData.Length % 6 != 0)
-            {
-                throw new ArgumentException("Input data length must be a multiple of 6, as each pixel is 6 bytes.");
-            }
-
-            int pixelCount = input48BitData.Length / 6;
-            byte[] rgbData = new byte[pixelCount * 3];
-
-            for (int i = 0, j = 0; i < input48BitData.Length; i += 6, j += 3)
-            {
-                // Read 16-bit values for Red, Green, and Blue channels
-                ushort red16 = (ushort)((input48BitData[i + 1] << 8) | input48BitData[i]);
-                ushort green16 = (ushort)((input48BitData[i + 3] << 8) | input48BitData[i + 2]);
-                ushort blue16 = (ushort)((input48BitData[i + 5] << 8) | input48BitData[i + 4]);
-
-                // Convert 16-bit values to 8-bit by shifting right (essentially downscaling from 16-bit to 8-bit)
-                byte red8 = (byte)(red16 >> 8);
-                byte green8 = (byte)(green16 >> 8);
-                byte blue8 = (byte)(blue16 >> 8);
-
-                // Store the 8-bit values in the RGB array
-                rgbData[j] = red8;   // Red
-                rgbData[j + 1] = green8; // Green
-                rgbData[j + 2] = blue8;  // Blue
-            }
-
-            return rgbData;
-        }
-
         public byte[] GetRgb24Bytes(Image<Rgb24> image)
         {
             int width = image.Width;
@@ -391,9 +281,9 @@ namespace BioLib
                 for (int x = 0; x < width; x++)
                 {
                     Rgb24 pixel = image[x, y];
-                    rgbBytes[byteIndex++] = pixel.R;
-                    rgbBytes[byteIndex++] = pixel.G;
                     rgbBytes[byteIndex++] = pixel.B;
+                    rgbBytes[byteIndex++] = pixel.G;
+                    rgbBytes[byteIndex++] = pixel.R;
                 }
             }
 
@@ -459,7 +349,8 @@ namespace BioLib
             Dispose(disposing: true);
             GC.SuppressFinalize(this);
         }
-        public byte[] GetTile(Info tileInfo)
+
+        public async Task<byte[]> GetTileAsync(TileInformation tileInfo)
         {
             if (tileInfo == null)
                 return null;
@@ -470,21 +361,7 @@ namespace BioLib
             var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
             var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
             var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
-            var bgraData = Image.ReadRegion(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight);
-            return bgraData;
-        }
-        public async Task<byte[]> GetTileAsync(Info tileInfo)
-        {
-            if (tileInfo == null)
-                return null;
-            var r = Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
-            var tileWidth = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
-            var tileHeight = Schema.Resolutions[tileInfo.Index.Level].TileHeight;
-            var curLevelOffsetXPixel = tileInfo.Extent.MinX / Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
-            var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
-            var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
-            var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
-            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, tileInfo.Coordinate);
+            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight,tileInfo.Coordinate);
             return bgraData;
         }
         public async Task<byte[]> GetTileAsync(BruTile.TileInfo tileInfo)
@@ -500,6 +377,21 @@ namespace BioLib
             var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
             var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, new ZCT());
             return bgraData;
+        }
+        public static byte[] ConvertRgbaToRgb(byte[] rgbaArray)
+        {
+            // Initialize a new byte array for RGB24 format
+            byte[] rgbArray = new byte[(rgbaArray.Length / 4) * 3];
+
+            for (int i = 0, j = 0; i < rgbaArray.Length; i += 4, j += 3)
+            {
+                // Copy the R, G, B values, skip the A value
+                rgbArray[j] = rgbaArray[i + 2];     // B
+                rgbArray[j + 1] = rgbaArray[i + 1]; // G
+                rgbArray[j + 2] = rgbaArray[i]; // R
+            }
+
+            return rgbArray;
         }
         #endregion
     }
@@ -567,7 +459,7 @@ namespace BioLib
         /// <param name="unitsPerPixel">um/pixel</param>
         public SliceInfo(double xPixel, double yPixel, double widthPixel, double heightPixel, double unitsPerPixel, ZCT coord)
         {
-            Extent = new Extent(xPixel, yPixel, xPixel + widthPixel, yPixel + heightPixel).PixelToWorldInvertedY(unitsPerPixel);
+            Extent = new Extent(xPixel, yPixel, xPixel + widthPixel,yPixel + heightPixel).PixelToWorldInvertedY(unitsPerPixel);
             Resolution = unitsPerPixel;
         }
 
@@ -668,4 +560,66 @@ namespace BioLib
         Preview,
     }
 
+    public static class ExtentEx
+    {
+        /// <summary>
+        /// Convert OSM world to pixel
+        /// </summary>
+        /// <param name="extent">world extent</param>
+        /// <param name="unitsPerPixel">resolution,um/pixel</param>
+        /// <returns></returns>
+        public static Extent WorldToPixelInvertedY(this Extent extent, double unitsPerPixel)
+        {
+            return new Extent(extent.MinX / unitsPerPixel, -extent.MaxY / unitsPerPixel, extent.MaxX / unitsPerPixel, -extent.MinY / unitsPerPixel);
+        }
+
+
+        /// <summary>
+        /// Convert pixel to OSM world.
+        /// </summary>
+        /// <param name="extent">pixel extent</param>
+        /// <param name="unitsPerPixel">resolution,um/pixel</param>
+        /// <returns></returns>
+        public static Extent PixelToWorldInvertedY(this Extent extent, double unitsPerPixel)
+        {
+            return new Extent(extent.MinX * unitsPerPixel, -extent.MaxY * unitsPerPixel, extent.MaxX * unitsPerPixel, -extent.MinY * unitsPerPixel);
+        }
+
+        /// <summary>
+        /// Convert double to int.
+        /// </summary>
+        /// <param name="extent"></param>
+        /// <returns></returns>
+        public static Extent ToIntegerExtent(this Extent extent)
+        {
+            return new Extent((int)Math.Round(extent.MinX), (int)Math.Round(extent.MinY), (int)Math.Round(extent.MaxX), (int)Math.Round(extent.MaxY));
+        }
+    }
+
+    public static class ObjectEx
+    {
+        /// <summary>
+        /// Get fields and properties
+        /// </summary>
+        /// <param name="obj"></param>
+        /// <returns></returns>
+        public static Dictionary<string, object> GetFieldsProperties(this object obj)
+        {
+            Dictionary<string, object> keys = new Dictionary<string, object>();
+            foreach (var item in obj.GetType().GetFields())
+            {
+                keys.Add(item.Name, item.GetValue(obj));
+            }
+            foreach (var item in obj.GetType().GetProperties())
+            {
+                try
+                {
+                    if (item.GetIndexParameters().Any()) continue;
+                    keys.Add(item.Name, item.GetValue(obj));
+                }
+                catch (Exception) { }
+            }
+            return keys;
+        }
+    }
 }

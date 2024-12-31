@@ -109,7 +109,7 @@ namespace BioLib
             {
                 Console.WriteLine(e);
                 OpenSlideBase.useGPU = false;
-                SlideSourceBase.useGPU = false;
+                //SlideSourceBase.useGPU = false;
                 SlideBase.UseVips = true;
                 OpenSlideBase.UseVips = true;
             }

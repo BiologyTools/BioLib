@@ -101,21 +101,14 @@ namespace BioLib
             credentials.getUser().setPassword(password);
             experimenter = gateway.connect(credentials);
         }
-        public static BioImage GetImage(string filename)
+        public static BioImage GetImage(string filename, long dataset)
         {
             try
             {
                 BioImage b = new BioImage("test.ome.tif");
-                var meta = session.getMetadataService();
-                ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
-                RLong id = sec.getId();
-                SecurityContext sc = new SecurityContext(id.getValue());
-                // Access BrowseFacility
-                BrowseFacility facility = (BrowseFacility)gateway.getFacility(brFacility);
-                MetadataFacility mf = (MetadataFacility)gateway.getFacility(metaFacility);
-                var fols = facility.getFolders(sc);
-                var d = facility.getDatasets(sc);
-                var uims = facility.getUserImages(sc);
+                java.util.Collection col = new java.util.ArrayList();
+                col.add(java.lang.Long.valueOf(dataset));
+                var uims = browsefacil.getImagesForDatasets(sc, col);
                 var itr = uims.iterator();
                 java.util.List li = new java.util.ArrayList();
                 java.util.ArrayList imgs = new java.util.ArrayList();
@@ -142,16 +135,16 @@ namespace BioLib
                     list.add(java.lang.Long.valueOf(ind));
                     try
                     {
-                        var acq = mf.getChannelData(sc, ind);
+                        var acq = metafacil.getChannelData(sc, ind);
                         int s = acq.size();
                         if (s == 1)
                             s = 2;
                         for (int i = 0; i < s - 1; i++)
                         {
                             var ch = (ChannelData)acq.get(i);
-                            var ac = mf.getImageAcquisitionData(sc, ind);
+                            var ac = metafacil.getImageAcquisitionData(sc, ind);
                             var chan = ch.asChannel();
-                            AForge.Color col = AForge.Color.FromArgb(chan.getRed().getValue(), chan.getGreen().getValue(), chan.getBlue().getValue());
+                            AForge.Color color = AForge.Color.FromArgb(chan.getRed().getValue(), chan.getGreen().getValue(), chan.getBlue().getValue());
                             var px = pd.asPixels().getPixelsType();
                             int bits = px.getBitSize().getValue();
                             AForge.PixelFormat pxx = GetPixelFormat(bits);
@@ -166,7 +159,7 @@ namespace BioLib
                             var em = ch.getEmissionWavelength(Omero::omero.model.enums.UnitsLength.NANOMETER);
                             if (em != null)
                                 cch.Emission = (int)em.getValue();
-                            cch.Color = col;
+                            cch.Color = color;
                             cch.Name = ch.getName();
                             b.Channels.Add(cch);
                         }
@@ -239,10 +232,10 @@ namespace BioLib
                                 Length? sxx = sta.getPositionX();
                                 Length? syy = sta.getPositionY();
                                 Length? szz = sta.getPositionZ();
-                                b.Resolutions.Add(new Resolution(w, h, px, pxx * w, pyy * h, pzz, sxx.getValue(), syy.getValue(), szz.getValue()));
+                                b.Resolutions.Add(new Resolution(w, h, px, pxx, pyy, pzz, sxx.getValue(), syy.getValue(), szz.getValue()));
                             }
                             else
-                                b.Resolutions.Add(new Resolution(w, h, px, pxx * w, pyy * h, pzz, 0, 0, 0));
+                                b.Resolutions.Add(new Resolution(w, h, px, pxx, pyy, pzz, 0, 0, 0));
                             i++;
                         }
                     }
@@ -322,6 +315,7 @@ namespace BioLib
                     b.Volume = new VolumeD(new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ), new Point3D(b.SizeX * b.PhysicalSizeX, b.SizeY * b.PhysicalSizeY, b.SizeZ * b.PhysicalSizeZ));
                     b.bitsPerPixel = b.Buffers[0].BitsPerPixel;
                     b.series = o.getSeries();
+                    b.imagesPerSeries = b.Buffers.Count;
                     BioImage.AutoThreshold(b, true);
                     if (b.bitsPerPixel > 8)
                         b.StackThreshold(true);
@@ -345,9 +339,9 @@ namespace BioLib
         public static BioImage GetImage(long id)
         {
             string n = browsefacil.getImage(sc, id).getName();
-            return GetImage(n);
+            return GetImage(n,id);
         }
-        public static Bitmap GetTile(BioImage b, ZCT coord, int x, int y, int width, int height)
+        public static Bitmap GetTile(BioImage b, ZCT coord, int x, int y, int width, int height, int level)
         {
             var itr = images.iterator();
             java.util.List li = new java.util.ArrayList();
@@ -372,7 +366,7 @@ namespace BioLib
                 Pixels ps = pd.asPixels();
                 int chc = ps.sizeOfChannels();
                 store.setPixelsId(ps.getId().getValue(), true);
-                store.setResolutionLevel(0);
+                store.setResolutionLevel(level);
                 byte[] bts = store.getTile(coord.Z, coord.C, coord.T, x, y, width, height);
                 PixelsType pxt = ps.getPixelsType();
                 AForge.PixelFormat px = AForge.PixelFormat.Format8bppIndexed;
@@ -445,16 +439,7 @@ namespace BioLib
         public static List<string> GetAllFiles()
         {
             var meta = session.getMetadataService();
-
-            ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
-            RLong id = sec.getId();
-            SecurityContext sc = new SecurityContext(id.getValue());
-            // Access BrowseFacility
-            BrowseFacility facility = (BrowseFacility)gateway.getFacility(brFacility);
-            MetadataFacility mf = (MetadataFacility)gateway.getFacility(metaFacility);
-            var fols = facility.getFolders(sc);
-            var d = facility.getDatasets(sc);
-            var uims = facility.getUserImages(sc);
+            var uims = browsefacil.getUserImages(sc);
             List<string> files = new List<string>();
             var itr = uims.iterator();
             while (itr.hasNext())
@@ -466,14 +451,7 @@ namespace BioLib
         }
         public static List<string> GetDatasets()
         {
-            var meta = session.getMetadataService();
-            ExperimenterGroupI sec = (ExperimenterGroupI)session.getSecurityContexts().get(0);
-            RLong id = sec.getId();
-            SecurityContext sc = new SecurityContext(id.getValue());
-            // Access BrowseFacility
-            BrowseFacility facility = (BrowseFacility)gateway.getFacility(brFacility);
-            MetadataFacility mf = (MetadataFacility)gateway.getFacility(metaFacility);
-            var d = facility.getDatasets(sc);
+            var d = browsefacil.getDatasets(sc);
             var itr = d.iterator();
             List<string> dbs = new List<string>();
             while (itr.hasNext())
