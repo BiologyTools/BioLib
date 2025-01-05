@@ -17,8 +17,8 @@
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
-    <PackageTags>Biology; ImageJ; Bio-Formats; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; </PackageTags>
-    <PackageReleaseNotes>OMERO server support.</PackageReleaseNotes>
+    <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; </PackageTags>
+    <PackageReleaseNotes>Added OMERO server support.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
