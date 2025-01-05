@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.PixelFormats;
+using AForge;
 
 namespace BioLib
 {
@@ -77,7 +78,7 @@ namespace BioLib
 
             return image;
         }
-        public byte[] GetTile(TileInfo tileInfo)
+        public byte[] GetTile(TileInfo tileInfo, ZCT coord)
         {
             var r = Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
             var tileWidth = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
@@ -86,7 +87,7 @@ namespace BioLib
             var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / MinUnitsPerPixel;
             var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
             var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
-            var bgraData = SlideImage.ReadRegion(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight);
+            var bgraData = SlideImage.ReadRegion(tileInfo.Index.Level, coord, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight);
             //We check to see if the data is valid.
             if (bgraData.Length != curTileWidth * curTileHeight * 4)
                 return null;

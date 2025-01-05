@@ -9,6 +9,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using AForge;
 using Image = SixLabors.ImageSharp.Image;
+using javax.swing.text.html;
 namespace BioLib
 {
     public class LruCache<TileInformation, TValue>
@@ -364,6 +365,7 @@ namespace BioLib
             var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight,tileInfo.Coordinate);
             return bgraData;
         }
+        static ZCT coord = new ZCT();
         public async Task<byte[]> GetTileAsync(BruTile.TileInfo tileInfo)
         {
             if (tileInfo == null)
@@ -375,6 +377,7 @@ namespace BioLib
             var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
             var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
             var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
+
             var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, new ZCT());
             return bgraData;
         }
@@ -461,6 +464,7 @@ namespace BioLib
         {
             Extent = new Extent(xPixel, yPixel, xPixel + widthPixel,yPixel + heightPixel).PixelToWorldInvertedY(unitsPerPixel);
             Resolution = unitsPerPixel;
+            Coordinate = coord;
         }
 
         /// <summary>

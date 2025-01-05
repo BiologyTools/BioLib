@@ -3444,20 +3444,20 @@ namespace BioLib
         {
             get
             {
-                if (Channels[0].range.Length == 1)
+                if (Channels[1].range.Length == 1)
                     return Channels[rgbChannels[1]];
                 else
-                    return Channels[0];
+                    return Channels[1];
             }
         }
         public Channel BChannel
         {
             get
             {
-                if (Channels[0].range.Length == 1)
+                if (Channels[2].range.Length == 1)
                     return Channels[rgbChannels[2]];
                 else
-                    return Channels[0];
+                    return Channels[2];
             }
         }
         private List<ROI> annotationsR = new List<ROI>();
@@ -8249,7 +8249,19 @@ namespace BioLib
                 if (b.Tag.ToString() != "OMERO")
                     return null;
                 //This is a OMERO file we need to update it.
-                return OMERO.GetTile(b, b.Coordinate, tilex, tiley, tileSizeX, tileSizeY, level);
+                int i = 0;
+                for (int z = 0; z < b.SizeZ; z++)
+                {
+                    for (int c = 0; c < b.SizeC; c++)
+                    {
+                        for (int t = 0; t < b.SizeT; t++)
+                        {
+                            if(i == index)
+                                return OMERO.GetTile(b, new ZCT(z,c,t), tilex, tiley, tileSizeX, tileSizeY, level);
+                            i++;
+                        }
+                    }
+                }
             }
             if (vips && b.vipPages.Count > 0)
             {
@@ -8661,41 +8673,41 @@ namespace BioLib
                     Buffers[i].Dispose();
                 }
                 Buffers.Clear();
-                for (int i = 0; i < imagesPerSeries; i++)
+                for (int z = 0; z < SizeZ; z++)
                 {
-                    if (openSlideImage != null)
+                    for (int c = 0; c < SizeC; c++)
                     {
-                    startos:
-                        int lev = LevelFromResolution(this.Resolution);
-                        openslideBase.SetSliceInfo(lev, PixelFormat.Format24bppRgb, Coordinate);
-                        byte[] bts = openslideBase.GetSlice(new OpenSlideGTK.SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution));
-                        if (bts == null)
+                        for (int t = 0; t < SizeT; t++)
                         {
-                            pyramidalOrigin = new PointD(0, 0);
-                            Resolution = GetUnitPerPixel(lev) * 1.1f;
-                            goto startos;
-                        }
-                        Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
-                    }
-                    else
-                    {
-                    start:
-                        int lev = LevelFromResolution(this.Resolution);
-                        byte[] bts = await slideBase.GetSlice(new BioLib.SliceInfo(Math.Round(PyramidalOrigin.X), Math.Round(PyramidalOrigin.Y), PyramidalSize.Width, PyramidalSize.Height, resolution, Coordinate));
-                        if (bts == null)
-                        {
-                            pyramidalOrigin = new PointD(0, 0);
-                            Resolution = GetUnitPerPixel(lev) * 1.1f;
-                            goto start;
-                        }
-                        try
-                        {
-                            Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), "");
-                            Buffers.Add(bmp);
-                        }
-                        catch (Exception e)
-                        {
-                            Console.WriteLine(e.Message);
+                            ZCT co = new ZCT(z, c, t);
+                            if (openSlideImage != null)
+                            {
+                            startos:
+                                int lev = LevelFromResolution(this.Resolution);
+                                openslideBase.SetSliceInfo(lev, PixelFormat.Format24bppRgb, co);
+                                byte[] bts = openslideBase.GetSlice(new OpenSlideGTK.SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution));
+                                if (bts == null)
+                                {
+                                    pyramidalOrigin = new PointD(0, 0);
+                                    Resolution = GetUnitPerPixel(lev) * 1.1f;
+                                    goto startos;
+                                }
+                                Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, co, ""));
+                            }
+                            else
+                            {
+                            start:
+                                int lev = LevelFromResolution(this.Resolution);
+                                byte[] bts = await slideBase.GetSlice(new BioLib.SliceInfo(Math.Round(PyramidalOrigin.X), Math.Round(PyramidalOrigin.Y), PyramidalSize.Width, PyramidalSize.Height, resolution, co));
+                                if (bts == null)
+                                {
+                                    pyramidalOrigin = new PointD(0, 0);
+                                    Resolution = GetUnitPerPixel(lev) * 1.1f;
+                                    goto start;
+                                }
+                                Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, co, "");
+                                Buffers.Add(bmp);
+                            }
                         }
                     }
                 }

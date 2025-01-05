@@ -316,6 +316,10 @@ namespace BioLib
                     b.bitsPerPixel = b.Buffers[0].BitsPerPixel;
                     b.series = o.getSeries();
                     b.imagesPerSeries = b.Buffers.Count;
+                    b.rgbChannels = new int[b.Channels.Count];
+                    b.rgbChannels[0] = 0;
+                    b.rgbChannels[1] = 1;
+                    b.rgbChannels[2] = 2;
                     BioImage.AutoThreshold(b, true);
                     if (b.bitsPerPixel > 8)
                         b.StackThreshold(true);

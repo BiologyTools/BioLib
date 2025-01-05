@@ -221,9 +221,9 @@ namespace BioLib
         /// <returns>The pixel data of this region.</returns>
         /// <exception cref="ArgumentOutOfRangeException"/>
         /// <exception cref="OpenSlideException"/>
-        public unsafe byte[] ReadRegion(int level, long x, long y, long width, long height)
+        public unsafe byte[] ReadRegion(int level, ZCT zct, long x, long y, long width, long height)
         {
-            return BioImage.GetTile(BioImage, 0, level, (int)x, (int)y, (int)width, (int)height).Bytes;
+            return BioImage.GetTile(BioImage, BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height).Bytes;
         }
 
         /// <summary>
