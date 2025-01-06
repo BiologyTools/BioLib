@@ -90,19 +90,23 @@ namespace BioLib
         }
         public static void ReConnect()
         {
-            client = new client(host, port);
-            session = client.createSession(username, password);
-            // Initialize OMERO client and gateway
-            gateway = new Gateway(new SimpleLogger());
-            LoginCredentials credentials = new LoginCredentials();
-            credentials.getServer().setHostname(host);
-            credentials.getServer().setPort(port);
-            credentials.getUser().setUsername(username);
-            credentials.getUser().setPassword(password);
-            experimenter = gateway.connect(credentials);
+            if (!gateway.isConnected())
+            {
+                client = new client(host, port);
+                session = client.createSession(username, password);
+                // Initialize OMERO client and gateway
+                gateway = new Gateway(new SimpleLogger());
+                LoginCredentials credentials = new LoginCredentials();
+                credentials.getServer().setHostname(host);
+                credentials.getServer().setPort(port);
+                credentials.getUser().setUsername(username);
+                credentials.getUser().setPassword(password);
+                experimenter = gateway.connect(credentials);
+            }
         }
         public static BioImage GetImage(string filename, long dataset)
         {
+            ReConnect();
             try
             {
                 BioImage b = new BioImage("test.ome.tif");
@@ -347,6 +351,7 @@ namespace BioLib
         }
         public static Bitmap GetTile(BioImage b, ZCT coord, int x, int y, int width, int height, int level)
         {
+            ReConnect();
             var itr = images.iterator();
             java.util.List li = new java.util.ArrayList();
             java.util.ArrayList imgs = new java.util.ArrayList();
@@ -382,6 +387,7 @@ namespace BioLib
         }
         public static Dictionary<long,Pixbuf> GetThumbnails(string[] filenames, int width, int height)
         {
+            ReConnect();
             Dictionary<long, Pixbuf> dict = new Dictionary<long, Pixbuf>();
             try
             {
@@ -423,6 +429,7 @@ namespace BioLib
         }
         public static string GetNameFromID(long id)
         {
+            ReConnect();
             return browsefacil.getImage(sc, id).getName();
         }
         private static PixelFormat GetPixelFormat(int bits)
@@ -442,6 +449,7 @@ namespace BioLib
         }
         public static List<string> GetAllFiles()
         {
+            ReConnect();
             var meta = session.getMetadataService();
             var uims = browsefacil.getUserImages(sc);
             List<string> files = new List<string>();
@@ -455,6 +463,7 @@ namespace BioLib
         }
         public static List<string> GetDatasets()
         {
+            ReConnect();
             var d = browsefacil.getDatasets(sc);
             var itr = d.iterator();
             List<string> dbs = new List<string>();
@@ -467,6 +476,7 @@ namespace BioLib
         }
         public static List<DatasetData> GetDatasetsData()
         {
+            ReConnect();
             var d = browsefacil.getDatasets(sc);
             var itr = d.iterator();
             List<DatasetData> dbs = new List<DatasetData>();
@@ -479,6 +489,7 @@ namespace BioLib
         }
         public static List<string> GetFolders()
         {
+            ReConnect();
             var d = browsefacil.getFolders(sc);
             var itr = d.iterator();
             List<string> dbs = new List<string>();
@@ -490,6 +501,7 @@ namespace BioLib
         }
         public static List<string> GetDatasetFiles(string db)
         {
+            ReConnect();
             var d = browsefacil.getDatasets(sc);
             var itr = d.iterator();
             while (itr.hasNext())
@@ -514,6 +526,7 @@ namespace BioLib
         }
         public static List<string> GetDatasetFiles(long dbid)
         {
+            ReConnect();
             var d = browsefacil.getDatasets(sc);
             var itr = d.iterator();
             while (itr.hasNext())
@@ -538,6 +551,7 @@ namespace BioLib
         }
         public static List<long> GetDatasetIds(long dbid)
         {
+            ReConnect();
             var d = browsefacil.getDatasets(sc);
             var itr = d.iterator();
             while (itr.hasNext())
