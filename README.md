@@ -57,9 +57,20 @@ g.Dispose();
 //Images.images table with the filename as an ID.
 BioImage.SaveFile("file","path");
 
-BioImage[] bms = new BioImage[]{BioImage.OpenFile("test.ome.tif")};
-QuPath.Project qp = QuPath.Project.FromImages(bms, "test.qpproj");
-QuPath.Project.SaveProject("myproj.qpproj", qp);
+//Usage of OMERO class.
+OMERO.Connect("demo.openmicroscopy.org", 4064, "username", "password");
+string[] files = OMERO.GetAllFiles().ToArray();
+string[] dbs = OMERO.GetDatasets().ToArray();
+string[] fs = OMERO.GetFolders().ToArray(); 
+string[] dbf = OMERO.GetDatasetFiles("CZI").ToArray();
+
+//Usage of QuPath class.
+QuPath.Project qu = QuPath.OpenProject("test.qpproj");
+BioImage[] bms = new BioImage[] { BioImage.OpenFile("test.ome.tif") };
+List<BioImage[]> bims = new List<BioImage[]>();
+bims.Add(bms);
+QuPath.Project qp = QuPath.Project.FromImages(bims, "test.qpproj");
+QuPath.Project.SaveProject("myproj.qpproj", bims);
 
 //To convert between different pixel formats we can call for example To24Bit.
 b.To24Bit();
