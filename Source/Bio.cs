@@ -3043,7 +3043,7 @@ namespace BioLib
                 filename = value;
             }
         }
-        public int[] rgbChannels = new int[3];
+        public int[] rgbChannels = new int[3] { 0, 1, 2 };
         public int RGBChannelCount
         {
             get
@@ -3434,7 +3434,7 @@ namespace BioLib
         {
             get
             {
-                if (Channels[0].range.Length == 1)
+                if(Channels.Count >= 3)
                     return Channels[rgbChannels[0]];
                 else
                     return Channels[0];
@@ -3444,20 +3444,20 @@ namespace BioLib
         {
             get
             {
-                if (Channels[1].range.Length == 1)
+                if (Channels.Count >= 3)
                     return Channels[rgbChannels[1]];
                 else
-                    return Channels[1];
+                    return Channels[0];
             }
         }
         public Channel BChannel
         {
             get
             {
-                if (Channels[2].range.Length == 1)
+                if (Channels.Count >= 3)
                     return Channels[rgbChannels[2]];
                 else
-                    return Channels[2];
+                    return Channels[0];
             }
         }
         private List<ROI> annotationsR = new List<ROI>();
