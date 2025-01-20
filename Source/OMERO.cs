@@ -1,48 +1,60 @@
-﻿extern alias Omero;
-extern alias BioFormats;
-
-using AForge;
-using Omero::omero.api;
-using Omero::omero.constants;
-using Omero::omero.gateway.facility;
-using Omero::omero.gateway.model;
-using Omero::omero.gateway;
-using Omero::omero.log;
-using Omero::omero.model;
-using Omero::omero;
+﻿using AForge;
+using omero.api;
+using omero.constants;
+using omero.gateway.facility;
+using omero.gateway.model;
+using omero.gateway;
+using omero.log;
+using omero.model;
+using omero;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Gdk;
-using Omero::ome.api;
-using Omero::omero.romio;
-using Omero::omero.sys;
-using Omero::org.python.compiler;
-
+using ome.api;
+using omero.romio;
+using omero.sys;
+using omero.model.enums;
+using ome.formats.importer.cli;
+using ome.formats.importer;
+using ome.formats;
+using loci.formats.@in;
+using omero.grid;
+using ome.util;
+using ome.xml.model.enums;
 
 namespace BioLib
 {
     public class OMERO
     {
         public static string host, username;
-        public static string password;
+        public static string password = "";
         public static int port;
         public static client client;
         public static ServiceFactoryPrx session;
         public static Gateway gateway;
         public static ExperimenterData experimenter;
+        public static ExperimenterData experimenterSudo;
         public static IMetadataPrx meta;
         public static BrowseFacility browsefacil;
         public static MetadataFacility metafacil;
+        public static DataManagerFacility datafacil;
+        public static RawDataFacility rawdatafacil;
+        public static EventContext adminContext;
+        public static IAdminPrx adminPrx;
         public static SecurityContext sc;
-        public static Omero::omero.api.RawPixelsStorePrx store;
+        public static omero.api.RawPixelsStorePrx store;
         public static java.util.Collection datasets;
         public static java.util.Collection folders;
         public static java.util.Collection images;
         private static java.lang.Class brFacility = java.lang.Class.forName("omero.gateway.facility.BrowseFacility");
         private static java.lang.Class metaFacility = java.lang.Class.forName("omero.gateway.facility.MetadataFacility");
+        private static java.lang.Class dataFacility = java.lang.Class.forName("omero.gateway.facility.DataManagerFacility");
+        private static java.lang.Class rawFacility = java.lang.Class.forName("omero.gateway.facility.RawDataFacility");
+        private static Random rng = new Random();
+        public static double progress = 0;
         public static void Connect(string host, int port, string username, string password)
         {
             OMERO.host = host;
@@ -75,6 +87,10 @@ namespace BioLib
             experimenter = gateway.connect(credentials);
             Init();
         }
+        public static long GetID()
+        {
+            return rng.Next(0, 99999);
+        }
         private static void Init()
         {
             meta = session.getMetadataService();
@@ -83,10 +99,14 @@ namespace BioLib
             sc = new SecurityContext(id.getValue());
             browsefacil = (BrowseFacility)gateway.getFacility(brFacility);
             metafacil = (MetadataFacility)gateway.getFacility(metaFacility);
+            datafacil = (DataManagerFacility)gateway.getFacility(dataFacility);
+            rawdatafacil = (RawDataFacility)gateway.getFacility(rawFacility);
             folders = browsefacil.getFolders(sc);
             datasets = browsefacil.getDatasets(sc);
             images = browsefacil.getUserImages(sc);
             store = gateway.getPixelsStore(sc);
+            adminPrx = session.getAdminService();
+
         }
         public static void ReConnect()
         {
@@ -102,6 +122,73 @@ namespace BioLib
                 credentials.getUser().setUsername(username);
                 credentials.getUser().setPassword(password);
                 experimenter = gateway.connect(credentials);
+            }
+        }
+        
+        public static void Upload(BioImage b, long id)
+        {
+            //See above how to load an image.
+            int sizeZ = b.SizeZ;
+            int sizeT = b.SizeT;
+            int sizeC = b.SizeC;
+            int sizeX = b.SizeX;
+            int sizeY = b.SizeY;
+
+            //Read the pixels from the source image.
+            RawPixelsStorePrx store = gateway.getPixelsStore(sc);
+            List<byte[]> planes = new List<byte[]>();
+            for (int z = 0; z < sizeZ; z++)
+            {
+                for (int c = 0; c < sizeC; c++)
+                {
+                    for (int t = 0; t < sizeT; t++)
+                    {
+                        planes.Add(b.GetBitmap(z,c,t).Bytes);
+                    }
+                }
+            }
+
+            //Now we are going to create the new image.
+            IPixelsPrx proxy = gateway.getPixelsService(sc);
+
+            //Create new image.
+            String name = b.Filename;
+            PixelsType pixelsType = new PixelsTypeI();
+            pixelsType.setValue(omero.rtypes.rstring("uint8"));
+            RLong idNew = proxy.createImage(sizeX, sizeY, sizeZ, sizeT, java.util.Arrays.asList(new java.lang.Integer(0)), pixelsType, name,"");
+            IContainerPrx proxyCS = session.getContainerService();
+            java.util.List results = proxyCS.getImages("omero.model.Image", java.util.Arrays.asList(new java.lang.Long(idNew.getValue())), new ParametersI());
+            ImageData newImage = new ImageData((Image)results.get(0));
+
+            //Link the new image and the dataset hosting the source image.
+            DatasetImageLink link = new DatasetImageLinkI();
+            link.setParent(new DatasetI(id, false));
+            link.setChild(new ImageI(newImage.getId(), false));
+            gateway.getUpdateService(sc).saveAndReturnObject(link);
+
+            //Write the data.
+            try
+            {
+                store = gateway.getPixelsStore(sc);
+                store.setPixelsId(newImage.getDefaultPixels().getId(), false);
+                int index = 0;
+                for (int z = 0; z < sizeZ; z++)
+                {
+                    for (int c = 0; c < sizeC; c++)
+                    {
+                        for (int t = 0; t < sizeT; t++)
+                        {
+                            progress = ((float)index / (float)planes.Count);
+                            store.setPlane(planes[index++], z, c, t);
+                        }
+                    }
+                }
+                //Save the data.
+                store.save();
+            }
+            finally
+            {
+                store.close();
             }
         }
         public static BioImage GetImage(string filename, long dataset)
@@ -158,7 +245,7 @@ namespace BioLib
                             else if (pxx == AForge.PixelFormat.Format32bppArgb)
                                 cch = new AForge.Channel(i, bits, 4);
                             cch.Fluor = ch.getFluor();
-                            var em = ch.getEmissionWavelength(Omero::omero.model.enums.UnitsLength.NANOMETER);
+                            var em = ch.getEmissionWavelength(omero.model.enums.UnitsLength.NANOMETER);
                             if (em != null)
                                 cch.Emission = (int)em.getValue();
                             cch.Color = color;
@@ -179,7 +266,7 @@ namespace BioLib
                         int i = 0;
                         while(true)
                         {
-                            Omero.omero.RInt rint = rtypes.rint(i);
+                            omero.RInt rint = rtypes.rint(i);
                             Image im = o.asImage();
                             im.setSeries(rint);
                             RInt rin = im.getSeries();
@@ -413,7 +500,7 @@ namespace BioLib
                             // Set the pixels ID for the image
                             long pixelId = img.getDefaultPixels().getId();
                             store.setPixelsId(pixelId);
-                            byte[] thumbnailBytes = store.getThumbnail(Omero::omero.rtypes.rint(width), Omero::omero.rtypes.rint(height));
+                            byte[] thumbnailBytes = store.getThumbnail(omero.rtypes.rint(width), omero.rtypes.rint(height));
                             Pixbuf pf = new Pixbuf(thumbnailBytes);
                             dict.Add(img.getId(), pf);
                         }
@@ -486,6 +573,32 @@ namespace BioLib
                 dbs.Add(dd);
             }
             return dbs;
+        }
+        public static DatasetData GetDataset(string name)
+        {
+            ReConnect();
+            var d = browsefacil.getDatasets(sc);
+            var itr = d.iterator();
+            while (itr.hasNext())
+            {
+                DatasetData dd = (DatasetData)itr.next();
+                if (dd.getName() == name)
+                    return dd;
+            }
+            return null;
+        }
+        public static DatasetData GetDataset(string name, long id)
+        {
+            ReConnect();
+            var d = browsefacil.getDatasets(sc);
+            var itr = d.iterator();
+            while (itr.hasNext())
+            {
+                DatasetData dd = (DatasetData)itr.next();
+                if (dd.getName() == name && id == dd.getId())
+                    return dd;
+            }
+            return null;
         }
         public static List<string> GetFolders()
         {
