@@ -3941,41 +3941,25 @@ namespace BioLib
                 }
             }
             else
-            if (Buffers[0].PixelFormat == PixelFormat.Format16bppGrayScale || Buffers[0].PixelFormat == PixelFormat.Format8bppIndexed)
+            if (Buffers[0].PixelFormat == PixelFormat.Format16bppGrayScale)
             {
-                if (Buffers[0].PixelFormat == PixelFormat.Format16bppGrayScale)
+                //We run 8bit so we get 24 bit rgb.
+                for (int i = 0; i < Buffers.Count; i++)
                 {
-                    for (int i = 0; i < Buffers.Count; i++)
-                    {
-                        Buffers[i].Image = AForge.Imaging.Image.Convert16bppTo8bpp(Buffers[i]);
-                    }
-                    for (int c = 0; c < Channels.Count; c++)
-                    {
-                        for (int i = 0; i < Channels[c].range.Length; i++)
-                        {
-                            Channels[c].range[i].Min = (int)(((float)Channels[c].range[i].Min / (float)ushort.MaxValue) * byte.MaxValue);
-                            Channels[c].range[i].Max = (int)(((float)Channels[c].range[i].Max / (float)ushort.MaxValue) * byte.MaxValue);
-                        }
-                        Channels[c].BitsPerPixel = 8;
-                    }
+                    Buffers[i] = AForge.Imaging.Image.Convert16bppTo8bpp(Buffers[i]);
                 }
-                List<Bitmap> bfs = new List<Bitmap>();
-                if (Buffers.Count % 3 != 0)
-                    for (int i = 0; i < Buffers.Count; i++)
-                    {
-                        Bitmap bs = new Bitmap(ID, SizeX, SizeY, Buffers[i].PixelFormat, Buffers[i].Bytes, new ZCT(Buffers[i].Coordinate.Z, 0, Buffers[i].Coordinate.T), i, Buffers[i].Plane);
-                        Bitmap bbs = Bitmap.RGB8To24(bs);
-                        bs.Dispose();
-                        bs = null;
-                        bfs.Add(bbs);
-                    }
-                else
-                    for (int i = 0; i < Buffers.Count; i++)
-                    {
-                        Bitmap bs = Bitmap.GetBitmapRGB(Buffers[i].SizeX, Buffers[i].SizeY, PixelFormat.Format24bppRgb, Buffers[i].Bytes);
-                        bfs.Add(bs);
-                    }
-                Buffers = bfs;
+                To24Bit();
+            }
+            else if(Buffers[0].PixelFormat == PixelFormat.Format8bppIndexed)
+            {
+                List<Bitmap> bms = new List<Bitmap>();
+                //We run 8bit so we get 24 bit rgb.
+                for (int i = 0; i < Buffers.Count; i+=3)
+                {
+                    bms.Add(Bitmap.RGB8To24(new Bitmap[] { Buffers[i], Buffers[i+1], Buffers[i+2] }));
+                }
+                Buffers.Clear();
+                Buffers.AddRange(bms);
                 UpdateCoords(SizeZ, 1, SizeT);
             }
             foreach (var item in Buffers)
@@ -7529,7 +7513,7 @@ namespace BioLib
                 b.bitsPerPixel = 16;
             b.series = serie;
             string order = reader.getDimensionOrder();
-            if (vips)
+            if (vips && tile)
                 OpenVips(b);
             //Lets get the channels and initialize them
             int i = 0;
