@@ -8915,18 +8915,23 @@ namespace BioLib
         /// it will return true. If an exception is caught, it will return false.
         public static bool VipsSupport(string file)
         {
+            
             try
             {
+                if (isOME(file))
+                {
+                    return true;
+                }
                 netim = NetVips.Image.Tiffload(file);
                 Settings.AddSettings("VipsSupport", "true");
+                netim.Close();
+                netim.Dispose();
             }
             catch (Exception e)
             {
                 Console.WriteLine(e.ToString());
                 return false;
             }
-            netim.Close();
-            netim.Dispose();
             return true;
         }
         private static Stopwatch st = new Stopwatch();
