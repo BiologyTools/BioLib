@@ -11,14 +11,14 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>3.6.1</AssemblyVersion>
-    <FileVersion>3.6.1</FileVersion>
-    <PackageVersion>3.6.1</PackageVersion>
+    <AssemblyVersion>3.6.2</AssemblyVersion>
+    <FileVersion>3.6.2</FileVersion>
+    <PackageVersion>3.6.2</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; </PackageTags>
-    <PackageReleaseNotes>Updated BioFormats.NET and other dependency updates also bug fixes.</PackageReleaseNotes>
+    <PackageReleaseNotes>Fixes LibVips support.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
