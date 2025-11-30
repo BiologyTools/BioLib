@@ -5,8 +5,6 @@ VisualStudioVersion = 17.4.33403.182
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BioLib", "BioLib.csproj", "{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BioLibTest", "..\BioLibTest\BioLibTest.csproj", "{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -23,14 +21,6 @@ Global
 		{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}.Release|x64.ActiveCfg = Release|x64
 		{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}.Release|x64.Build.0 = Release|x64
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Debug|x64.ActiveCfg = Debug|x64
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Debug|x64.Build.0 = Debug|x64
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Release|x64.ActiveCfg = Release|x64
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

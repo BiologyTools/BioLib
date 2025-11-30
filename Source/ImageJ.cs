@@ -313,7 +313,7 @@ namespace BioLib
         /// biological context. It likely contains information about the image, such as pixel values,
         /// dimensions, and metadata.</param>
         /// <param name="ROI">ROI is an object that represents a region of interest in an image. It
-        /// contains a list of points (PointsD) that define the boundary of the region.</param>
+        /// contains a list of points (Points) that define the boundary of the region.</param>
         /// <param name="xp">An output parameter that will contain the x-coordinates of the points in
         /// the ROI.</param>
         /// <param name="yp">The `yp` parameter is an output parameter of type `int[]`. It is used to
@@ -321,11 +321,11 @@ namespace BioLib
         /// space using the `bi` object.</param>
         static void GetPointsXY(BioImage bi,ROI roi, out int[] xp, out int[] yp)
         {
-            int[] x = new int[roi.PointsD.Count];
-            int[] y = new int[roi.PointsD.Count];
-            for (int i = 0; i < roi.PointsD.Count; i++)
+            int[] x = new int[roi.Points.Count];
+            int[] y = new int[roi.Points.Count];
+            for (int i = 0; i < roi.Points.Count; i++)
             {
-                PointD pd = bi.ToImageSpace(roi.PointsD[i]);
+                PointD pd = bi.ToImageSpace(roi.Points[i]);
                 x[i] = (int)pd.X;
                 y[i] = (int)pd.Y;
             }

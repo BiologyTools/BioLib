@@ -1059,10 +1059,10 @@ namespace BioLib
                 //We convert pixel to subpixel
                 if (!roi.subPixel)
                 {
-                    for (int i = 0; i < roi.PointsD.Count; i++)
+                    for (int i = 0; i < roi.Points.Count; i++)
                     {
-                        AForge.PointD pd = BioImage.ToStageSpace(roi.PointsD[i], physX,physY,volX,volY);
-                        roi.PointsD[i] = pd;
+                        AForge.PointD pd = BioImage.ToStageSpace(roi.Points[i], physX,physY,volX,volY);
+                        roi.Points[i] = pd;
                         roi.UpdateBoundingBox();
                     }
                 }
@@ -1334,16 +1334,16 @@ namespace BioLib
         /// points as arrays.
         /// 
         /// @param ROI The ROI parameter is an object that represents a region of interest. It contains
-        /// a collection of points (PointsD) that define the boundary of the region.
+        /// a collection of points (Points) that define the boundary of the region.
         /// @param xp An array of integers representing the x-coordinates of the points in the ROI.
         /// @param yp The `yp` parameter is an output parameter of type `int[]`. It is used to return
         /// the y-coordinates of the points in the `ROI` object.
         static void GetPointsXY(BioImage b, ROI roi, out int[] xp, out int[] yp)
         {
-            int[] x = new int[roi.PointsD.Count];
-            int[] y = new int[roi.PointsD.Count];
-            PointD[] pd = b.ToImageSpace(roi.PointsD.ToList());
-            for (int i = 0; i < roi.PointsD.Count; i++)
+            int[] x = new int[roi.Points.Count];
+            int[] y = new int[roi.Points.Count];
+            PointD[] pd = b.ToImageSpace(roi.Points.ToList());
+            for (int i = 0; i < roi.Points.Count; i++)
             {
                 
                 x[i] = (int)pd[i].X;
@@ -1496,7 +1496,7 @@ namespace BioLib
             /// anything.
             void write(BioImage b, ROI roi, FileStream f)
             {
-                RectangleD r = roi.Rect;
+                RectangleD r = roi.BoundingBox;
                 //if (r.width > 60000 || r.height > 60000 || r.x > 60000 || r.y > 60000)
                 //    roi.enableSubPixelResolution();
                 //int roiType = GetImageJType(roi);
@@ -1545,7 +1545,7 @@ namespace BioLib
                 //if (roi instanceof PolygonRoi) {
                 //PolygonRoi proi = (PolygonRoi)roi;
                 //Polygon p = proi.getNonSplineCoordinates();
-                n = roi.PointsD.Count; //p.npoints;
+                n = roi.Points.Count; //p.npoints;
                 //x = p.xpoints;
                 //y = p.ypoints;
                 GetPointsXY(b, roi, out x, out y);
@@ -1608,12 +1608,12 @@ namespace BioLib
                             p = roi.getFloatPolygon();
                     }
                         */
-                    if (roi.PointsD.Count == 4)
+                    if (roi.Points.Count == 4)
                     {
 
                         putFloat(RoiDecoder.XD, (float)pds[0].X);
                         putFloat(RoiDecoder.YD, (float)pds[0].Y);
-                        //putFloat(RoiDecoder.WIDTHD, p.xpoints[1] - roi.PointsD[0]);
+                        //putFloat(RoiDecoder.WIDTHD, p.xpoints[1] - roi.Points[0]);
                         //putFloat(RoiDecoder.HEIGHTD, p.ypoints[2] - p.ypoints[1]);
                         putFloat(RoiDecoder.WIDTHD, (float)pds[1].X - (float)pds[0].X);
                         putFloat(RoiDecoder.HEIGHTD, (float)pds[2].Y - (float)pds[1].Y);

@@ -2,35 +2,43 @@
 using AForge;
 using AForge.Imaging;
 using AForge.Imaging.Filters;
+using BioLib;
 using BitMiracle.LibTiff.Classic;
+using Cairo;
+using Gtk;
 using loci.common.services;
 using loci.formats;
-using loci.formats.services;
-using ome.xml.model.primitives;
+using loci.formats.@in;
 using loci.formats.meta;
-using ome.units.quantity;
+using loci.formats.services;
+using NetVips;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 using ome;
+using ome.units.quantity;
+using ome.xml.model.primitives;
+using OpenSlideGTK;
+using Pango;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Newtonsoft.Json;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Runtime.Serialization;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Bitmap = AForge.Bitmap;
 using Color = AForge.Color;
-using loci.formats.@in;
-using Gtk;
-using System.Linq;
-using NetVips;
-using System.Threading.Tasks;
-using OpenSlideGTK;
-using System.Reflection;
-using Newtonsoft.Json.Serialization;
+using Context = Cairo.Context;
+using Path = System.IO.Path;
+using Point = AForge.Point;
+using PointD = AForge.PointD;
+using Rectangle = AForge.Rectangle;
 namespace BioLib
 {
     /* A class declaration. */
@@ -45,7 +53,7 @@ namespace BioLib
             ids = ids.Replace("\\", "/");
             for (int i = 0; i < images.Count; i++)
             {
-                if (images[i].ID == ids || images[i].Filename == Path.GetFileName(ids))
+                if (images[i].ID.Contains(System.IO.Path.GetFileName(ids)) || images[i].Filename == System.IO.Path.GetFileName(ids))
                     return images[i];
             }
             return null;
@@ -89,7 +97,7 @@ namespace BioLib
         /// <returns></returns>
         public static string RemoveExtensions(string file)
         {
-            return Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(file));
+            return System.IO.Path.GetFileNameWithoutExtension(System.IO.Path.GetFileNameWithoutExtension(file));
         }
         /// <summary>
         /// Return extensions of a file including multiple extensions like .ome.tif.
@@ -292,1078 +300,6 @@ namespace BioLib
         }
     }
 
-    /* The ROI class is a class that contains a list of points, a bounding box, and a type */
-    public class ROI : IDisposable
-    {
-        /* Defining an enum. */
-        public enum Type
-        {
-            Rectangle,
-            Point,
-            Line,
-            Polygon,
-            Polyline,
-            Freeform,
-            Ellipse,
-            Label,
-            Mask
-        }
-        /* A property of a class. */
-        public PointD Point
-        {
-            get
-            {
-                if (type == Type.Mask)
-                    return new PointD(roiMask.X * roiMask.PhysicalSizeX, roiMask.Y * roiMask.PhysicalSizeY);
-                return Points[0];
-            }
-            set
-            {
-                UpdatePoint(value, 0);
-                UpdateBoundingBox();
-            }
-        }
-        public RectangleD Rect
-        {
-            get
-            {
-                if (Points.Count == 0)
-                    return new RectangleD(0, 0, 0, 0);
-                if (type == Type.Line || type == Type.Polyline || type == Type.Polygon || type == Type.Freeform || type == Type.Label)
-                    return BoundingBox;
-                if (type == Type.Rectangle || type == Type.Ellipse)
-                    return new RectangleD(Points[0].X, Points[0].Y, Points[1].X - Points[0].X, Points[2].Y - Points[0].Y);
-                if (type == Type.Mask)
-                {
-                    return new RectangleD(roiMask.X * roiMask.PhysicalSizeX, roiMask.Y * roiMask.PhysicalSizeY, roiMask.Width * roiMask.PhysicalSizeX, roiMask.Height * roiMask.PhysicalSizeY);
-                }
-                else
-                    return new RectangleD(Points[0].X, Points[0].Y, W, H);
-            }
-            set
-            {
-                if (type == Type.Line || type == Type.Polyline || type == Type.Polygon || type == Type.Freeform)
-                {
-                    BoundingBox = value;
-                }
-                else
-                if (Points.Count < 4 && (type == Type.Rectangle || type == Type.Ellipse))
-                {
-                    AddPoint(new PointD(value.X, value.Y));
-                    AddPoint(new PointD(value.X + value.W, value.Y));
-                    AddPoint(new PointD(value.X, value.Y + value.H));
-                    AddPoint(new PointD(value.X + value.W, value.Y + value.H));
-                }
-                else
-                if (type == Type.Rectangle || type == Type.Ellipse)
-                {
-                    Points[0] = new PointD(value.X, value.Y);
-                    Points[1] = new PointD(value.X + value.W, value.Y);
-                    Points[2] = new PointD(value.X, value.Y + value.H);
-                    Points[3] = new PointD(value.X + value.W, value.Y + value.H);
-                }
-                UpdateBoundingBox();
-            }
-        }
-        public double X
-        {
-            get
-            {
-                if (type == Type.Mask)
-                {
-                    return roiMask.X * roiMask.PhysicalSizeX;
-                }
-                return Point.X;
-            }
-            set
-            {
-                Rect = new RectangleD(value, Y, W, H);
-            }
-        }
-        public double Y
-        {
-            get
-            {
-                if (type == Type.Mask)
-                {
-                    return roiMask.Y * roiMask.PhysicalSizeY;
-                }
-                return Point.Y;
-            }
-            set
-            {
-                Rect = new RectangleD(X, value, W, H);
-            }
-        }
-        public double W
-        {
-            get
-            {
-                if (type == Type.Mask)
-                {
-                    return roiMask.Width * roiMask.PhysicalSizeX;
-                }
-                if (type == Type.Point)
-                    return strokeWidth;
-                else
-                    return BoundingBox.W;
-            }
-            set
-            {
-                Rect = new RectangleD(X, Y, value, H);
-            }
-        }
-        public double H
-        {
-            get
-            {
-                if (type == Type.Mask)
-                {
-                    return roiMask.Height * roiMask.PhysicalSizeY;
-                }
-                if (type == Type.Point)
-                    return strokeWidth;
-                else
-                    return BoundingBox.H;
-            }
-            set
-            {
-                Rect = new RectangleD(X, Y, W, value);
-            }
-        }
-        public int Resolution
-        {
-            get { return resolution; }
-            set { resolution = value; }
-        }
-        public enum CoordinateSystem
-        {
-            pixel,
-            micron
-        }
-        public Type type;
-        public static float selectBoxSize = 8f;
-        private List<PointD> Points = new List<PointD>();
-        public List<PointD> PointsD
-        {
-            get
-            {
-                return Points;
-            }
-        }
-        private List<RectangleD> selectBoxs = new List<RectangleD>();
-        public List<int> selectedPoints = new List<int>();
-        public RectangleD BoundingBox;
-        public float fontSize = 12;
-        public Cairo.FontSlant slant;
-        public Cairo.FontWeight weight;
-        public string family = "Times New Roman";
-        public ZCT coord;
-        public Color strokeColor;
-        public Color fillColor;
-        public bool isFilled = false;
-        public string id = "";
-        public string roiID = "";
-        public string roiName = "";
-        public string properties = "";
-        public int serie = 0;
-        private string text = "";
-        private int resolution = 0;
-        public double strokeWidth = 1;
-        public int shapeIndex = 0;
-        public bool closed = false;
-        bool selected = false;
-        public bool Selected
-        {
-            get { return selected; }
-            set
-            {
-                if (roiMask != null)
-                    roiMask.Selected = value;
-                selected = value;
-                if (!selected)
-                    selectedPoints.Clear();
-            }
-        }
-        public bool subPixel = false;
-        public Mask roiMask { get; set; }
-        /// <summary>
-        /// Represents a Mask layer.
-        /// </summary>
-        public class Mask : IDisposable
-        {
-            public float min = 0;
-            float[] mask;
-            int width;
-            int height;
-            public double X { get; set; }
-            public double Y { get; set; }
-            public int Width { get { return width; } set { width = value; } }
-            public int Height { get { return height; } set { height = value; } }
-            public double PhysicalSizeX { get; set; }
-            public double PhysicalSizeY { get; set; }
-            bool updatePixbuf = true;
-            bool updateColored = true;
-            Gdk.Pixbuf pixbuf;
-            Gdk.Pixbuf colored;
-            bool selected = false;
-            internal bool Selected
-            {
-                get { return selected; }
-                set
-                {
-                    selected = value;
-                }
-            }
-            public bool IsSelected(int x, int y)
-            {
-                int ind = y * width + x;
-                if (ind >= mask.Length)
-                    return false;
-                if (mask[ind] > min)
-                {
-                    return true;
-                }
-                return false;
-            }
-            public float GetValue(int x, int y)
-            {
-                int ind = y * width + x;
-                if (ind > mask.Length)
-                    throw new ArgumentException("Point " + x + "," + y + " is outside the mask.");
-                return mask[ind];
-            }
-            public void SetValue(int x, int y, float val)
-            {
-                int ind = y * width + x;
-                if (ind > mask.Length)
-                    throw new ArgumentException("Point " + x + "," + y + " is outside the mask.");
-                mask[ind] = val;
-                updatePixbuf = true;
-                updateColored = true;
-            }
-            public Mask(float[] fts, int width, int height, double physX, double physY, double x, double y)
-            {
-                this.width = width;
-                this.height = height;
-                X = x; Y = y;
-                PhysicalSizeX = physX;
-                PhysicalSizeY = physY;
-                mask = fts;
-                byte[] bt = GetBytesCropped();
-                mask = new float[bt.Length];
-                for (int i = 0; i < bt.Length; i++)
-                {
-                    mask[i] = (float)bt[i];
-                }
-            }
-            public Mask(byte[] fts, int width, int height, double physX, double physY, double x, double y)
-            {
-                this.width = width;
-                this.height = height;
-                this.X = x / physX;
-                this.Y = y / physY;
-                PhysicalSizeX = physX;
-                PhysicalSizeY = physY;
-                mask = new float[fts.Length];
-                for (int i = 0; i < fts.Length; i++)
-                {
-                    mask[i] = (float)fts[i];
-                }
-            }
-            public Gdk.Pixbuf Pixbuf
-            {
-                get
-                {
-                    if (updatePixbuf)
-                    {
-                        if (pixbuf != null)
-                            pixbuf.Dispose();
-                        byte[] pixelData = new byte[width * height * 4];
-                        for (int y = 0; y < height; y++)
-                        {
-                            for (int x = 0; x < width; x++)
-                            {
-                                int ind = y * width + x;
-                                if (mask[ind] > 0)
-                                {
-                                    pixelData[4 * ind] = (byte)(mask[ind] / 255);// Blue
-                                    pixelData[4 * ind + 1] = (byte)(mask[ind] / 255);// Green
-                                    pixelData[4 * ind + 2] = (byte)(mask[ind] / 255);// Red
-                                    pixelData[4 * ind + 3] = 125;// Alpha
-                                }
-                                else
-                                    pixelData[4 * ind + 3] = 0;
-                            }
-                        }
-                        pixbuf = new Gdk.Pixbuf(pixelData, true, 8, width, height, width * 4);
-                        updatePixbuf = false;
-                        return pixbuf;
-                    }
-                    else
-                        return pixbuf;
-                }
-            }
-            void UpdateColored(AForge.Color col, byte alpha)
-            {
-                if (mask == null || mask.Length < width * height)
-                    throw new InvalidOperationException("Invalid mask size.");
-                // Get the minimum and maximum values of the mask for normalization
-                var (min, max) = GetMinAndMax(mask);
-                min = 0;
-                byte[] pixelData = new byte[width * height * 4];
-
-                for (int y = 0; y < height; y++)
-                {
-                    for (int x = 0; x < width; x++)
-                    {
-                        int ind = y * width + x;
-
-                        if (ind < mask.Length)
-                        {
-                            float value = mask[ind];
-                            if (value > 0)
-                            {
-                                pixelData[4 * ind] = col.R;       // Red
-                                pixelData[4 * ind + 1] = col.G;  // Green
-                                pixelData[4 * ind + 2] = col.B;  // Blue
-                                pixelData[4 * ind + 3] = alpha;  // Alpha
-                            }
-                        }
-                    }
-                }
-
-                // Create Gdk.Pixbuf with the updated pixel data
-                colored = new Gdk.Pixbuf(pixelData, true, 8, width, height, width * 4);
-
-                // Mark as updated
-                updateColored = false;
-            }
-
-            public Gdk.Pixbuf GetColored(AForge.Color col, byte alpha, bool forceUpdate = false)
-            {
-                if (updateColored || forceUpdate)
-                {
-                    UpdateColored(col, alpha);
-                    return colored;
-                }
-                else
-                    return colored;
-            }
-
-            public byte[] GetColoredBytes(AForge.Color col)
-            {
-                byte[] pixelData = new byte[width * height];
-                for (int y = 0; y < height; y++)
-                {
-                    for (int x = 0; x < width; x++)
-                    {
-                        int ind = y * width + x;
-
-                        if (ind < mask.Length)
-                        {
-                            float value = mask[ind];
-                            if (value > 0)
-                            {
-                                pixelData[ind] = (byte)value;
-                            }
-                        }
-                    }
-                }
-                return pixelData;
-            }
-
-            /// <summary>
-            /// Crops a mask based on non-zero values and converts it to an 8-bit grayscale image.
-            /// </summary>
-            /// <param name="fullMask">The input float array representing the full image mask.</param>
-            /// <param name="imageWidth">The width of the full image.</param>
-            /// <param name="imageHeight">The height of the full image.</param>
-            /// <param name="threshold">The threshold to consider a pixel as part of the crop.</param>
-            /// <returns>
-            /// A tuple containing:
-            /// - 8-bit grayscale byte array.
-            /// - Width and height of the cropped region.
-            /// - Starting X and Y coordinates of the crop in the original image.
-            /// </returns>
-            public static (byte[] grayImage, int cropWidth, int cropHeight, int startX, int startY) OutputAs8BitImage(
-                float[] fullMask, int imageWidth, int imageHeight, float threshold = 0.0f)
-            {
-                if (fullMask == null || fullMask.Length != imageWidth * imageHeight)
-                    throw new ArgumentException("Invalid mask dimensions or null mask.");
-
-                // Crop the mask using the threshold
-                var cropResult = CropFullImageMask(fullMask, imageWidth, imageHeight, threshold);
-                float[] croppedMask = cropResult.croppedMask;
-
-                // Handle empty crop
-                if (croppedMask == null || croppedMask.Length == 0)
-                    return (Array.Empty<byte>(), 0, 0, 0, 0);
-
-                int cropWidth = cropResult.cropWidth;
-                int cropHeight = cropResult.cropHeight;
-
-                // Normalize and convert to 8-bit grayscale
-                byte[] grayImage = new byte[cropWidth * cropHeight];
-                for (int i = 0; i < croppedMask.Length; i++)
-                {
-                    grayImage[i] = (byte)(Math.Clamp(croppedMask[i], 0.0f, 1.0f) * 255);
-                }
-
-                return (grayImage, cropWidth, cropHeight, cropResult.startX, cropResult.startY);
-            }
-            /// <summary>
-            /// Gets the minimum and maximum values from a float array.
-            /// </summary>
-            /// <param name="floatArray">The input float array.</param>
-            /// <returns>A tuple containing the minimum and maximum values.</returns>
-            public static (float min, float max) GetMinAndMax(float[] floatArray)
-            {
-                if (floatArray == null || floatArray.Length == 0)
-                    throw new ArgumentException("Input array must not be null or empty.");
-
-                float min = floatArray[0];
-                float max = floatArray[0];
-
-                foreach (float value in floatArray)
-                {
-                    if (value < min)
-                    {
-                        min = value;
-                    }
-                    if (value > max)
-                    {
-                        max = value;
-                    }
-                }
-
-                return (min, max);
-            }
-            private byte[] GetBytesCropped()
-            {
-                // Crop the mask using a threshold of 0
-                var cropResult = CropFullImageMask(mask, this.Width, this.Height, 0.0f);
-                float[] croppedMask = cropResult.croppedMask;
-
-                // Handle empty mask case
-                if (croppedMask == null || croppedMask.Length == 0)
-                    return Array.Empty<byte>();
-
-                // Get the minimum and maximum values of the mask for normalization
-                var (min, max) = GetMinAndMax(croppedMask);
-                min = 0;
-                // Handle case where all values are equal (avoid division by zero)
-                if (Math.Abs(max - min) < float.Epsilon)
-                    return Array.Empty<byte>();
-
-                // Prepare the byte array for the normalized output
-                int cropWidth = cropResult.cropWidth;
-                int cropHeight = cropResult.cropHeight;
-                byte[] bytes = new byte[cropWidth * cropHeight];
-
-                // Normalize float values and convert to byte
-                for (int y = 0; y < cropHeight; y++)
-                {
-                    for (int x = 0; x < cropWidth; x++)
-                    {
-                        int index = y * cropWidth + x; // 1D index for the mask
-                        if (croppedMask[index] > 0)
-                        {
-                            // Normalize the value: (value - min) / (max - min) * 255
-                            float normalized = (croppedMask[index] - min) / (max - min);
-                            bytes[index] = (byte)(normalized * 255);
-                        }
-                    }
-                }
-                X = cropResult.startX;
-                Y = cropResult.startY;
-                width = cropWidth;
-                height = cropHeight;
-                return bytes;
-            }
-            public byte[] GetBytes()
-            {
-                byte[] rgbaBytes = new byte[width * height];
-                for (int y = 0; y < Height; y++)
-                {
-                    for (int x = 0; x < Width; x++)
-                    {
-                        int index = y * Width + x; // 1D index for the mask
-                        // Set RGBA channels
-                        rgbaBytes[index] = (byte)mask[index];
-                    }
-                }
-                return rgbaBytes;
-            }
-
-            /// <summary>
-            /// Crops the smallest rectangular region containing all "white" pixels (values above a threshold) from a full image mask.
-            /// </summary>
-            /// <param name="fullMask">The input float array representing the entire image mask.</param>
-            /// <param name="imageWidth">The width of the full image.</param>
-            /// <param name="imageHeight">The height of the full image.</param>
-            /// <param name="threshold">The threshold to consider a pixel as "white".</param>
-            /// <returns>
-            /// A tuple containing:
-            /// - Cropped float array mask.
-            /// - Crop width.
-            /// - Crop height.
-            /// - Starting X and Y coordinates of the crop in the original image.
-            /// </returns>
-            public static (float[] croppedMask, int cropWidth, int cropHeight, int startX, int startY) CropFullImageMask(
-                float[] fullMask, int imageWidth, int imageHeight, float threshold = 0.0f)
-            {
-                if (fullMask == null || fullMask.Length != imageWidth * imageHeight)
-                    throw new ArgumentException("Invalid mask dimensions or null mask.");
-
-                // Initialize bounding box values
-                int minX = imageWidth, minY = imageHeight, maxX = -1, maxY = -1;
-
-                // Find the bounding box of "white" pixels
-                for (int y = 0; y < imageHeight; y++)
-                {
-                    for (int x = 0; x < imageWidth; x++)
-                    {
-                        int index = y * imageWidth + x;
-                        if (fullMask[index] > threshold) // Pixel exceeds threshold, considered "white"
-                        {
-                            minX = Math.Min(minX, x);
-                            minY = Math.Min(minY, y);
-                            maxX = Math.Max(maxX, x);
-                            maxY = Math.Max(maxY, y);
-                        }
-                    }
-                }
-
-                // Handle cases where no white pixels are found
-                if (minX > maxX || minY > maxY)
-                    return (Array.Empty<float>(), 0, 0, 0, 0); // Return an empty mask
-
-                // Calculate the cropped region dimensions
-                int cropWidth = maxX - minX + 1;
-                int cropHeight = maxY - minY + 1;
-
-                // Extract the cropped region
-                float[] croppedMask = new float[cropWidth * cropHeight];
-                for (int y = 0; y < cropHeight; y++)
-                {
-                    for (int x = 0; x < cropWidth; x++)
-                    {
-                        int sourceIndex = (minY + y) * imageWidth + (minX + x);
-                        int targetIndex = y * cropWidth + x;
-
-                        croppedMask[targetIndex] = fullMask[sourceIndex];
-                    }
-                }
-
-                return (croppedMask, cropWidth, cropHeight, minX, minY);
-            }
-
-            public void Dispose()
-            {
-                if (pixbuf != null)
-                    pixbuf.Dispose();
-                if (colored != null)
-                    colored.Dispose();
-                mask = null;
-            }
-        }
-        /*
-        public Size TextSize
-        {
-            get
-            {
-                return TextRenderer.MeasureText(text, font);
-            }
-        }
-        */
-        public ROI Copy()
-        {
-            ROI copy = new ROI();
-            copy.id = id;
-            copy.roiID = roiID;
-            copy.roiName = roiName;
-            copy.text = text;
-            copy.strokeWidth = strokeWidth;
-            copy.strokeColor = strokeColor;
-            copy.fillColor = fillColor;
-            copy.Points = Points;
-            copy.Selected = Selected;
-            copy.shapeIndex = shapeIndex;
-            copy.closed = closed;
-            copy.family = family;
-            copy.fontSize = fontSize;
-            copy.slant = slant;
-            copy.selectBoxs = selectBoxs;
-            copy.BoundingBox = BoundingBox;
-            copy.isFilled = isFilled;
-            copy.coord = coord;
-            copy.selectedPoints = selectedPoints;
-
-            return copy;
-        }
-        public ROI Copy(ZCT cord)
-        {
-            ROI copy = new ROI();
-            copy.type = type;
-            copy.id = id;
-            copy.roiID = roiID;
-            copy.roiName = roiName;
-            copy.text = text;
-            copy.strokeWidth = strokeWidth;
-            copy.strokeColor = strokeColor;
-            copy.fillColor = fillColor;
-            copy.Points.AddRange(Points);
-            copy.Selected = Selected;
-            copy.shapeIndex = shapeIndex;
-            copy.closed = closed;
-            copy.family = family;
-            copy.fontSize = fontSize;
-            copy.slant = slant;
-            copy.selectBoxs.AddRange(selectBoxs);
-            copy.BoundingBox = BoundingBox;
-            copy.isFilled = isFilled;
-            copy.coord = cord;
-            copy.selectedPoints = selectedPoints;
-            return copy;
-        }
-        public string Text
-        {
-            get
-            {
-                return text;
-            }
-            set
-            {
-                text = value;
-                if (type == Type.Label)
-                {
-                    UpdateBoundingBox();
-                }
-            }
-        }
-        /// > This function returns a rectangle that is the bounding box of the object, but with a
-        /// border of half the scale
-        /// 
-        /// @param scale the scale of the image
-        /// 
-        /// @return A rectangle with the following properties:
-        public RectangleD GetSelectBound(double scaleX, double scaleY)
-        {
-            if (type == Type.Mask)
-                return BoundingBox;
-            double fx = scaleX / 2;
-            double fy = scaleY / 2;
-            return new RectangleD(BoundingBox.X - fx, BoundingBox.Y - fy, BoundingBox.W + scaleX, BoundingBox.H + scaleY);
-        }
-        /* Creating a new ROI object. */
-        public ROI()
-        {
-            coord = new ZCT(0, 0, 0);
-            strokeColor = Color.Yellow;
-            BoundingBox = new RectangleD(0, 0, 1, 1);
-        }
-        /// <summary>
-        /// The function "ImagePoints" takes a Resolution object as input and returns an array of PointD
-        /// objects that have been converted to image space using the provided resolution values.
-        /// </summary>
-        /// <param name="Resolution">The "Resolution" parameter is an object that contains information
-        /// about the resolution of an image. It typically includes properties such as the stage size
-        /// (width and height), physical size (width and height), and possibly other properties related
-        /// to the image resolution.</param>
-        /// <returns>
-        /// The method is returning an array of PointD objects.
-        /// </returns>
-        public PointD[] ImagePoints(Resolution res)
-        {
-            if (type == Type.Rectangle || type == Type.Mask)
-            {
-                PointD[] pts = new PointD[4];
-                pts[0] = PointsD[0];
-                pts[1] = new PointD(PointsD[0].X + BoundingBox.W, PointsD[0].Y);
-                pts[2] = new PointD(PointsD[0].X + BoundingBox.W, PointsD[0].Y + BoundingBox.H);
-                pts[3] = new PointD(PointsD[0].X, PointsD[0].Y + BoundingBox.H);
-                return BioImage.ToImageSpace(pts.ToList(), res.StageSizeX, res.StageSizeY, res.PhysicalSizeX, res.PhysicalSizeY);
-            }
-            else
-                return BioImage.ToImageSpace(PointsD, res.StageSizeX, res.StageSizeY, res.PhysicalSizeX, res.PhysicalSizeY);
-        }
-        /// It returns an array of RectangleF objects that are used to draw the selection boxes around
-        /// the points of the polygon
-        /// 
-        /// @param s the size of the select box
-        /// 
-        /// @return A list of RectangleF objects.
-        public RectangleD[] GetSelectBoxes(double s)
-        {
-            double f = s / 2;
-            selectBoxs.Clear();
-            for (int i = 0; i < Points.Count; i++)
-            {
-                selectBoxs.Add(new RectangleD((float)(Points[i].X - f), (float)(Points[i].Y - f), (float)s, (float)s));
-            }
-            return selectBoxs.ToArray();
-        }
-        /// It returns an array of RectangleF objects that are used to draw the selection boxes around
-        /// the points of the polygon
-        /// 
-        /// @param s the size of the select box
-        /// 
-        /// @return A list of RectangleF objects.
-        public RectangleD[] GetSelectBoxes()
-        {
-            double f = ROI.selectBoxSize / 2;
-            selectBoxs.Clear();
-            for (int i = 0; i < Points.Count; i++)
-            {
-                selectBoxs.Add(new RectangleD((float)(Points[i].X - f), (float)(Points[i].Y - f), (float)ROI.selectBoxSize, (float)ROI.selectBoxSize));
-            }
-            return selectBoxs.ToArray();
-        }
-        /// Create a new ROI object, add a point to it, and return it
-        /// 
-        /// @param ZCT a class that contains the Z, C, and T coordinates of the image.
-        /// @param x x coordinate of the point
-        /// @param y The y coordinate of the point
-        /// 
-        /// @return A new ROI object
-        public static ROI CreatePoint(ZCT coord, double x, double y)
-        {
-            ROI an = new ROI();
-            an.coord = coord;
-            an.AddPoint(new PointD(x, y));
-            an.type = Type.Point;
-            return an;
-        }
-        /// Create a new ROI object, set its type to Line, add two points to it, and return it
-        /// 
-        /// @param ZCT Z is the Z-axis, C is the color channel, and T is the time frame.
-        /// @param PointD X,Y
-        /// @param PointD X,Y
-        /// 
-        /// @return A new ROI object.
-
-        public static ROI CreateLine(ZCT coord, PointD x1, PointD x2)
-        {
-            ROI an = new ROI();
-            an.coord = coord;
-            an.type = Type.Line;
-            an.AddPoint(x1);
-            an.AddPoint(x2);
-            return an;
-        }
-        /// Create a new ROI object with a rectangle shape, and add a line to the recorder
-        /// 
-        /// @param ZCT The ZCT coordinates of the image you want to create the ROI on.
-        /// @param x x coordinate of the top left corner of the rectangle
-        /// @param y y-coordinate of the top-left corner of the rectangle
-        /// @param w width
-        /// @param h height
-        /// 
-        /// @return A new ROI object.
-        public static ROI CreateRectangle(ZCT coord, double x, double y, double w, double h)
-        {
-            ROI an = new ROI();
-            an.coord = coord;
-            an.type = Type.Rectangle;
-            an.Rect = new RectangleD(x, y, w, h);
-            return an;
-        }
-        /// Create an ellipse ROI at the specified ZCT coordinate with the specified width and height
-        /// 
-        /// @param ZCT The ZCT coordinates of the image you want to create the ROI on.
-        /// @param x x-coordinate of the top-left corner of the rectangle
-        /// @param y The y-coordinate of the upper-left corner of the rectangle to create.
-        /// @param w width
-        /// @param h height
-        /// 
-        /// @return A new ROI object.
-        public static ROI CreateEllipse(ZCT coord, double x, double y, double w, double h)
-        {
-            ROI an = new ROI();
-            an.coord = coord;
-            an.type = Type.Ellipse;
-            an.Rect = new RectangleD(x, y, w, h);
-            return an;
-        }
-        /// > Create a new ROI object of type Polygon, with the given coordinate system and points
-        /// 
-        /// @param ZCT The ZCT coordinate of the ROI.
-        /// @param pts an array of PointD objects, which are just a pair of doubles (x,y)
-        /// 
-        /// @return A ROI object
-        public static ROI CreatePolygon(ZCT coord, PointD[] pts)
-        {
-            ROI an = new ROI();
-            an.coord = coord;
-            an.type = Type.Polygon;
-            an.AddPoints(pts);
-            an.closed = true;
-            return an;
-        }
-        /// > Create a new ROI object of type Freeform, with the specified ZCT coordinate and points
-        /// 
-        /// @param ZCT A class that contains the Z, C, and T coordinates of the ROI.
-        /// @param pts an array of PointD objects, which are just a pair of doubles (x,y)
-        /// 
-        /// @return A new ROI object.
-        public static ROI CreateFreeform(ZCT coord, PointD[] pts)
-        {
-            ROI an = new ROI();
-            an.coord = coord;
-            an.type = Type.Freeform;
-            an.AddPoints(pts);
-            an.closed = true;
-            return an;
-        }
-        public static ROI CreateMask(ZCT coord, float[] mask, int width, int height, PointD loc, double physicalX, double physicalY)
-        {
-            ROI an = new ROI();
-            an.coord = coord;
-            an.type = Type.Mask;
-            an.roiMask = new Mask(mask, width, height, physicalX, physicalY, loc.X, loc.Y);
-            an.AddPoint(loc);
-            an.X = loc.X + (an.roiMask.X * an.roiMask.PhysicalSizeX);
-            an.Y = loc.X + (an.roiMask.Y * an.roiMask.PhysicalSizeY);
-            return an;
-        }
-        public static ROI CreateMask(ZCT coord, Byte[] mask, int width, int height, PointD loc, double physicalX, double physicalY)
-        {
-            ROI an = new ROI();
-            an.coord = coord;
-            an.type = Type.Mask;
-            an.roiMask = new Mask(mask, width, height, physicalX, physicalY, loc.X, loc.Y);
-            an.AddPoint(loc);
-            an.X = loc.X + an.roiMask.X;
-            an.Y = loc.X + an.roiMask.Y;
-            return an;
-        }
-        // Calculate the center point of the ROI
-        public PointD GetCenter()
-        {
-            return new PointD(Rect.X + (Rect.W / 2.0), Rect.Y + (Rect.H / 2.0));
-        }
-
-        // Calculate the distance to another point
-        public double DistanceTo(PointD point)
-        {
-            var center = GetCenter();
-            return (float)Math.Sqrt(Math.Pow(center.X - point.X, 2) + Math.Pow(center.Y - point.Y, 2));
-        }
-        /// This function updates the point at the specified index
-        /// 
-        /// @param PointD A class that contains an X and Y coordinate.
-        /// @param i The index of the point to update
-        public void UpdatePoint(PointD p, int i)
-        {
-            if (i < Points.Count)
-            {
-                Points[i] = p;
-            }
-            UpdateBoundingBox();
-        }
-        /// This function returns the point at the specified index
-        /// 
-        /// @param i The index of the point to get.
-        /// 
-        /// @return The point at index i in the Points array.
-        public PointD GetPoint(int i)
-        {
-            return Points[i];
-        }
-        /// It returns an array of PointD objects
-        /// 
-        /// @return An array of PointD objects.
-        public PointD[] GetPoints()
-        {
-            return Points.ToArray();
-        }
-        /// It converts a list of points to an array of points
-        /// 
-        /// @return A PointF array.
-        public PointF[] GetPointsF()
-        {
-            PointF[] pfs = new PointF[Points.Count];
-            for (int i = 0; i < Points.Count; i++)
-            {
-                pfs[i].X = (float)Points[i].X;
-                pfs[i].Y = (float)Points[i].Y;
-            }
-            return pfs;
-        }
-        /// > Adds a point to the list of points and updates the bounding box
-        /// 
-        /// @param PointD 
-        public void AddPoint(PointD p)
-        {
-            Points.Add(p);
-            UpdateBoundingBox();
-        }
-        /// > Adds a range of points to the Points collection and updates the bounding box
-        /// 
-        /// @param p The points to add to the polygon
-        public void AddPoints(PointD[] p)
-        {
-            Points.AddRange(p);
-            UpdateBoundingBox();
-        }
-        /// > Adds a range of integer points to the Points collection and updates the bounding box
-        /// 
-        /// @param p The points to add to the polygon
-        public void AddPoints(int[] xp, int[] yp)
-        {
-            for (int i = 0; i < xp.Length; i++)
-            {
-                Points.Add(new PointD(xp[i], yp[i]));
-            }
-            UpdateBoundingBox();
-        }
-        /// > Adds a range of float points to the Points collection and updates the bounding box
-        /// 
-        /// @param p The points to add to the polygon
-        public void AddPoints(float[] xp, float[] yp)
-        {
-            for (int i = 0; i < xp.Length; i++)
-            {
-                Points.Add(new PointD(xp[i], yp[i]));
-            }
-            UpdateBoundingBox();
-        }
-        /// It removes points from a list of points based on an array of indexes
-        /// 
-        /// @param indexs an array of integers that represent the indexes of the points to be removed
-        public void RemovePoints(int[] indexs)
-        {
-            List<PointD> inds = new List<PointD>();
-            for (int i = 0; i < Points.Count; i++)
-            {
-                bool found = false;
-                for (int ind = 0; ind < indexs.Length; ind++)
-                {
-                    if (indexs[ind] == i)
-                        found = true;
-                }
-                if (!found)
-                    inds.Add(Points[i]);
-            }
-            Points = inds;
-            UpdateBoundingBox();
-        }
-        public void ClearPoints()
-        {
-            Points.Clear();
-        }
-        /// This function returns the number of points in the polygon
-        /// 
-        /// @return The number of points in the list.
-        public int GetPointCount()
-        {
-            return Points.Count;
-        }
-        /// It takes a string of points and returns an array of points
-        /// 
-        /// @param s The string to convert to points.
-        /// 
-        /// @return A list of points.
-        public PointD[] stringToPoints(string s)
-        {
-            List<PointD> pts = new List<PointD>();
-            string[] ints = s.Split(' ');
-            for (int i = 0; i < ints.Length; i++)
-            {
-                string[] sints;
-                if (s.Contains("\t"))
-                    sints = ints[i].Split('\t');
-                else
-                    sints = ints[i].Split(',');
-                double x = double.Parse(sints[0], CultureInfo.InvariantCulture);
-                double y = double.Parse(sints[1], CultureInfo.InvariantCulture);
-                pts.Add(new PointD(x, y));
-            }
-            return pts.ToArray();
-        }
-        /// This function takes a BioImage object and returns a string of the points in the image space
-        /// 
-        /// @param BioImage The image that the ROI is on
-        /// 
-        /// @return The points of the polygon in the image space.
-        public string PointsToString(BioImage b)
-        {
-            string pts = "";
-            PointD[] ps = b.ToImageSpace(Points);
-            for (int j = 0; j < ps.Length; j++)
-            {
-                if (j == ps.Length - 1)
-                    pts += ps[j].X.ToString(CultureInfo.InvariantCulture) + "," + ps[j].Y.ToString(CultureInfo.InvariantCulture);
-                else
-                    pts += ps[j].X.ToString(CultureInfo.InvariantCulture) + "," + ps[j].Y.ToString(CultureInfo.InvariantCulture) + " ";
-            }
-            return pts;
-        }
-        /// It takes a list of points and returns a rectangle that contains all of the points
-        /// 
-        public void UpdateBoundingBox()
-        {
-            if (type == Type.Mask)
-            {
-                double minx = double.MaxValue;
-                double miny = double.MaxValue;
-                double maxx = double.MinValue;
-                double maxy = double.MinValue;
-                for (int y = 0; y < roiMask.Height; y++)
-                {
-                    for (int x = 0; x < roiMask.Width; x++)
-                    {
-                        if (roiMask.IsSelected(x, y))
-                        {
-                            if (minx > x)
-                                minx = x;
-                            if (miny > y)
-                                miny = y;
-                            if (maxx < x)
-                                maxx = x;
-                            if (maxy < y)
-                                maxy = y;
-                        }
-                    }
-                }
-                BoundingBox = new RectangleD(PointsD[0].X + (minx * roiMask.PhysicalSizeX), PointsD[0].Y + (miny * roiMask.PhysicalSizeY),
-                    (maxx - minx) * roiMask.PhysicalSizeX, (maxy - miny) * roiMask.PhysicalSizeY);
-                return;
-            }
-            PointD min = new PointD(double.MaxValue, double.MaxValue);
-            PointD max = new PointD(double.MinValue, double.MinValue);
-            foreach (PointD p in Points)
-            {
-                if (min.X > p.X)
-                    min.X = p.X;
-                if (min.Y > p.Y)
-                    min.Y = p.Y;
-
-                if (max.X < p.X)
-                    max.X = p.X;
-                if (max.Y < p.Y)
-                    max.Y = p.Y;
-            }
-            RectangleD r = new RectangleD();
-            r.X = min.X;
-            r.Y = min.Y;
-            r.W = max.X - min.X;
-            r.H = max.Y - min.Y;
-            if (r.W == 0)
-                r.W = 1;
-            if (r.H == 0)
-                r.H = 1;
-            BoundingBox = r;
-        }
-        public void Dispose()
-        {
-            if (roiMask != null)
-            {
-                roiMask.Dispose();
-            }
-        }
-    }
 
     public class Cell
     {
@@ -1398,7 +334,7 @@ namespace BioLib
             for (int i = 0; i < rois.Length; i++)
             {
                 ROI r = rois[i];
-                if (r.Rect.IntersectsWith(first.GetCenter()))
+                if (r.BoundingBox.IntersectsWith(first.GetCenter()))
                 {
 
                 }
@@ -2680,7 +1616,7 @@ namespace BioLib
             }
 
             // Return the jagged array
-            return (T)Convert.ChangeType(jaggedArray, typeof(T)); // Use Convert.ChangeType to cast System.Array to T
+            return (T)System.Convert.ChangeType(jaggedArray, typeof(T)); // Use Convert.ChangeType to cast System.Array to T
         }
 
         static string GetHeader(Array array)
@@ -3359,15 +2295,10 @@ namespace BioLib
                 else
                 if (Plate != null)
                     return Resolutions[serie].StageSizeX;
-                else if (Resolutions.Count > 0)
-                    return Resolutions[0].StageSizeX;
                 else
-                    return imageInfo.stageSizeX;
+                    return Resolutions[0].StageSizeX;
             }
-            set
-            {
-                imageInfo.StageSizeX = value;
-            }
+            
         }
         public double StageSizeY
         {
@@ -3376,14 +2307,12 @@ namespace BioLib
                 if (isPyramidal)
                     return Resolutions[Level].StageSizeY;
                 else
-                if (Plate != null)
+                 if (Plate != null)
                     return Resolutions[serie].StageSizeY;
-                else if (Resolutions.Count > 0)
-                    return Resolutions[0].StageSizeY;
                 else
-                    return imageInfo.stageSizeY;
+                    return Resolutions[0].StageSizeY;
             }
-            set { imageInfo.StageSizeY = value; }
+            
         }
         public double StageSizeZ
         {
@@ -3394,12 +2323,9 @@ namespace BioLib
                 else
                 if (Plate != null)
                     return Resolutions[serie].StageSizeZ;
-                else if (Resolutions.Count > 1)
-                    return Resolutions[0].StageSizeZ;
                 else
-                    return imageInfo.stageSizeZ;
+                    return Resolutions[0].StageSizeZ;
             }
-            set { imageInfo.StageSizeZ = value; }
         }
 
         AForge.Size s = new AForge.Size(1920, 1080);
@@ -4820,9 +3746,9 @@ namespace BioLib
             if (isRGB)
             {
                 bms = new BioImage[3];
-                BioImage ri = new BioImage(Path.GetFileNameWithoutExtension(ID) + "-1" + Path.GetExtension(ID));
-                BioImage gi = new BioImage(Path.GetFileNameWithoutExtension(ID) + "-2" + Path.GetExtension(ID));
-                BioImage bi = new BioImage(Path.GetFileNameWithoutExtension(ID) + "-3" + Path.GetExtension(ID));
+                BioImage ri = new BioImage(System.IO.Path.GetFileNameWithoutExtension(ID) + "-1" + System.IO.Path.GetExtension(ID));
+                BioImage gi = new BioImage(System.IO.Path.GetFileNameWithoutExtension(ID) + "-2" + System.IO.Path.GetExtension(ID));
+                BioImage bi = new BioImage(System.IO.Path.GetFileNameWithoutExtension(ID) + "-3" + System.IO.Path.GetExtension(ID));
                 ri.sizeC = 1;
                 gi.sizeC = 1;
                 bi.sizeC = 1;
@@ -6010,7 +4936,6 @@ namespace BioLib
         public static BioImage OpenFile(string file, int series, bool tab, bool addToImages, bool tile, int tileX, int tileY, int tileSizeX, int tileSizeY)
         {
             string fs = file.Replace("\\", "/");
-            vips = VipsSupport(file);
             Console.WriteLine("Opening BioImage: " + file);
             if (file.EndsWith(".npy"))
                 return BioImage.FromNumpy(file);
@@ -6027,8 +4952,15 @@ namespace BioLib
             BioImage b = new BioImage(file);
             if (tiled && file.EndsWith(".tif") && !file.EndsWith(".ome.tif"))
             {
-                //To open this we need libvips
-                vips = VipsSupport(b.file);
+                try
+                {
+                    //To open this we need libvips
+                    vips = VipsSupport(b.file);
+                }   
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.Message);
+                }
             }
             b.series = series;
             b.file = file;
@@ -6269,13 +5201,15 @@ namespace BioLib
                 b.sizeT = 1;
                 b.sizeZ = 1;
             }
+            /*
             if (b.StageSizeX == -1)
             {
                 b.imageInfo.Series = 0;
-                b.StageSizeX = 0;
-                b.StageSizeY = 0;
-                b.StageSizeZ = 0;
+                b.stageSizeX = 0;
+                b.stageSizeY = 0;
+                b.stageSizeZ = 0;
             }
+            */
             b.Volume = new VolumeD(new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ), new Point3D(b.PhysicalSizeX * b.SizeX, b.PhysicalSizeY * b.SizeY, b.PhysicalSizeZ * b.SizeZ));
 
             //If file is ome and we have OME support then check for annotation in metadata.
@@ -6397,6 +5331,18 @@ namespace BioLib
             BioImage[] sts = new BioImage[1];
             sts[0] = image;
             SaveOMESeries(sts, file, BioImage.Planes);
+        }
+        /// <summary>
+        /// Sorts an array of ROIs by their Type property (alphabetically by default).
+        /// </summary>
+        public static ROI[] SortByType(ROI[] annotations)
+        {
+            if (annotations == null || annotations.Length == 0)
+                return Array.Empty<ROI>();
+
+            return annotations
+                .OrderBy<ROI, string>(r => r.type.ToString(), StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
         /// This function takes a list of image files and saves them as a single OME-TIFF file
         /// 
@@ -6520,9 +5466,17 @@ namespace BioLib
                         }
                     }
                 }
-
                 int i = 0;
-                foreach (ROI an in b.Annotations)
+                int ip = 0;
+                int il = 0;
+                int ir = 0;
+                int ie = 0;
+                int ipl = 0;
+                int iply = 0;
+                int ila = 0;
+                int im = 0;
+                ROI[] d = SortByType(b.Annotations.ToArray());
+                foreach (ROI an in d)
                 {
                     if (an.roiID == "")
                         omexml.setROIID("ROI:" + i.ToString() + ":" + serie, i);
@@ -6532,142 +5486,172 @@ namespace BioLib
                         omexml.setROIName(an.roiName, i);
                     else
                         omexml.setROIName("ROI:" + i.ToString() + ":" + serie, i);
-                    if (an.type == ROI.Type.Point)
+                    
+                        if (an.type == ROI.Type.Point)
                     {
                         if (an.id != "")
-                            omexml.setPointID(an.id, i, serie);
+                            omexml.setPointID(an.id, ip, serie);
                         else
-                            omexml.setPointID("Shape:" + i + ":" + serie, i, serie);
-                        omexml.setPointX(java.lang.Double.valueOf(b.ToImageSpaceX(an.X)), i, serie);
-                        omexml.setPointY(java.lang.Double.valueOf(b.ToImageSpaceY(an.Y)), i, serie);
-                        omexml.setPointTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), i, serie);
-                        omexml.setPointTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), i, serie);
-                        omexml.setPointTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), i, serie);
+                            omexml.setPointID("Shape:" + ip + ":" + serie, ip, serie);
+                        omexml.setPointX(java.lang.Double.valueOf(b.ToImageSpaceX(an.X)), ip, serie);
+                        omexml.setPointY(java.lang.Double.valueOf(b.ToImageSpaceY(an.Y)), ip, serie);
+                        omexml.setPointTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), ip, serie);
+                        omexml.setPointTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), ip, serie);
+                        omexml.setPointTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), ip, serie);
                         if (an.Text != "")
-                            omexml.setPointText(an.Text, i, serie);
+                            omexml.setPointText(an.Text, ip, serie);
                         else
-                            omexml.setPointText(i.ToString(), i, serie);
+                            omexml.setPointText(i.ToString(), ip, serie);
                         ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
-                        omexml.setPointFontSize(fl, i, serie);
+                        omexml.setPointFontSize(fl, ip, serie);
                         ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
-                        omexml.setPointStrokeColor(col, i, serie);
+                        omexml.setPointStrokeColor(col, ip, serie);
                         ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
-                        omexml.setPointStrokeWidth(sw, i, serie);
+                        omexml.setPointStrokeWidth(sw, ip, serie);
                         ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
-                        omexml.setPointFillColor(colf, i, serie);
+                        omexml.setPointFillColor(colf, ip, serie);
+                        ip++;
                     }
                     else
                     if (an.type == ROI.Type.Polygon || an.type == ROI.Type.Freeform)
                     {
                         if (an.id != "")
-                            omexml.setPolygonID(an.id, i, serie);
+                            omexml.setPolygonID(an.id, iply, serie);
                         else
-                            omexml.setPolygonID("Shape:" + i + ":" + serie, i, serie);
-                        omexml.setPolygonPoints(an.PointsToString(b), i, serie);
-                        omexml.setPolygonTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), i, serie);
-                        omexml.setPolygonTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), i, serie);
-                        omexml.setPolygonTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), i, serie);
+                            omexml.setPolygonID("Shape:" + iply + ":" + serie, iply, serie);
+                        omexml.setPolygonPoints(an.PointsToString(b), iply, serie);
+                        omexml.setPolygonTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), iply, serie);
+                        omexml.setPolygonTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), iply, serie);
+                        omexml.setPolygonTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), iply, serie);
                         if (an.Text != "")
-                            omexml.setPolygonText(an.Text, i, serie);
+                            omexml.setPolygonText(an.Text, iply, serie);
                         else
-                            omexml.setPolygonText(i.ToString(), i, serie);
+                            omexml.setPolygonText(iply.ToString(), iply, serie);
                         ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
-                        omexml.setPolygonFontSize(fl, i, serie);
+                        omexml.setPolygonFontSize(fl, iply, serie);
                         ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
-                        omexml.setPolygonStrokeColor(col, i, serie);
+                        omexml.setPolygonStrokeColor(col, iply, serie);
                         ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
-                        omexml.setPolygonStrokeWidth(sw, i, serie);
+                        omexml.setPolygonStrokeWidth(sw, iply, serie);
                         ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
-                        omexml.setPolygonFillColor(colf, i, serie);
+                        omexml.setPolygonFillColor(colf, iply, serie);
+                        iply++;
+                    }
+                    else
+                    if (an.type == ROI.Type.Polyline)
+                    {
+                        if (an.id != "")
+                            omexml.setPolylineID(an.id, ipl, serie);
+                        else
+                            omexml.setPolylineID("Shape:" + ipl + ":" + serie, ipl, serie);
+                        omexml.setPolylinePoints(an.PointsToString(b), ipl, serie);
+                        omexml.setPolylineTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), ipl, serie);
+                        omexml.setPolylineTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), ipl, serie);
+                        omexml.setPolylineTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), ipl, serie);
+                        if (an.Text != "")
+                            omexml.setPolylineText(an.Text, ipl, serie);
+                        else
+                            omexml.setPolylineText(i.ToString(), ipl, serie);
+                        ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
+                        omexml.setPolylineFontSize(fl, ipl, serie);
+                        ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
+                        omexml.setPolylineStrokeColor(col, ipl, serie);
+                        ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
+                        omexml.setPolylineStrokeWidth(sw, ipl, serie);
+                        ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
+                        omexml.setPolylineFillColor(colf, ipl, serie);
+                        ipl++;
                     }
                     else
                     if (an.type == ROI.Type.Rectangle)
                     {
                         if (an.id != "")
-                            omexml.setRectangleID(an.id, i, serie);
+                            omexml.setRectangleID(an.id, ir, serie);
                         else
-                            omexml.setRectangleID("Shape:" + i + ":" + serie, i, serie);
-                        omexml.setRectangleWidth(java.lang.Double.valueOf(b.ToImageSizeX(an.W)), i, serie);
-                        omexml.setRectangleHeight(java.lang.Double.valueOf(b.ToImageSizeY(an.H)), i, serie);
-                        omexml.setRectangleX(java.lang.Double.valueOf(b.ToImageSpaceX(an.Rect.X)), i, serie);
-                        omexml.setRectangleY(java.lang.Double.valueOf(b.ToImageSpaceY(an.Rect.Y)), i, serie);
-                        omexml.setRectangleTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), i, serie);
-                        omexml.setRectangleTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), i, serie);
-                        omexml.setRectangleTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), i, serie);
-                        omexml.setRectangleText(i.ToString(), i, serie);
+                            omexml.setRectangleID("Shape:" + ir + ":" + serie, ir, serie);
+                        omexml.setRectangleWidth(java.lang.Double.valueOf(b.ToImageSizeX(an.W)), ir, serie);
+                        omexml.setRectangleHeight(java.lang.Double.valueOf(b.ToImageSizeY(an.H)), ir, serie);
+                        omexml.setRectangleX(java.lang.Double.valueOf(b.ToImageSpaceX(an.BoundingBox.X)), ir, serie);
+                        omexml.setRectangleY(java.lang.Double.valueOf(b.ToImageSpaceY(an.BoundingBox.Y)), ir, serie);
+                        omexml.setRectangleTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), ir, serie);
+                        omexml.setRectangleTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), ir, serie);
+                        omexml.setRectangleTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), ir, serie);
                         if (an.Text != "")
-                            omexml.setRectangleText(an.Text, i, serie);
+                            omexml.setRectangleText(an.Text, ir, serie);
                         else
-                            omexml.setRectangleText(i.ToString(), i, serie);
+                            omexml.setRectangleText(ir.ToString(), ir, serie);
                         ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
-                        omexml.setRectangleFontSize(fl, i, serie);
+                        omexml.setRectangleFontSize(fl, ir, serie);
                         ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
-                        omexml.setRectangleStrokeColor(col, i, serie);
+                        omexml.setRectangleStrokeColor(col, ir, serie);
                         ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
-                        omexml.setRectangleStrokeWidth(sw, i, serie);
+                        omexml.setRectangleStrokeWidth(sw, ir, serie);
                         ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
-                        omexml.setRectangleFillColor(colf, i, serie);
+                        omexml.setRectangleFillColor(colf, ir, serie);
+                        ir++;
                     }
                     else
                     if (an.type == ROI.Type.Line)
                     {
                         if (an.id != "")
-                            omexml.setLineID(an.id, i, serie);
+                            omexml.setLineID(an.id, il, serie);
                         else
-                            omexml.setLineID("Shape:" + i + ":" + serie, i, serie);
-                        omexml.setLineX1(java.lang.Double.valueOf(b.ToImageSpaceX(an.GetPoint(0).X)), i, serie);
-                        omexml.setLineY1(java.lang.Double.valueOf(b.ToImageSpaceY(an.GetPoint(0).Y)), i, serie);
-                        omexml.setLineX2(java.lang.Double.valueOf(b.ToImageSpaceX(an.GetPoint(1).X)), i, serie);
-                        omexml.setLineY2(java.lang.Double.valueOf(b.ToImageSpaceY(an.GetPoint(1).Y)), i, serie);
-                        omexml.setLineTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), i, serie);
-                        omexml.setLineTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), i, serie);
-                        omexml.setLineTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), i, serie);
+                            omexml.setLineID("Shape:" + il + ":" + serie, il, serie);
+                        omexml.setLineX1(java.lang.Double.valueOf(b.ToImageSpaceX(an.GetPoint(0).X)), il, serie);
+                        omexml.setLineY1(java.lang.Double.valueOf(b.ToImageSpaceY(an.GetPoint(0).Y)), il, serie);
+                        omexml.setLineX2(java.lang.Double.valueOf(b.ToImageSpaceX(an.GetPoint(1).X)), il, serie);
+                        omexml.setLineY2(java.lang.Double.valueOf(b.ToImageSpaceY(an.GetPoint(1).Y)), il, serie);
+                        omexml.setLineTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), il, serie);
+                        omexml.setLineTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), il, serie);
+                        omexml.setLineTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), il, serie);
                         if (an.Text != "")
-                            omexml.setLineText(an.Text, i, serie);
+                            omexml.setLineText(an.Text, il, serie);
                         else
-                            omexml.setLineText(i.ToString(), i, serie);
+                            omexml.setLineText(il.ToString(), il, serie);
                         ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
-                        omexml.setLineFontSize(fl, i, serie);
+                        omexml.setLineFontSize(fl, il, serie);
                         ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
-                        omexml.setLineStrokeColor(col, i, serie);
+                        omexml.setLineStrokeColor(col, il, serie);
                         ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
-                        omexml.setLineStrokeWidth(sw, i, serie);
+                        omexml.setLineStrokeWidth(sw, il, serie);
                         ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
-                        omexml.setLineFillColor(colf, i, serie);
+                        omexml.setLineFillColor(colf, il, serie);
+                        il++;
                     }
                     else
                     if (an.type == ROI.Type.Ellipse)
                     {
-
-                        if (an.id != "")
-                            omexml.setEllipseID(an.id, i, serie);
-                        else
-                            omexml.setEllipseID("Shape:" + i + ":" + serie, i, serie);
+                        
                         //We need to change System.Drawing.Rectangle to ellipse radius;
                         double w = (double)an.W / 2;
                         double h = (double)an.H / 2;
-                        omexml.setEllipseRadiusX(java.lang.Double.valueOf(b.ToImageSizeX(w)), i, serie);
-                        omexml.setEllipseRadiusY(java.lang.Double.valueOf(b.ToImageSizeY(h)), i, serie);
-
-                        double x = an.Point.X + w;
-                        double y = an.Point.Y + h;
-                        omexml.setEllipseX(java.lang.Double.valueOf(b.ToImageSpaceX(x)), i, serie);
-                        omexml.setEllipseY(java.lang.Double.valueOf(b.ToImageSpaceX(y)), i, serie);
-                        omexml.setEllipseTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), i, serie);
-                        omexml.setEllipseTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), i, serie);
-                        omexml.setEllipseTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), i, serie);
-                        if (an.Text != "")
-                            omexml.setEllipseText(an.Text, i, serie);
+                        if (an.id != "")
+                            omexml.setEllipseID(an.id, ie, serie);
                         else
-                            omexml.setEllipseText(i.ToString(), i, serie);
+                            omexml.setEllipseID("Shape:" + ie + ":" + serie, ie, serie);
+                        omexml.setEllipseRadiusX(java.lang.Double.valueOf(b.ToImageSizeX(w)), ie, serie);
+                        omexml.setEllipseRadiusY(java.lang.Double.valueOf(b.ToImageSizeY(h)), ie, serie);
+                        
+                        double x = an.Points[0].X + w;
+                        double y = an.Points[0].Y + h;
+                        omexml.setEllipseX(java.lang.Double.valueOf(b.ToImageSpaceX(x)), ie, serie);
+                        omexml.setEllipseY(java.lang.Double.valueOf(b.ToImageSpaceY(y)), ie, serie);
+                        omexml.setEllipseTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), ie, serie);
+                        omexml.setEllipseTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), ie, serie);
+                        omexml.setEllipseTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), ie, serie);
+                        if (an.Text != "")
+                            omexml.setEllipseText(an.Text, ie, serie);
+                        else
+                            omexml.setEllipseText(i.ToString(), ie, serie);
                         ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
-                        omexml.setEllipseFontSize(fl, i, serie);
+                        omexml.setEllipseFontSize(fl, ie, serie);
                         ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
-                        omexml.setEllipseStrokeColor(col, i, serie);
+                        omexml.setEllipseStrokeColor(col, ie, serie);
                         ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
-                        omexml.setEllipseStrokeWidth(sw, i, serie);
+                        omexml.setEllipseStrokeWidth(sw, ie, serie);
                         ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
-                        omexml.setEllipseFillColor(colf, i, serie);
+                        omexml.setEllipseFillColor(colf, ie, serie);
+                        ie++;
                     }
                     else
                     if (an.type == ROI.Type.Label)
@@ -6676,8 +5660,8 @@ namespace BioLib
                             omexml.setLabelID(an.id, i, serie);
                         else
                             omexml.setLabelID("Shape:" + i + ":" + serie, i, serie);
-                        omexml.setLabelX(java.lang.Double.valueOf(b.ToImageSpaceX(an.Rect.X)), i, serie);
-                        omexml.setLabelY(java.lang.Double.valueOf(b.ToImageSpaceY(an.Rect.Y)), i, serie);
+                        omexml.setLabelX(java.lang.Double.valueOf(b.ToImageSpaceX(an.BoundingBox.X)), i, serie);
+                        omexml.setLabelY(java.lang.Double.valueOf(b.ToImageSpaceY(an.BoundingBox.Y)), i, serie);
                         omexml.setLabelTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), i, serie);
                         omexml.setLabelTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), i, serie);
                         omexml.setLabelTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), i, serie);
@@ -6699,36 +5683,36 @@ namespace BioLib
                     if (an.type == ROI.Type.Mask || an.roiMask != null)
                     {
                         if (an.id != "")
-                            omexml.setMaskID(an.id, i, serie);
+                            omexml.setMaskID(an.id, im, serie);
                         else
-                            omexml.setMaskID("Shape:" + i + ":" + serie, i, serie);
-                        omexml.setMaskX(java.lang.Double.valueOf(b.ToImageSpaceX(b.StageSizeX + (an.roiMask.X * an.roiMask.PhysicalSizeX))), i, serie);
-                        omexml.setMaskY(java.lang.Double.valueOf(b.ToImageSpaceY(b.StageSizeY + (an.roiMask.Y * an.roiMask.PhysicalSizeY))), i, serie);
-                        omexml.setMaskTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), i, serie);
-                        omexml.setMaskTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), i, serie);
-                        omexml.setMaskTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), i, serie);
-                        omexml.setMaskWidth(new java.lang.Double(an.roiMask.Width * an.roiMask.PhysicalSizeX), i, serie);
-                        omexml.setMaskHeight(new java.lang.Double(an.roiMask.Height * an.roiMask.PhysicalSizeY), i, serie);
+                            omexml.setMaskID("Shape:" + im + ":" + serie, im, serie);
+                        omexml.setMaskX(java.lang.Double.valueOf(b.ToImageSpaceX(b.StageSizeX + (an.roiMask.X * an.roiMask.PhysicalSizeX))), im, serie);
+                        omexml.setMaskY(java.lang.Double.valueOf(b.ToImageSpaceY(b.StageSizeY + (an.roiMask.Y * an.roiMask.PhysicalSizeY))), im, serie);
+                        omexml.setMaskTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), im, serie);
+                        omexml.setMaskTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), im, serie);
+                        omexml.setMaskTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), im, serie);
+                        omexml.setMaskWidth(new java.lang.Double(an.roiMask.Width * an.roiMask.PhysicalSizeX), im, serie);
+                        omexml.setMaskHeight(new java.lang.Double(an.roiMask.Height * an.roiMask.PhysicalSizeY), im, serie);
                         if (an.Text != "")
-                            omexml.setMaskText(an.Text, i, serie);
+                            omexml.setMaskText(an.Text, im, serie);
                         else
-                            omexml.setMaskText(i.ToString(), i, serie);
+                            omexml.setMaskText(im.ToString(), im, serie);
 
                         ome.units.quantity.Length fl = new ome.units.quantity.Length(java.lang.Double.valueOf(an.fontSize), ome.units.UNITS.PIXEL);
-                        omexml.setMaskFontSize(fl, i, serie);
+                        omexml.setMaskFontSize(fl, im, serie);
                         ome.xml.model.primitives.Color col = new ome.xml.model.primitives.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
-                        omexml.setMaskStrokeColor(col, i, serie);
+                        omexml.setMaskStrokeColor(col, im, serie);
                         ome.units.quantity.Length sw = new ome.units.quantity.Length(java.lang.Double.valueOf(an.strokeWidth), ome.units.UNITS.PIXEL);
-                        omexml.setMaskStrokeWidth(sw, i, serie);
+                        omexml.setMaskStrokeWidth(sw, im, serie);
                         ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
-                        omexml.setMaskFillColor(colf, i, serie);
+                        omexml.setMaskFillColor(colf, im, serie);
                         byte[] bts = an.roiMask.GetBytes();
-                        omexml.setMaskBinData(bts, i, serie);
-                        omexml.setMaskBinDataBigEndian(new java.lang.Boolean(!BitConverter.IsLittleEndian), i, serie);
-                        omexml.setMaskBinDataLength(new NonNegativeLong(new java.lang.Long(bts.Length)), i, serie);
-                        omexml.setMaskBinDataCompression(ome.xml.model.enums.Compression.NONE, i, serie);
+                        omexml.setMaskBinData(bts, im, serie);
+                        omexml.setMaskBinDataBigEndian(new java.lang.Boolean(!BitConverter.IsLittleEndian), im, serie);
+                        omexml.setMaskBinDataLength(new NonNegativeLong(new java.lang.Long(bts.Length)), im, serie);
+                        omexml.setMaskBinDataCompression(ome.xml.model.enums.Compression.NONE, im, serie);
+                        im++;
                     }
-
                     i++;
                 }
 
@@ -6784,11 +5768,7 @@ namespace BioLib
                         Progress = ((float)bu / (float)b.Buffers.Count) * 100;
                     }
                 }
-                if (!OperatingSystem.IsMacOS())
-                {
-                    Console.WriteLine("Closing writer.");
-                    writer.close();
-                }
+                writer.close();
             }
             catch (Exception e)
             {
@@ -6797,6 +5777,7 @@ namespace BioLib
 
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, files, f, planes);
         }
+
         /// <summary>
         /// The function "GetBands" returns the number of color bands for a given pixel format in the
         /// AForge library.
@@ -7694,9 +6675,10 @@ namespace BioLib
                 string s = b.meta.getStageLabelName(serie);
                 if (s != null)
                 {
-                    b.StageSizeX = b.meta.getStageLabelX(serie).value().doubleValue();
-                    b.StageSizeY = b.meta.getStageLabelY(serie).value().doubleValue();
-                    b.StageSizeZ = b.meta.getStageLabelZ(serie).value().doubleValue();
+                    Resolution res = new Resolution(b.SizeX, b.SizeY, PixelFormat, b.PhysicalSizeX, b.PhysicalSizeY, b.PhysicalSizeZ,
+                        b.meta.getStageLabelX(serie).value().doubleValue(),
+                        b.meta.getStageLabelY(serie).value().doubleValue(),
+                        b.meta.getStageLabelZ(serie).value().doubleValue());
                 }
             }
             catch (Exception e)
@@ -7809,7 +6791,7 @@ namespace BioLib
                         double py = b.meta.getRectangleY(im, sc).doubleValue();
                         double pw = b.meta.getRectangleWidth(im, sc).doubleValue();
                         double ph = b.meta.getRectangleHeight(im, sc).doubleValue();
-                        an.Rect = b.ToStageSpace(new RectangleD(px, py, pw, ph));
+                        an.BoundingBox = b.ToStageSpace(new RectangleD(px, py, pw, ph));
                         ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getRectangleTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
@@ -7854,7 +6836,7 @@ namespace BioLib
                         double h = eh * 2;
                         double x = px - ew;
                         double y = py - eh;
-                        an.Rect = b.ToStageSpace(new RectangleD(x, y, w, h));
+                        an.BoundingBox = b.ToStageSpace(new RectangleD(x, y, w, h));
                         ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getEllipseTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
@@ -7883,9 +6865,9 @@ namespace BioLib
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
                     else
-                    if (typ == "Polygon")
+                    if (typ == "Polyline")
                     {
-                        an.type = ROI.Type.Polygon;
+                        an.type = ROI.Type.Polyline;
                         an.id = b.meta.getPolygonID(im, sc);
                         an.closed = true;
                         string pxs = b.meta.getPolygonPoints(im, sc);
@@ -8010,7 +6992,7 @@ namespace BioLib
                         an = ROI.CreateMask(co, bts, (int)Math.Round(w / b.PhysicalSizeX), (int)Math.Round(h / b.PhysicalSizeY), new PointD(x * b.PhysicalSizeX, y * b.PhysicalSizeY), b.PhysicalSizeX, b.PhysicalSizeY);
                         an.Text = b.meta.getMaskText(im, sc);
                         an.id = b.meta.getMaskID(im, sc);
-                        an.Rect = new RectangleD(an.X, an.Y, an.W, an.H);
+                        an.BoundingBox = new RectangleD(an.X, an.Y, an.W, an.H);
                         ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getMaskTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
@@ -9124,7 +8106,7 @@ namespace BioLib
                         double py = meta.getRectangleY(im, sc).doubleValue();
                         double pw = meta.getRectangleWidth(im, sc).doubleValue();
                         double ph = meta.getRectangleHeight(im, sc).doubleValue();
-                        an.Rect = ToStageSpace(new RectangleD(px, py, pw, ph), physicalSizeX, physicalSizeY, volume.Location.X, volume.Location.Y);
+                        an.BoundingBox = ToStageSpace(new RectangleD(px, py, pw, ph), physicalSizeX, physicalSizeY, volume.Location.X, volume.Location.Y);
                         ome.xml.model.primitives.NonNegativeInteger nz = meta.getRectangleTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
@@ -9166,7 +8148,7 @@ namespace BioLib
                         double h = eh * 2;
                         double x = px - ew;
                         double y = py - eh;
-                        an.Rect = ToStageSpace(new RectangleD(px, py, w, h), physicalSizeX, physicalSizeY, volume.Location.X, volume.Location.Y);
+                        an.BoundingBox = ToStageSpace(new RectangleD(px, py, w, h), physicalSizeX, physicalSizeY, volume.Location.X, volume.Location.Y);
                         ome.xml.model.primitives.NonNegativeInteger nz = meta.getEllipseTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
@@ -9505,7 +8487,7 @@ namespace BioLib
                         //POINTS
                         an.AddPoints(an.stringToPoints(val));
                         points = false;
-                        an.Rect = new RectangleD(x, y, w, h);
+                        an.BoundingBox = new RectangleD(x, y, w, h);
                     }
                     else
                     if (col == 15)
