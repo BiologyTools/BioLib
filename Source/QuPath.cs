@@ -61,7 +61,7 @@ namespace BioLib
             public static GeoJsonPoint FromROI(BioLib.ROI roi, BioImage b)
             {
                 GeoJsonPoint g = new GeoJsonPoint();
-                PointD p = b.ToImageSpace(roi.PointsD[0]);
+                PointD p = b.ToImageSpace(roi.Points[0]);
                 g.coordinates = new double[2] { p.X, p.Y };
                 g.type = "Point";
                 g.plane = new GeoJsonPlane();
@@ -127,10 +127,10 @@ namespace BioLib
             public static GeoJsonLineString FromROI(ROI roi, BioImage b)
             {
                 GeoJsonLineString g = new GeoJsonLineString();
-                double[][] ds = new double[roi.PointsD.Count][];
-                for (int i = 0; i < roi.PointsD.Count; i++)
+                double[][] ds = new double[roi.Points.Count][];
+                for (int i = 0; i < roi.Points.Count; i++)
                 {
-                    PointD po = b.ToImageSpace(roi.PointsD[i]);
+                    PointD po = b.ToImageSpace(roi.Points[i]);
                     ds[i] = new double[2] { po.X, po.Y };
                 }
                 g.coordinates = ds;
@@ -156,22 +156,22 @@ namespace BioLib
             public GeoJsonPlane plane { get; set; }
             public static GeoJsonPolygon FromROI(ROI roi, BioImage b)
             {
-                int pc = roi.PointsD.Count;
-                if (roi.PointsD.Last() != roi.PointsD.First())
-                    pc = roi.PointsD.Count + 1;
+                int pc = roi.Points.Count;
+                if (roi.Points.Last() != roi.Points.First())
+                    pc = roi.Points.Count + 1;
                 GeoJsonPolygon g = new GeoJsonPolygon();
                 double[][][] dds = new double[1][][];
                 double[][] ds = new double[pc][];
                 for (int i = 0; i < pc; i++)
                 {
-                    if (i >= roi.PointsD.Count)
+                    if (i >= roi.Points.Count)
                     {
-                        PointD po = b.ToImageSpace(roi.PointsD[0]);
+                        PointD po = b.ToImageSpace(roi.Points[0]);
                         ds[i] = new double[2] { (int)po.X, (int)po.Y };
                     }
                     else
                     {
-                        PointD po = b.ToImageSpace(roi.PointsD[i]);
+                        PointD po = b.ToImageSpace(roi.Points[i]);
                         ds[i] = new double[2] { (int)po.X, (int)po.Y };
                     }
                 }
@@ -247,7 +247,7 @@ namespace BioLib
                 {
                     r.type = ROI.Type.Line;
                     r.AddPoints(GetPoints(f.geometry, b));
-                    if (r.PointsD.Count > 2)
+                    if (r.Points.Count > 2)
                         r.type = ROI.Type.Polyline;
                     if (f.geometry.plane != null)
                         r.coord = f.geometry.GetZCT();
