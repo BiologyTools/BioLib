@@ -443,7 +443,7 @@ namespace BioLib
                 {
                     for (int t = 0; t < sizeT; t++)
                     {
-                        planes.Add(b.GetBitmap(z,c,t).Bytes);
+                        planes.Add(b.GetBitmap(z,c,t).GetSaveBytes(BitConverter.IsLittleEndian));
                     }
                 }
             }
@@ -454,37 +454,53 @@ namespace BioLib
             //Create new image.
             String name = b.Filename;
             PixelsType pixelsType = new PixelsTypeI();
-            pixelsType.setValue(omero.rtypes.rstring("uint8"));
-            RLong idNew = proxy.createImage(sizeX, sizeY, sizeZ, sizeT, java.util.Arrays.asList(new java.lang.Integer(0)), pixelsType, name,"");
+            if (b.Buffers[0].PixelFormat == PixelFormat.Format16bppGrayScale)
+                pixelsType.setValue(omero.rtypes.rstring("uint16"));
+            else
+                pixelsType.setValue(omero.rtypes.rstring("uint8"));
+            RLong idNew = proxy.createImage(sizeX, sizeY, sizeZ, sizeT, java.util.Arrays.asList(new java.lang.Integer(0)), pixelsType, name, "");
             IContainerPrx proxyCS = session.getContainerService();
             java.util.List results = proxyCS.getImages("omero.model.Image", java.util.Arrays.asList(new java.lang.Long(idNew.getValue())), new ParametersI());
             ImageData newImage = new ImageData((Image)results.get(0));
-
-            //Link the new image and the dataset hosting the source image.
-            DatasetImageLink link = new DatasetImageLinkI();
-            link.setParent(new DatasetI(id, false));
-            link.setChild(new ImageI(newImage.getId(), false));
-            gateway.getUpdateService(sc).saveAndReturnObject(link);
-
-            //Write the data.
+            var user = gateway.getLoggedInUser();
+            long userId = user.getId();
             try
             {
-                store = gateway.getPixelsStore(sc);
+                // Set physical sizes
+                var pixels = newImage.getDefaultPixels();
+                pixels.setPixelSizeX(new LengthI(b.PhysicalSizeX, omero.model.enums.UnitsLength.MICROMETER));
+                pixels.setPixelSizeY(new LengthI(b.PhysicalSizeY, omero.model.enums.UnitsLength.MICROMETER));
+                pixels.setPixelSizeZ(new LengthI(b.PhysicalSizeZ, omero.model.enums.UnitsLength.MICROMETER));
+                // Write pixel planes with correct endianness
                 store.setPixelsId(newImage.getDefaultPixels().getId(), false);
                 int index = 0;
+                if (sizeC == 3)
+                    sizeC = 1;
                 for (int z = 0; z < sizeZ; z++)
                 {
                     for (int c = 0; c < sizeC; c++)
                     {
                         for (int t = 0; t < sizeT; t++)
                         {
-                            progress = ((float)index / (float)planes.Count);
-                            store.setPlane(planes[index++], z, c, t);
+                            byte[] planeBytes = planes[index++];
+                            if (b.Buffers[0].PixelFormat == PixelFormat.Format16bppGrayScale)
+                            {
+                                for (int i = 0; i < planeBytes.Length; i += 2)
+                                {
+                                    byte tmp = planeBytes[i];
+                                    planeBytes[i] = planeBytes[i + 1];
+                                    planeBytes[i + 1] = tmp;
+                                }
+                            }
+                            store.setPlane(planeBytes, z, c, t);
                         }
                     }
                 }
-                //Save the data.
                 store.save();
+                // Save ROI data
+                int roiCount = ROI.AddROIsToOMERO(newImage.getId(), userId, b);
+                Console.WriteLine($"Uploaded {roiCount} ROIs.");
+
             }
             finally
             {
@@ -705,6 +721,7 @@ namespace BioLib
                     b.rgbChannels[0] = 0;
                     b.rgbChannels[1] = 1;
                     b.rgbChannels[2] = 2;
+                    b.ID = o.getId().ToString();
                     BioImage.AutoThreshold(b, true);
                     if (b.bitsPerPixel > 8)
                         b.StackThreshold(true);

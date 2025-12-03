@@ -3,8 +3,16 @@
 // Targets: Gtk# (Gtk 3) / C# (.NET 6/7/8) with SkiaSharp and SkiaSharp.Views.Gtk
 
 using AForge;
+using BioLib;
 using Gdk;
 using Gtk;
+using omero.api;
+using omero.constants;
+using omero.gateway;
+using omero.gateway.facility;
+using omero.gateway.model;
+using omero.model;
+using org.w3c.dom.css;
 using SkiaSharp;
 using SkiaSharp.Views.Gtk;
 using System;
@@ -892,6 +900,382 @@ namespace BioLib
         {
             return new PointD(BoundingBox.X + (BoundingBox.W / 2.0), BoundingBox.Y + (BoundingBox.H / 2.0));
         }
+        public static int AddROIsToOMERO(long imageId, long user, BioImage b)
+        {
+            try
+            {
+                var gateway = OMERO.gateway;
+                var roiService = gateway.getFacility(typeof(ROIFacility)) as ROIFacility;
+                var browse = gateway.getFacility(typeof(BrowseFacility)) as BrowseFacility;
+                var ctx = OMERO.sc;
+                ImageData image = browse.getImage(ctx, imageId);
+                int count = 0;
+                ROI[] rois = b.Annotations.ToArray();
+
+                foreach (ROI an in rois)
+                {
+                    ROIData roi = new ROIData();
+                    ShapeData shape = null;
+
+                    switch (an.type)
+                    {
+                        case ROI.Type.Point:
+                            {
+                                var pt = new omero.gateway.model.PointData(
+                                    b.ToImageSpaceX(an.X),
+                                    b.ToImageSpaceY(an.Y)
+                                );
+                                pt.setZ(an.coord.Z);
+                                pt.setC(an.coord.C);
+                                pt.setT(an.coord.T);
+                                pt.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                                shape = pt;
+                                break;
+                            }
+
+                        case ROI.Type.Rectangle:
+                            {
+                                var r = new RectangleData(
+                                    b.ToImageSpaceX(an.BoundingBox.X),
+                                    b.ToImageSpaceY(an.BoundingBox.Y),
+                                    b.ToImageSizeX(an.W),
+                                    b.ToImageSizeY(an.H)
+                                );
+                                r.setZ(an.coord.Z);
+                                r.setC(an.coord.C);
+                                r.setT(an.coord.T);
+                                r.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                                shape = r;
+                                break;
+                            }
+
+                        case ROI.Type.Ellipse:
+                            {
+                                double rx = b.ToImageSizeX(an.W / 2.0);
+                                double ry = b.ToImageSizeY(an.H / 2.0);
+                                double cx = b.ToImageSpaceX(an.Points[0].X + an.W / 2.0);
+                                double cy = b.ToImageSpaceY(an.Points[0].Y + an.H / 2.0);
+
+                                var e = new EllipseData(cx, cy, rx, ry);
+                                e.setZ(an.coord.Z);
+                                e.setC(an.coord.C);
+                                e.setT(an.coord.T);
+                                e.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                                shape = e;
+                                break;
+                            }
+
+                        case ROI.Type.Line:
+                            {
+                                var l = new LineData(
+                                    b.ToImageSpaceX(an.GetPoint(0).X),
+                                    b.ToImageSpaceY(an.GetPoint(0).Y),
+                                    b.ToImageSpaceX(an.GetPoint(1).X),
+                                    b.ToImageSpaceY(an.GetPoint(1).Y)
+                                );
+                                l.setZ(an.coord.Z);
+                                l.setC(an.coord.C);
+                                l.setT(an.coord.T);
+                                l.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                                shape = l;
+                                break;
+                            }
+
+                        case ROI.Type.Polygon:
+                        case ROI.Type.Freeform:
+                            {
+                                var pts = new List<PointD>();
+                                foreach (var p in an.Points)
+                                    pts.Add(new PointD(
+                                        b.ToImageSpaceX(p.X),
+                                        b.ToImageSpaceY(p.Y)
+                                    ));
+
+                                var poly = new PolygonData(BioPointToOmeroPoint(an,b));
+                                poly.setZ(an.coord.Z);
+                                poly.setC(an.coord.C);
+                                poly.setT(an.coord.T);
+                                poly.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                                shape = poly;
+                                break;
+                            }
+
+                        case ROI.Type.Polyline:
+                            {
+                                var pts = new List<PointD>();
+                                foreach (var p in an.Points)
+                                    pts.Add(new PointD(
+                                        b.ToImageSpaceX(p.X),
+                                        b.ToImageSpaceY(p.Y)
+                                    ));
+
+                                var pl = new PolylineData(BioPointToOmeroPoint(an, b));
+                                pl.setZ(an.coord.Z);
+                                pl.setC(an.coord.C);
+                                pl.setT(an.coord.T);
+                                pl.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                                shape = pl;
+                                break;
+                            }
+
+                        case ROI.Type.Label:
+                            {
+                                var t = new TextData(
+                                    string.IsNullOrEmpty(an.Text) ? "Label" : an.Text,
+                                    b.ToImageSpaceX(an.BoundingBox.X),
+                                    b.ToImageSpaceY(an.BoundingBox.Y)
+                                );
+                                //t.setFontSize(new omero.model.LengthI(an.fontSize, omero.model.enums.UnitsLength.PIXEL));
+                                t.setZ(an.coord.Z);
+                                t.setC(an.coord.C);
+                                t.setT(an.coord.T);
+                                shape = t;
+                                break;
+                            }
+
+                        case ROI.Type.Mask:
+                            {
+                                if (an.roiMask == null)
+                                    continue;
+
+                                var m = new MaskData(
+                                    an.roiMask.X,
+                                    an.roiMask.Y,
+                                    an.roiMask.Width,
+                                    an.roiMask.Height,
+                                    an.roiMask.GetBytes()
+                                );
+
+                                m.setZ(an.coord.Z);
+                                m.setC(an.coord.C);
+                                m.setT(an.coord.T);
+                                m.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                                shape = m;
+                                break;
+                            }
+                    }
+
+                    if (shape == null)
+                        continue;
+                    // Apply stroke/fill
+                    shape.getShapeSettings().setStroke(new java.awt.Color(
+                        an.strokeColor.A,
+                        an.strokeColor.R,
+                        an.strokeColor.G,
+                        an.strokeColor.B
+                    ));
+
+                    shape.getShapeSettings().setFill(new java.awt.Color(
+                        an.fillColor.A,
+                        an.fillColor.R,
+                        an.fillColor.G,
+                        an.fillColor.B
+                    ));
+
+                    shape.getShapeSettings().setStrokeWidth(
+                        new omero.model.LengthI(an.strokeWidth, omero.model.enums.UnitsLength.PIXEL)
+                    );
+
+                    roi.addShapeData(shape);
+
+                    // ----- Save ROI to OMERO -----
+                    java.util.List roiList = new java.util.ArrayList();
+                    roiList.add(roi);
+
+                    var saved = roiService.saveROIs(ctx, imageId, user, roiList);
+                    count++;
+
+                }
+
+                Console.WriteLine($"Added {count} ROIs to OMERO image {imageId}");
+                return count;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error adding ROIs: " + ex);
+                return 0;
+            }
+        }
+        public static java.util.List BioPointToOmeroPoint(ROI r, BioImage b)
+        {
+            // Create Java list, NOT C# list
+            java.util.List javaPts = new java.util.ArrayList();
+            foreach (var p in r.Points)
+            {
+                // Create Java Point2D.Double for OMERO
+                var jp = new java.awt.geom.Point2D.Double(
+                    b.ToImageSpaceX(p.X),
+                    b.ToImageSpaceY(p.Y)
+                );
+                javaPts.add(jp);
+            }
+            return javaPts;
+        }
+        public void AddRectangleRoiToOmero(long imageId,BioImage b, ROI an, ServiceFactoryPrx sf)
+        {
+            // 1. Get services
+            var roiService = sf.getRoiService();
+            var updateService = sf.getUpdateService();
+
+            // 2. Create ROI and link to image
+            var roi = new omero.model.RoiI();
+            roi.setImage(new omero.model.ImageI(imageId, false));
+
+            ROIData roid = new ROIData();
+            ShapeData shape = null;
+
+            switch (an.type)
+            {
+                case ROI.Type.Point:
+                    {
+                        var pt = new omero.gateway.model.PointData(
+                            b.ToImageSpaceX(an.X),
+                            b.ToImageSpaceY(an.Y)
+                        );
+                        pt.setZ(an.coord.Z);
+                        pt.setC(an.coord.C);
+                        pt.setT(an.coord.T);
+                        pt.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                        shape = pt;
+                        break;
+                    }
+
+                case ROI.Type.Rectangle:
+                    {
+                        var r = new RectangleData(
+                            b.ToImageSpaceX(an.BoundingBox.X),
+                            b.ToImageSpaceY(an.BoundingBox.Y),
+                            b.ToImageSizeX(an.W),
+                            b.ToImageSizeY(an.H)
+                        );
+                        r.setZ(an.coord.Z);
+                        r.setC(an.coord.C);
+                        r.setT(an.coord.T);
+                        r.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                        shape = r;
+                        break;
+                    }
+
+                case ROI.Type.Ellipse:
+                    {
+                        double rx = b.ToImageSizeX(an.W / 2.0);
+                        double ry = b.ToImageSizeY(an.H / 2.0);
+                        double cx = b.ToImageSpaceX(an.Points[0].X + an.W / 2.0);
+                        double cy = b.ToImageSpaceY(an.Points[0].Y + an.H / 2.0);
+
+                        var e = new EllipseData(cx, cy, rx, ry);
+                        e.setZ(an.coord.Z);
+                        e.setC(an.coord.C);
+                        e.setT(an.coord.T);
+                        e.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                        shape = e;
+                        break;
+                    }
+
+                case ROI.Type.Line:
+                    {
+                        var l = new LineData(
+                            b.ToImageSpaceX(an.GetPoint(0).X),
+                            b.ToImageSpaceY(an.GetPoint(0).Y),
+                            b.ToImageSpaceX(an.GetPoint(1).X),
+                            b.ToImageSpaceY(an.GetPoint(1).Y)
+                        );
+                        l.setZ(an.coord.Z);
+                        l.setC(an.coord.C);
+                        l.setT(an.coord.T);
+                        l.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                        shape = l;
+                        break;
+                    }
+
+                case ROI.Type.Polygon:
+                case ROI.Type.Freeform:
+                    {
+                        var pts = new List<PointD>();
+                        foreach (var p in an.Points)
+                            pts.Add(new PointD(
+                                b.ToImageSpaceX(p.X),
+                                b.ToImageSpaceY(p.Y)
+                            ));
+
+                        var poly = new PolygonData(BioPointToOmeroPoint(an, b));
+                        poly.setZ(an.coord.Z);
+                        poly.setC(an.coord.C);
+                        poly.setT(an.coord.T);
+                        poly.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                        shape = poly;
+                        break;
+                    }
+
+                case ROI.Type.Polyline:
+                    {
+                        var pts = new List<PointD>();
+                        foreach (var p in an.Points)
+                            pts.Add(new PointD(
+                                b.ToImageSpaceX(p.X),
+                                b.ToImageSpaceY(p.Y)
+                            ));
+
+                        var pl = new PolylineData(BioPointToOmeroPoint(an, b));
+                        pl.setZ(an.coord.Z);
+                        pl.setC(an.coord.C);
+                        pl.setT(an.coord.T);
+                        pl.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                        shape = pl;
+                        break;
+                    }
+
+                case ROI.Type.Label:
+                    {
+                        var t = new TextData(
+                            string.IsNullOrEmpty(an.Text) ? "Label" : an.Text,
+                            b.ToImageSpaceX(an.BoundingBox.X),
+                            b.ToImageSpaceY(an.BoundingBox.Y)
+                        );
+                        //t.setFontSize(new omero.model.LengthI(an.fontSize, omero.model.enums.UnitsLength.PIXEL));
+                        t.setZ(an.coord.Z);
+                        t.setC(an.coord.C);
+                        t.setT(an.coord.T);
+                        shape = t;
+                        break;
+                    }
+
+                case ROI.Type.Mask:
+                    {
+                        if (an.roiMask == null)
+                            break;
+
+                        var m = new MaskData(
+                            an.roiMask.X,
+                            an.roiMask.Y,
+                            an.roiMask.Width,
+                            an.roiMask.Height,
+                            an.roiMask.GetBytes()
+                        );
+
+                        m.setZ(an.coord.Z);
+                        m.setC(an.coord.C);
+                        m.setT(an.coord.T);
+                        m.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                        shape = m;
+                        break;
+                    }
+            }
+
+            var awtColor = new java.awt.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
+            // Apply stroke/fill
+            shape.getShapeSettings().setStroke(awtColor);
+
+            shape.getShapeSettings().setFill(awtColor);
+            // 5. Add shape to ROI
+            roid.addShapeData(shape);
+
+            // 6. Save ROI using UpdateService (the correct service)
+            var saved = updateService.saveAndReturnObject(roi);
+
+            Console.WriteLine("ROI saved with ID: " + saved.getId().getValue());
+        }
+
 
         // Calculate the distance to another point
         public double DistanceTo(PointD point)
