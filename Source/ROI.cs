@@ -12,7 +12,6 @@ using omero.gateway;
 using omero.gateway.facility;
 using omero.gateway.model;
 using omero.model;
-using org.w3c.dom.css;
 using SkiaSharp;
 using SkiaSharp.Views.Gtk;
 using System;
@@ -112,58 +111,56 @@ namespace BioLib
         public List<PointD> Points 
         { 
             get 
-            { 
-                if(pos == null || pos.Count == 0)
-                {
-                    if (type == Type.Rectangle || type == Type.Ellipse)
-                    {
-                        pos = new List<PointD>();
-                        pos.Add(new PointD(BoundingBox.X, BoundingBox.Y));
-                        pos.Add(new PointD(BoundingBox.X + BoundingBox.W, BoundingBox.Y));
-                        pos.Add(new PointD(BoundingBox.X, BoundingBox.Y + BoundingBox.H));
-                        pos.Add(new PointD(BoundingBox.X + BoundingBox.W, BoundingBox.Y + BoundingBox.H));
-                    }
-                    else if (type == Type.Line)
-                    {
-                        pos = new List<PointD>();
-                        pos.Add(new PointD(BoundingBox.X, BoundingBox.Y + BoundingBox.H));
-                        pos.Add(new PointD(BoundingBox.X + BoundingBox.W, BoundingBox.Y));
-                    }
-                    else if (type == Type.Point || type == Type.Label)
-                    {
-                        pos = new List<PointD>();
-                        pos.Add(new PointD(BoundingBox.X, BoundingBox.Y));
-                    }
-                }
+            {
+                if (pos.Count == 0)
+                    Validate();
                 return pos;
             } 
             set 
             {
                 pos = value;
-                if (pos == null || pos.Count == 0)
-                {
-                    if (type == Type.Rectangle || type == Type.Ellipse)
-                    {
-                        pos = new List<PointD>();
-                        pos.Add(new PointD(BoundingBox.X, BoundingBox.Y));
-                        pos.Add(new PointD(BoundingBox.X + BoundingBox.W, BoundingBox.Y));
-                        pos.Add(new PointD(BoundingBox.X, BoundingBox.Y + BoundingBox.H));
-                        pos.Add(new PointD(BoundingBox.X + BoundingBox.W, BoundingBox.Y + BoundingBox.H));
-                    }
-                    else if (type == Type.Line)
-                    {
-                        pos = new List<PointD>();
-                        pos.Add(new PointD(BoundingBox.X, BoundingBox.Y));
-                        pos.Add(new PointD(BoundingBox.X + BoundingBox.W, BoundingBox.Y + BoundingBox.H));
-                    }
-                    else if (type == Type.Point || type == Type.Label)
-                    {
-                        pos = new List<PointD>();
-                        pos.Add(new PointD(BoundingBox.X, BoundingBox.Y));
-                    }
-                }
+                UpdateBoundingBox();
             } 
         }
+        public void Validate()
+        {
+            // Ensure pos exists
+            if (pos == null)
+                pos = new List<PointD>();
+            else
+                pos.Clear();
+
+            switch (type)
+            {
+                case Type.Rectangle:
+                case Type.Ellipse:
+                    // 4 corners derived from the bounding box
+                    pos.Add(new PointD(BoundingBox.X, BoundingBox.Y));
+                    pos.Add(new PointD(BoundingBox.X + BoundingBox.W, BoundingBox.Y));
+                    pos.Add(new PointD(BoundingBox.X, BoundingBox.Y + BoundingBox.H));
+                    pos.Add(new PointD(BoundingBox.X + BoundingBox.W, BoundingBox.Y + BoundingBox.H));
+                    break;
+
+                case Type.Point:
+                case Type.Label:
+                    // Only the anchor point (top-left of bounding box)
+                    pos.Add(new PointD(BoundingBox.X, BoundingBox.Y));
+                    break;
+                default:
+                    // Other ROI types keep their existing point data
+                    // (Freeform, Polyline, Polygon, Mask, etc.)
+                    break;
+            }
+        }
+
+        public bool Contains(PointD p)
+        {
+            return (p.X >= X &&
+                    p.X <= X + W &&
+                    p.Y >= Y &&
+                    p.Y <= Y + H);
+        }
+
         private List<RectangleD> selectBoxs = new List<RectangleD>();
         public List<int> selectedPoints = new List<int>();
         public float fontSize = 12;
@@ -639,28 +636,6 @@ namespace BioLib
             copy.selectedPoints = selectedPoints;
             return copy;
         }
-        public void Update()
-        {
-            if (type == Type.Rectangle || type == Type.Ellipse)
-            {
-                Points.Clear();
-                Points.Add(new PointD(X, Y));
-                Points.Add(new PointD(X + W, Y));
-                Points.Add(new PointD(X, Y + H));
-                Points.Add(new PointD(X + W, Y + H));
-            }
-            else if (type == Type.Label)
-            {
-                Points.Clear();
-                Points.Add(new PointD(X, Y));
-            }
-            else if (type == Type.Line)
-            {
-                Points.Clear();
-                Points.Add(new PointD(X, Y));
-                Points.Add(new PointD(X + W, Y + H));
-            }
-        }
         public string Text
         {
             get
@@ -746,7 +721,7 @@ namespace BioLib
         /// @return A list of RectangleF objects.
         public RectangleD[] GetSelectBoxes(double s)
         {
-            Update();
+
             double f = s / 2;
             selectBoxs.Clear();
             int c = Points.Count;
@@ -1111,178 +1086,183 @@ namespace BioLib
             }
             return javaPts;
         }
-        public void AddRectangleRoiToOmero(long imageId,BioImage b, ROI an, ServiceFactoryPrx sf)
+        /*
+        public void AddRoisToOmero(long imageId,BioImage b, ServiceFactoryPrx sf)
         {
-            // 1. Get services
-            var roiService = sf.getRoiService();
-            var updateService = sf.getUpdateService();
-
-            // 2. Create ROI and link to image
-            var roi = new omero.model.RoiI();
-            roi.setImage(new omero.model.ImageI(imageId, false));
-
-            ROIData roid = new ROIData();
-            ShapeData shape = null;
-
-            switch (an.type)
+            for (int i = 0; i < b.Annotations.Count; i++)
             {
-                case ROI.Type.Point:
-                    {
-                        var pt = new omero.gateway.model.PointData(
-                            b.ToImageSpaceX(an.X),
-                            b.ToImageSpaceY(an.Y)
-                        );
-                        pt.setZ(an.coord.Z);
-                        pt.setC(an.coord.C);
-                        pt.setT(an.coord.T);
-                        pt.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
-                        shape = pt;
-                        break;
-                    }
+                ROI an = b.Annotations[i];
+                // 1. Get services
+                var roiService = sf.getRoiService();
+                var updateService = sf.getUpdateService();
 
-                case ROI.Type.Rectangle:
-                    {
-                        var r = new RectangleData(
-                            b.ToImageSpaceX(an.BoundingBox.X),
-                            b.ToImageSpaceY(an.BoundingBox.Y),
-                            b.ToImageSizeX(an.W),
-                            b.ToImageSizeY(an.H)
-                        );
-                        r.setZ(an.coord.Z);
-                        r.setC(an.coord.C);
-                        r.setT(an.coord.T);
-                        r.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
-                        shape = r;
-                        break;
-                    }
+                // 2. Create ROI and link to image
+                var roi = new omero.model.RoiI();
+                roi.setImage(new omero.model.ImageI(imageId, false));
 
-                case ROI.Type.Ellipse:
-                    {
-                        double rx = b.ToImageSizeX(an.W / 2.0);
-                        double ry = b.ToImageSizeY(an.H / 2.0);
-                        double cx = b.ToImageSpaceX(an.Points[0].X + an.W / 2.0);
-                        double cy = b.ToImageSpaceY(an.Points[0].Y + an.H / 2.0);
+                ROIData roid = new ROIData();
+                ShapeData shape = null;
 
-                        var e = new EllipseData(cx, cy, rx, ry);
-                        e.setZ(an.coord.Z);
-                        e.setC(an.coord.C);
-                        e.setT(an.coord.T);
-                        e.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
-                        shape = e;
-                        break;
-                    }
-
-                case ROI.Type.Line:
-                    {
-                        var l = new LineData(
-                            b.ToImageSpaceX(an.GetPoint(0).X),
-                            b.ToImageSpaceY(an.GetPoint(0).Y),
-                            b.ToImageSpaceX(an.GetPoint(1).X),
-                            b.ToImageSpaceY(an.GetPoint(1).Y)
-                        );
-                        l.setZ(an.coord.Z);
-                        l.setC(an.coord.C);
-                        l.setT(an.coord.T);
-                        l.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
-                        shape = l;
-                        break;
-                    }
-
-                case ROI.Type.Polygon:
-                case ROI.Type.Freeform:
-                    {
-                        var pts = new List<PointD>();
-                        foreach (var p in an.Points)
-                            pts.Add(new PointD(
-                                b.ToImageSpaceX(p.X),
-                                b.ToImageSpaceY(p.Y)
-                            ));
-
-                        var poly = new PolygonData(BioPointToOmeroPoint(an, b));
-                        poly.setZ(an.coord.Z);
-                        poly.setC(an.coord.C);
-                        poly.setT(an.coord.T);
-                        poly.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
-                        shape = poly;
-                        break;
-                    }
-
-                case ROI.Type.Polyline:
-                    {
-                        var pts = new List<PointD>();
-                        foreach (var p in an.Points)
-                            pts.Add(new PointD(
-                                b.ToImageSpaceX(p.X),
-                                b.ToImageSpaceY(p.Y)
-                            ));
-
-                        var pl = new PolylineData(BioPointToOmeroPoint(an, b));
-                        pl.setZ(an.coord.Z);
-                        pl.setC(an.coord.C);
-                        pl.setT(an.coord.T);
-                        pl.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
-                        shape = pl;
-                        break;
-                    }
-
-                case ROI.Type.Label:
-                    {
-                        var t = new TextData(
-                            string.IsNullOrEmpty(an.Text) ? "Label" : an.Text,
-                            b.ToImageSpaceX(an.BoundingBox.X),
-                            b.ToImageSpaceY(an.BoundingBox.Y)
-                        );
-                        //t.setFontSize(new omero.model.LengthI(an.fontSize, omero.model.enums.UnitsLength.PIXEL));
-                        t.setZ(an.coord.Z);
-                        t.setC(an.coord.C);
-                        t.setT(an.coord.T);
-                        shape = t;
-                        break;
-                    }
-
-                case ROI.Type.Mask:
-                    {
-                        if (an.roiMask == null)
+                switch (an.type)
+                {
+                    case ROI.Type.Point:
+                        {
+                            var pt = new omero.gateway.model.PointData(
+                                b.ToImageSpaceX(an.X),
+                                b.ToImageSpaceY(an.Y)
+                            );
+                            pt.setZ(an.coord.Z);
+                            pt.setC(an.coord.C);
+                            pt.setT(an.coord.T);
+                            pt.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                            shape = pt;
                             break;
+                        }
 
-                        var m = new MaskData(
-                            an.roiMask.X,
-                            an.roiMask.Y,
-                            an.roiMask.Width,
-                            an.roiMask.Height,
-                            an.roiMask.GetBytes()
-                        );
+                    case ROI.Type.Rectangle:
+                        {
+                            var r = new RectangleData(
+                                b.ToImageSpaceX(an.BoundingBox.X),
+                                b.ToImageSpaceY(an.BoundingBox.Y),
+                                b.ToImageSizeX(an.W),
+                                b.ToImageSizeY(an.H)
+                            );
+                            r.setZ(an.coord.Z);
+                            r.setC(an.coord.C);
+                            r.setT(an.coord.T);
+                            r.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                            shape = r;
+                            break;
+                        }
 
-                        m.setZ(an.coord.Z);
-                        m.setC(an.coord.C);
-                        m.setT(an.coord.T);
-                        m.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
-                        shape = m;
-                        break;
-                    }
+                    case ROI.Type.Ellipse:
+                        {
+                            double rx = b.ToImageSizeX(an.W / 2.0);
+                            double ry = b.ToImageSizeY(an.H / 2.0);
+                            double cx = b.ToImageSpaceX(an.Points[0].X + an.W / 2.0);
+                            double cy = b.ToImageSpaceY(an.Points[0].Y + an.H / 2.0);
+
+                            var e = new EllipseData(cx, cy, rx, ry);
+                            e.setZ(an.coord.Z);
+                            e.setC(an.coord.C);
+                            e.setT(an.coord.T);
+                            e.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                            shape = e;
+                            break;
+                        }
+
+                    case ROI.Type.Line:
+                        {
+                            var l = new LineData(
+                                b.ToImageSpaceX(an.GetPoint(0).X),
+                                b.ToImageSpaceY(an.GetPoint(0).Y),
+                                b.ToImageSpaceX(an.GetPoint(1).X),
+                                b.ToImageSpaceY(an.GetPoint(1).Y)
+                            );
+                            l.setZ(an.coord.Z);
+                            l.setC(an.coord.C);
+                            l.setT(an.coord.T);
+                            l.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                            shape = l;
+                            break;
+                        }
+
+                    case ROI.Type.Polygon:
+                    case ROI.Type.Freeform:
+                        {
+                            var pts = new List<PointD>();
+                            foreach (var p in an.Points)
+                                pts.Add(new PointD(
+                                    b.ToImageSpaceX(p.X),
+                                    b.ToImageSpaceY(p.Y)
+                                ));
+
+                            var poly = new PolygonData(BioPointToOmeroPoint(an, b));
+                            poly.setZ(an.coord.Z);
+                            poly.setC(an.coord.C);
+                            poly.setT(an.coord.T);
+                            poly.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                            shape = poly;
+                            break;
+                        }
+
+                    case ROI.Type.Polyline:
+                        {
+                            var pts = new List<PointD>();
+                            foreach (var p in an.Points)
+                                pts.Add(new PointD(
+                                    b.ToImageSpaceX(p.X),
+                                    b.ToImageSpaceY(p.Y)
+                                ));
+
+                            var pl = new PolylineData(BioPointToOmeroPoint(an, b));
+                            pl.setZ(an.coord.Z);
+                            pl.setC(an.coord.C);
+                            pl.setT(an.coord.T);
+                            pl.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                            shape = pl;
+                            break;
+                        }
+
+                    case ROI.Type.Label:
+                        {
+                            var t = new TextData(
+                                string.IsNullOrEmpty(an.Text) ? "Label" : an.Text,
+                                b.ToImageSpaceX(an.BoundingBox.X),
+                                b.ToImageSpaceY(an.BoundingBox.Y)
+                            );
+                            //t.setFontSize(new omero.model.LengthI(an.fontSize, omero.model.enums.UnitsLength.PIXEL));
+                            t.setZ(an.coord.Z);
+                            t.setC(an.coord.C);
+                            t.setT(an.coord.T);
+                            shape = t;
+                            break;
+                        }
+
+                    case ROI.Type.Mask:
+                        {
+                            if (an.roiMask == null)
+                                break;
+
+                            var m = new MaskData(
+                                an.roiMask.X,
+                                an.roiMask.Y,
+                                an.roiMask.Width,
+                                an.roiMask.Height,
+                                an.roiMask.GetBytes()
+                            );
+
+                            m.setZ(an.coord.Z);
+                            m.setC(an.coord.C);
+                            m.setT(an.coord.T);
+                            m.setText(string.IsNullOrEmpty(an.Text) ? an.id : an.Text);
+                            shape = m;
+                            break;
+                        }
+                }
+
+                var awtColor = new java.awt.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
+                // Apply stroke/fill
+                shape.getShapeSettings().setStroke(awtColor);
+
+                shape.getShapeSettings().setFill(awtColor);
+                // 5. Add shape to ROI
+                roid.addShapeData(shape);
+
+                // 6. Save ROI using UpdateService (the correct service)
+                var saved = updateService.saveAndReturnObject(roi);
+
+                Console.WriteLine("ROI saved with ID: " + saved.getId().getValue());
             }
-
-            var awtColor = new java.awt.Color(an.strokeColor.R, an.strokeColor.G, an.strokeColor.B, an.strokeColor.A);
-            // Apply stroke/fill
-            shape.getShapeSettings().setStroke(awtColor);
-
-            shape.getShapeSettings().setFill(awtColor);
-            // 5. Add shape to ROI
-            roid.addShapeData(shape);
-
-            // 6. Save ROI using UpdateService (the correct service)
-            var saved = updateService.saveAndReturnObject(roi);
-
-            Console.WriteLine("ROI saved with ID: " + saved.getId().getValue());
         }
-
-
+        */
         // Calculate the distance to another point
         public double DistanceTo(PointD point)
         {
             var center = GetCenter();
             return (float)Math.Sqrt(Math.Pow(center.X - point.X, 2) + Math.Pow(center.Y - point.Y, 2));
         }
+        
         /// This function updates the point at the specified index
         /// 
         /// @param PointD A class that contains an X and Y coordinate.
@@ -1293,7 +1273,6 @@ namespace BioLib
             {
                 Points[i] = p;
             }
-            UpdateBoundingBox();
         }
         /// This function returns the point at the specified index
         /// 
@@ -1447,60 +1426,78 @@ namespace BioLib
         /// 
         public void UpdateBoundingBox()
         {
-            if (type == Type.Mask)
+            // Safety check
+            if ((Points == null || Points.Count == 0) && type != Type.Mask)
             {
-                double minx = double.MaxValue;
-                double miny = double.MaxValue;
-                double maxx = double.MinValue;
-                double maxy = double.MinValue;
+                BoundingBox = new RectangleD(0, 0, 0, 0);
+                return;
+            }
+
+            // -----------------------------
+            // 1) MASK ROI MODE
+            // -----------------------------
+            if (type == Type.Mask && roiMask != null)
+            {
+                double minX = double.PositiveInfinity;
+                double minY = double.PositiveInfinity;
+                double maxX = double.NegativeInfinity;
+                double maxY = double.NegativeInfinity;
+
                 for (int y = 0; y < roiMask.Height; y++)
                 {
                     for (int x = 0; x < roiMask.Width; x++)
                     {
-                        if (roiMask.IsSelected(x, y))
-                        {
-                            if (minx > x)
-                                minx = x;
-                            if (miny > y)
-                                miny = y;
-                            if (maxx < x)
-                                maxx = x;
-                            if (maxy < y)
-                                maxy = y;
-                        }
+                        if (!roiMask.IsSelected(x, y))
+                            continue;
+
+                        if (x < minX) minX = x;
+                        if (y < minY) minY = y;
+                        if (x > maxX) maxX = x;
+                        if (y > maxY) maxY = y;
                     }
                 }
-                BoundingBox = new RectangleD(Points[0].X + (minx * roiMask.PhysicalSizeX), Points[0].Y + (miny * roiMask.PhysicalSizeY),
-                    (maxx - minx) * roiMask.PhysicalSizeX, (maxy - miny) * roiMask.PhysicalSizeY);
+
+                // No selected pixels
+                if (double.IsInfinity(minX))
+                {
+                    BoundingBox = new RectangleD(0, 0, 0, 0);
+                    return;
+                }
+
+                // Mask bounding box IN PHYSICAL COORDINATES
+                double physX = roiMask.X + minX * roiMask.PhysicalSizeX;
+                double physY = roiMask.Y + minY * roiMask.PhysicalSizeY;
+
+                double physW = (maxX - minX + 1) * roiMask.PhysicalSizeX;
+                double physH = (maxY - minY + 1) * roiMask.PhysicalSizeY;
+
+                BoundingBox = new RectangleD(physX, physY, physW, physH);
                 return;
             }
-            else
-            {
-                PointD min = new PointD(double.MaxValue, double.MaxValue);
-                PointD max = new PointD(double.MinValue, double.MinValue);
-                foreach (PointD p in Points)
-                {
-                    if (min.X > p.X)
-                        min.X = p.X;
-                    if (min.Y > p.Y)
-                        min.Y = p.Y;
 
-                    if (max.X < p.X)
-                        max.X = p.X;
-                    if (max.Y < p.Y)
-                        max.Y = p.Y;
-                }
-                RectangleD r = new RectangleD();
-                r.X = min.X;
-                r.Y = min.Y;
-                r.W = max.X - min.X;
-                r.H = max.Y - min.Y;
-                if (r.W == 0)
-                    r.W = 1;
-                if (r.H == 0)
-                    r.H = 1;
-                BoundingBox = r;
+            // -----------------------------
+            // 2) POINT-BASED ROI MODE
+            // -----------------------------
+            double minPX = double.PositiveInfinity;
+            double minPY = double.PositiveInfinity;
+            double maxPX = double.NegativeInfinity;
+            double maxPY = double.NegativeInfinity;
+
+            foreach (var p in Points)
+            {
+                if (p.X < minPX) minPX = p.X;
+                if (p.Y < minPY) minPY = p.Y;
+                if (p.X > maxPX) maxPX = p.X;
+                if (p.Y > maxPY) maxPY = p.Y;
             }
+
+            // Build bounding rectangle
+            BoundingBox = new RectangleD(
+                minPX,
+                minPY,
+                maxPX - minPX,
+                maxPY - minPY
+            );
         }
         public override string ToString()
         {
