@@ -18,7 +18,7 @@
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; </PackageTags>
-    <PackageReleaseNotes>OMERO ROI support, improvements to ROI interactions like move tool etc. as well as improved ROI Manager. Fixes all ROI creation tools, and updates the framework to .NET 10.</PackageReleaseNotes>
+    <PackageReleaseNotes>Fixed ROI saving to OME.TIFF effecting some ROI types. OMERO ROI support both import &amp; export. Improvements to ROI interactions like move tool etc. As well as improved ROI Manager. Also updates framework to .NET 10.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
