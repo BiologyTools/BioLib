@@ -7233,8 +7233,17 @@ namespace BioLib
             if (b.openSlideImage != null)
             {
                 byte[] bts = b.openSlideImage.ReadRegion(level, tilex, tiley, tileSizeX, tileSizeY);
-                Bitmap bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0, null, true, true);
-                return bm;
+                if (b.IsEmpty(bts) && b.Resolutions.Count > level - 1)
+                {
+                    bts = b.openSlideImage.ReadRegion(level - 1, tilex, tiley, b.Resolutions[level - 1].SizeX, b.Resolutions[level - 1].SizeY);
+                    Bitmap bm = new Bitmap("", b.Resolutions[level - 1].SizeX, b.Resolutions[level - 1].SizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0);
+                    return bm;
+                }
+                else
+                {
+                    Bitmap bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0);
+                    return bm;
+                }
             }
 
             string curfile = b.imRead.getCurrentFile();
@@ -7294,6 +7303,15 @@ namespace BioLib
                 Console.WriteLine(e.Message);
                 return null;
             }
+        }
+        private bool IsEmpty(byte[] bts)
+        {
+            for (int i = 0; i < bts.Length; i++)
+            {
+                if (bts[i] > 0)
+                    return false;
+            }
+            return true;
         }
         public BioImage GetRegion(int x, int y, int w, int h)
         {
