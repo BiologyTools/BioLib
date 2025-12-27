@@ -4,6 +4,7 @@ using AForge.Imaging;
 using AForge.Imaging.Filters;
 using BioLib;
 using BitMiracle.LibTiff.Classic;
+using BruTile.Extensions;
 using Cairo;
 using Gtk;
 using loci.common.services;
@@ -18,6 +19,7 @@ using ome;
 using ome.units.quantity;
 using ome.util;
 using ome.xml.model.primitives;
+using omero.model;
 using OpenSlideGTK;
 using Pango;
 using System;
@@ -34,6 +36,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Bitmap = AForge.Bitmap;
+using Channel = AForge.Channel;
 using Color = AForge.Color;
 using Context = Cairo.Context;
 using Path = System.IO.Path;
@@ -4100,6 +4103,10 @@ namespace BioLib
         /// @return A filtered image.
         public Bitmap GetFiltered(int ind, IntRange r, IntRange g, IntRange b)
         {
+            if (Buffers.Count == 0)
+            {
+                UpdateBuffersPyramidal();
+            }
             if (Buffers[ind].PixelFormat == PixelFormat.Float)
             {
                 if (Statistics.StackMax <= 1)
@@ -7220,7 +7227,7 @@ namespace BioLib
                     }
                 }
             }
-            if (vips && b.vipPages.Count > 0)
+            if (vips && b.openSlideImage == null)
             {
                 //We can get a tile faster with libvips rather than bioformats.
                 Bitmap bmp = ExtractRegionFromTiledTiff(b, tilex, tiley, tileSizeX, tileSizeY, level);
@@ -7634,6 +7641,7 @@ namespace BioLib
         {
             b = OpenFile(b.file);
         }
+        private double prev = 0;
         /// <summary>
         /// Updates the Buffers based on current pyramidal origin and resolution.
         /// </summary>
@@ -7648,6 +7656,41 @@ namespace BioLib
                     Buffers[i].Dispose();
                 }
                 Buffers.Clear();
+                /*
+                if (prev == Level - 1)
+                {
+                    if(openSlideImage != null)
+                    {
+                        for (int i = 0; i < openslideBase.cache.cache.cacheMap.Keys.Count; i++)
+                        {
+                            LinkedListNode<(Info, byte[])> lln;
+                            var item = openslideBase.cache.cache.cacheMap.Keys.ElementAt(i);
+                            if (item.Level != Level)
+                            {
+                                item.DisposeIfDisposable();
+                            }
+                        }
+                    }
+                    else 
+                    {
+                        for (int i = 0; i < slideBase.SlideImage.; i++)
+                        {
+                            LinkedListNode<(Info, byte[])> lln;
+                            var item = openslideBase.cache.cache.cacheMap.Keys.ElementAt(i);
+                            if (item.Level != Level)
+                            {
+                                item.DisposeIfDisposable();
+                            }
+                        }
+                    }
+                        prev = Level;
+                }
+                else
+                if (prev == Level + 1)
+                {
+                    prev = Level;
+                }
+                */
                 for (int z = 0; z < SizeZ; z++)
                 {
                     for (int c = 0; c < SizeC; c++)
@@ -7663,7 +7706,6 @@ namespace BioLib
                                 byte[] bts = openslideBase.GetSlice(new OpenSlideGTK.SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution));
                                 if (bts == null)
                                 {
-                                    pyramidalOrigin = new PointD(0, 0);
                                     Resolution = GetUnitPerPixel(lev) * 1.1f;
                                     goto startos;
                                 }
@@ -7676,7 +7718,6 @@ namespace BioLib
                                 byte[] bts = await slideBase.GetSlice(new BioLib.SliceInfo(Math.Round(PyramidalOrigin.X), Math.Round(PyramidalOrigin.Y), PyramidalSize.Width, PyramidalSize.Height, resolution, co));
                                 if (bts == null)
                                 {
-                                    pyramidalOrigin = new PointD(0, 0);
                                     Resolution = GetUnitPerPixel(lev) * 1.1f;
                                     goto start;
                                 }
