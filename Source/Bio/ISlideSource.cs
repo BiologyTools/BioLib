@@ -18,7 +18,7 @@ namespace BioLib
             public ZCT Coordinate { get; set; }
             public TileIndex Index { get; set; }
         }
-        private readonly int capacity;
+        private readonly int capacity = 200;
         private Dictionary<Info, LinkedListNode<(Info key, TValue value)>> cacheMap = new Dictionary<Info, LinkedListNode<(Info key, TValue value)>>();
         private LinkedList<(Info key, TValue value)> lruList = new LinkedList<(Info key, TValue value)>();
 
@@ -76,7 +76,7 @@ namespace BioLib
         private LruCache<TileInformation, byte[]> cache;
         private int capacity;
         SlideSourceBase source = null;
-        public TileCache(SlideSourceBase source, int capacity = 1000)
+        public TileCache(SlideSourceBase source, int capacity = 200)
         {
             this.source = source;
             this.capacity = capacity;

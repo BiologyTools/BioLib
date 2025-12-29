@@ -2016,17 +2016,18 @@ namespace BioLib
         }
         private int sizeZ, sizeC, sizeT;
         private Statistics statistics;
-        private double resolution = 1;
+        private double resolution = 1.0;
         public double Resolution
         {
             get { return resolution; }
             set
             {
-                if (value < 0)
+                if (value <= 0 || value == resolution)
                     return;
                 resolution = value;
             }
         }
+       
         public static float Progress = 0;
         ImageInfo imageInfo = new ImageInfo();
         /// It copies the BioImage b and returns a new BioImage object.
@@ -2343,7 +2344,10 @@ namespace BioLib
             get { return pyramidalOrigin; }
             set
             {
-                pyramidalOrigin = value;
+                if (value.X < Resolutions[Level].SizeX)
+                    pyramidalOrigin.X = value.X;
+                if (value.Y < Resolutions[Level].SizeY)
+                    pyramidalOrigin.Y = value.Y;
             }
         }
         public int series
