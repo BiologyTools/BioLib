@@ -7660,41 +7660,6 @@ namespace BioLib
                     Buffers[i].Dispose();
                 }
                 Buffers.Clear();
-                /*
-                if (prev == Level - 1)
-                {
-                    if(openSlideImage != null)
-                    {
-                        for (int i = 0; i < openslideBase.cache.cache.cacheMap.Keys.Count; i++)
-                        {
-                            LinkedListNode<(Info, byte[])> lln;
-                            var item = openslideBase.cache.cache.cacheMap.Keys.ElementAt(i);
-                            if (item.Level != Level)
-                            {
-                                item.DisposeIfDisposable();
-                            }
-                        }
-                    }
-                    else 
-                    {
-                        for (int i = 0; i < slideBase.SlideImage.; i++)
-                        {
-                            LinkedListNode<(Info, byte[])> lln;
-                            var item = openslideBase.cache.cache.cacheMap.Keys.ElementAt(i);
-                            if (item.Level != Level)
-                            {
-                                item.DisposeIfDisposable();
-                            }
-                        }
-                    }
-                        prev = Level;
-                }
-                else
-                if (prev == Level + 1)
-                {
-                    prev = Level;
-                }
-                */
                 for (int z = 0; z < SizeZ; z++)
                 {
                     for (int c = 0; c < SizeC; c++)
@@ -7711,6 +7676,7 @@ namespace BioLib
                                 if (bts == null)
                                 {
                                     Resolution = GetUnitPerPixel(lev) * 1.1f;
+                                    PyramidalOrigin = new PointD(0, 0);
                                     goto startos;
                                 }
                                 Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, co, ""));
@@ -7723,6 +7689,7 @@ namespace BioLib
                                 if (bts == null)
                                 {
                                     Resolution = GetUnitPerPixel(lev) * 1.1f;
+                                    PyramidalOrigin = new PointD(0, 0);
                                     goto start;
                                 }
                                 Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, co, "");

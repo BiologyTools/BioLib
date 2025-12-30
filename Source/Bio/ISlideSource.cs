@@ -1,13 +1,14 @@
-﻿using BruTile;
+﻿using AForge;
+using BruTile;
 using BruTile.Cache;
+using OpenSlideGTK;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using AForge;
 using Image = SixLabors.ImageSharp.Image;
 namespace BioLib
 {
@@ -126,6 +127,12 @@ namespace BioLib
 
     public class TileInformation
     {
+        public TileInformation(TileIndex index, Extent ext, ZCT coord)
+        {
+            Index = index;
+            Extent = ext;
+            Coordinate = coord;
+        }
         public TileIndex Index { get; set; }
         public Extent Extent { get; set; }
         public ZCT Coordinate { get; set; }
@@ -137,18 +144,6 @@ namespace BioLib
         public static bool UseRealResolution { get; set; } = true;
 
         private static IDictionary<string, Func<string, bool, ISlideSource>> keyValuePairs = new Dictionary<string, Func<string, bool, ISlideSource>>();
-
-        /// <summary>
-        /// resister decode for Specific format
-        /// </summary>
-        /// <param name="extensionUpper">dot and extension upper</param>
-        /// <param name="factory">file path,enable cache,decoder</param>
-        public static void Resister(string extensionUpper, Func<string, bool, ISlideSource> factory)
-        {
-            keyValuePairs.Add(extensionUpper, factory);
-        }
-
-
         public static ISlideSource Create(BioImage source, SlideImage im, bool enableCache = true)
         {
             
@@ -176,7 +171,9 @@ namespace BioLib
         public static Extent sourceExtent;
         public static double curUnitsPerPixel = 1;
         public static bool UseVips = true;
+        public static bool UseGPU = true;
         public TileCache cache = null;
+        public Stitch stitch = new Stitch();
         public async Task<byte[]> GetSlice(SliceInfo sliceInfo)
         {
             if (cache == null)
@@ -187,10 +184,7 @@ namespace BioLib
             List<Tuple<Extent, byte[]>> tiles = new List<Tuple<Extent, byte[]>>();
             foreach (BruTile.TileInfo t in tileInfos)
             {
-                TileInformation tf = new TileInformation();
-                tf.Extent = t.Extent;
-                tf.Coordinate = sliceInfo.Coordinate;
-                tf.Index = t.Index;
+                TileInformation tf = new TileInformation(t.Index,t.Extent,sliceInfo.Coordinate);
                 byte[] c = await cache.GetTile(tf);
                 if(c!=null)
                 tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
@@ -251,6 +245,7 @@ namespace BioLib
             }
             return null;
         }
+
         public byte[] Get8BitBytes(Image<L8> image)
         {
             int width = image.Width;
