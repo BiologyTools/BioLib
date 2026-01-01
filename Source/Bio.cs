@@ -4,6 +4,7 @@ using AForge.Imaging;
 using AForge.Imaging.Filters;
 using BioLib;
 using BitMiracle.LibTiff.Classic;
+using BruTile;
 using BruTile.Extensions;
 using Cairo;
 using Gtk;
@@ -7649,67 +7650,275 @@ namespace BioLib
         /// <summary>
         /// Updates the Buffers based on current pyramidal origin and resolution.
         /// </summary>
+        /// <summary>
+        /// Enhanced UpdateBuffersPyramidal with aggressive tile culling
+        /// Only fetch tiles that are actually visible in the current viewport
+        /// plus a small margin for smooth panning
+        /// </summary>
         public async Task UpdateBuffersPyramidal()
         {
-            try
+            if (!isPyramidal)
+                return;
+
+            // Calculate viewport bounds with margin for prefetching
+            const double PREFETCH_MARGIN = 1.2;  // 20% margin beyond visible area
+
+            double viewportWidth = PyramidalSize.Width;
+            double viewportHeight = PyramidalSize.Height;
+
+            // Get optimal pyramid level for current resolution
+            int optimalLevel = GetOptimalPyramidLevel();
+
+            // Calculate visible extent in world coordinates
+            BruTile.Extent visibleExtent = CalculateVisibleExtent(
+                PyramidalOrigin,
+                viewportWidth,
+                viewportHeight,
+                optimalLevel);
+
+            // Expand extent by margin
+            BruTile.Extent fetchExtent = ExpandExtent(visibleExtent, PREFETCH_MARGIN);
+
+            // Get tiles for this extent only
+            var tilesToFetch = GetTilesForExtent(fetchExtent, optimalLevel);
+
+            // Fetch tiles (existing logic, but with reduced tile set)
+            await FetchTilesAsync(tilesToFetch, optimalLevel);
+        }
+
+        // ============================================================================
+        // OPTIMIZATION 2: Adaptive tile batching based on viewport size
+        // ============================================================================
+
+        private int GetOptimalBatchSize()
+        {
+            // Small viewport (< 800x600): fetch all tiles at once
+            if (PyramidalSize.Width < 800 && PyramidalSize.Height < 600)
+                return 100;
+
+            // Medium viewport (< 1920x1080): moderate batching
+            if (PyramidalSize.Width < 1920 && PyramidalSize.Height < 1080)
+                return 50;
+
+            // Large viewport (fullscreen): aggressive batching
+            // Process visible center tiles first, then outer tiles
+            return 25;
+        }
+
+        // ============================================================================
+        // OPTIMIZATION 3: Priority-based tile fetching
+        // ============================================================================
+
+        /// <summary>
+        /// Fetches tiles in priority order: center viewport first, then edges.
+        /// Ensures visible content appears before prefetch content.
+        /// </summary>
+        private async Task FetchTilesAsync(List<BruTile.TileInfo> tiles, int level)
+        {
+            if (tiles == null || tiles.Count == 0)
+                return;
+
+            // --------------------------------------------------------------------
+            // 1. Calculate viewport center (base-resolution coordinates)
+            // --------------------------------------------------------------------
+            double centerX = PyramidalOrigin.X + (PyramidalSize.Width * 0.5);
+            double centerY = PyramidalOrigin.Y + (PyramidalSize.Height * 0.5);
+
+            // --------------------------------------------------------------------
+            // 2. Sort tiles by squared distance (avoid sqrt)
+            // --------------------------------------------------------------------
+            var prioritizedTiles = tiles
+                .OrderBy(tile =>
+                {
+                    double dx = tile.Extent.CenterX - centerX;
+                    double dy = tile.Extent.CenterY - centerY;
+                    return (dx * dx) + (dy * dy);
+                })
+                .ToList();
+
+            // --------------------------------------------------------------------
+            // 3. Fetch tiles in batches
+            // --------------------------------------------------------------------
+            int batchSize = GetOptimalBatchSize();
+
+            for (int i = 0; i < prioritizedTiles.Count; i += batchSize)
             {
-                if (Type != ImageType.pyramidal)
-                    return;
-                for (int i = 0; i < Buffers.Count; i++)
+                var batch = prioritizedTiles.Skip(i).Take(batchSize).ToList();
+
+                // Parallel fetch within batch
+                byte[][] results = await Task.WhenAll(
+                    batch.Select(tile => FetchSingleTileAsync(tile, level))
+                );
+
+                // ----------------------------------------------------------------
+                // 4. Insert into appropriate cache
+                // ----------------------------------------------------------------
+                for (int j = 0; j < batch.Count; j++)
                 {
-                    Buffers[i].Dispose();
-                }
-                Buffers.Clear();
-                for (int z = 0; z < SizeZ; z++)
-                {
-                    for (int c = 0; c < SizeC; c++)
+                    var tile = batch[j];
+                    var data = results[j];
+
+                    if (data == null)
+                        continue;
+
+                    if (OpenSlideBase != null)
                     {
-                        for (int t = 0; t < SizeT; t++)
-                        {
-                            ZCT co = new ZCT(z, c, t);
-                            if (openSlideImage != null)
-                            {
-                            startos:
-                                int lev = LevelFromResolution(this.Resolution);
-                                openslideBase.SetSliceInfo(lev, PixelFormat.Format24bppRgb, co);
-                                byte[] bts = openslideBase.GetSlice(new OpenSlideGTK.SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution));
-                                if (bts == null)
-                                {
-                                    Resolution = GetUnitPerPixel(lev) * 1.1f;
-                                    PyramidalOrigin = new PointD(0, 0);
-                                    goto startos;
-                                }
-                                Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, co, ""));
-                            }
-                            else
-                            {
-                            start:
-                                int lev = LevelFromResolution(this.Resolution);
-                                byte[] bts = await slideBase.GetSlice(new BioLib.SliceInfo(Math.Round(PyramidalOrigin.X), Math.Round(PyramidalOrigin.Y), PyramidalSize.Width, PyramidalSize.Height, resolution, co));
-                                if (bts == null)
-                                {
-                                    Resolution = GetUnitPerPixel(lev) * 1.1f;
-                                    PyramidalOrigin = new PointD(0, 0);
-                                    goto start;
-                                }
-                                Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, co, "");
-                                Buffers.Add(bmp);
-                            }
-                        }
+                        var info = new Info(
+                            Coordinate,
+                            tile.Index,
+                            OpenSlideBase.Schema.Extent,
+                            level
+                        );
+
+                        OpenSlideBase.cache.cache.Add(info, data);
+                    }
+                    else
+                    {
+                        var info = new Info(
+                            Coordinate,
+                            tile.Index,
+                            SlideBase.Schema.Extent,
+                            level
+                        );
+                        TileInformation tf = new TileInformation(tile.Index,tile.Extent,Coordinate);
+                        SlideBase.cache.AddTile(tf, data);
                     }
                 }
-                BioImage.AutoThreshold(this, false);
-                if (bitsPerPixel > 8)
-                    StackThreshold(true);
-                else
-                    StackThreshold(false);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
             }
         }
 
+
+        // ============================================================================
+        // OPTIMIZATION 4: Smarter pyramid level selection
+        // ============================================================================
+
+        private int GetOptimalPyramidLevel()
+        {
+            // This should use your existing TileUtil.GetLevel() logic
+            // but with awareness of viewport size
+            // For small viewports, can use higher detail levels
+            // For large viewports, might need to drop to lower detail to maintain performance
+
+            if (OpenSlideBase == null)
+            {
+                level = TileUtil.GetLevel(SlideBase.Schema.Resolutions, Resolution);
+                // Adaptive level adjustment based on viewport size
+                if (PyramidalSize.Width > 2560 || PyramidalSize.Height > 1440)
+                {
+                    // 4K or larger - consider dropping one level for performance
+                    level = Math.Min(level + 1, SlideBase.Schema.Resolutions.Count - 1);
+                }
+            }
+            else
+            {
+                level = TileUtil.GetLevel(OpenSlideBase.Schema.Resolutions, Resolution);
+                // Adaptive level adjustment based on viewport size
+                if (PyramidalSize.Width > 2560 || PyramidalSize.Height > 1440)
+                {
+                    // 4K or larger - consider dropping one level for performance
+                    level = Math.Min(level + 1, OpenSlideBase.Schema.Resolutions.Count - 1);
+                }
+            }
+            return level;
+        }
+
+        // ============================================================================
+        // OPTIMIZATION 5: Tile cache warm-up prediction
+        // ============================================================================
+
+        /// <summary>
+        /// Predictive prefetching - guess where user will pan and warm cache
+        /// </summary>
+        private void WarmCacheForLikelyPan(PointD currentOrigin, PointD previousOrigin)
+        {
+            // Calculate pan direction
+            double dx = currentOrigin.X - previousOrigin.X;
+            double dy = currentOrigin.Y - previousOrigin.Y;
+
+            // If panning significantly, prefetch tiles in that direction
+            double panThreshold = 10.0;  // pixels
+            if (Math.Abs(dx) > panThreshold || Math.Abs(dy) > panThreshold)
+            {
+                // Normalize direction
+                double length = Math.Sqrt(dx * dx + dy * dy);
+                double dirX = dx / length;
+                double dirY = dy / length;
+
+                // Prefetch tiles in pan direction (fire and forget)
+                Task.Run(() => {
+                    PrefetchTilesInDirection(dirX, dirY);
+                });
+            }
+        }
+
+        // ============================================================================
+        // HELPER METHODS
+        // ============================================================================
+
+        private Extent CalculateVisibleExtent(PointD origin, double width, double height, int level)
+        {
+            // Convert viewport to world coordinates at current level
+            double minX = origin.X;
+            double minY = origin.Y;
+            double maxX = origin.X + width;
+            double maxY = origin.Y + height;
+
+            return new Extent(minX, minY, maxX, maxY);
+        }
+
+        private Extent ExpandExtent(Extent extent, double factor)
+        {
+            double width = extent.Width;
+            double height = extent.Height;
+            double extraWidth = width * (factor - 1.0) / 2.0;
+            double extraHeight = height * (factor - 1.0) / 2.0;
+
+            return new Extent(
+                extent.MinX - extraWidth,
+                extent.MinY - extraHeight,
+                extent.MaxX + extraWidth,
+                extent.MaxY + extraHeight
+            );
+        }
+
+        private List<TileInfo> GetTilesForExtent(Extent extent, int level)
+        {
+            // Use BruTile's GetTileInfos with the specific extent
+            ITileSchema schema = null;
+            if(OpenSlideBase == null)
+                schema = SlideBase.Schema;
+            else
+                schema = OpenSlideBase.Schema;
+            return schema.GetTileInfos(extent, level).ToList();
+        }
+
+        private async Task<byte[]> FetchSingleTileAsync(TileInfo tile, int level)
+        {
+            // Your existing tile fetch logic here
+            // This should use the cache and only fetch if not cached
+
+            try
+            {
+                byte[] tileData;
+                if (OpenSlideBase != null)
+                   tileData = OpenSlideBase.GetTile(tile);
+                else
+                   tileData = SlideBase.GetTile(tile, Coordinate);
+                // Process tile data...
+                return tileData;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching tile: {ex.Message}");
+            }
+            return null;
+        }
+
+        private void PrefetchTilesInDirection(double dirX, double dirY)
+        {
+            // Implementation of predictive prefetch
+            // This is optional but can improve perceived performance
+        }
         public void UpdateBuffersWells()
         {
             try

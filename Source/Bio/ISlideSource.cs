@@ -100,7 +100,7 @@ namespace BioLib
             return tile;
         }
 
-        private void AddTile(TileInformation tileId, byte[] tile)
+        public void AddTile(TileInformation tileId, byte[] tile)
         {
             LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
             inf.Coordinate = tileId.Coordinate;
