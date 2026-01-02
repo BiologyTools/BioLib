@@ -23,6 +23,7 @@ using ome.xml.model.primitives;
 using omero.model;
 using OpenSlideGTK;
 using Pango;
+using SkiaSharp;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -4108,9 +4109,9 @@ namespace BioLib
         /// @return A filtered image.
         public Bitmap GetFiltered(int ind, IntRange r, IntRange g, IntRange b)
         {
-            if (Buffers.Count == 0)
+            if (Buffers.Count == 0 || isPyramidal)
             {
-                UpdateBuffersPyramidal();
+                UpdateBuffersPyramidal().Wait();
             }
             if (Buffers[ind].PixelFormat == PixelFormat.Float)
             {
@@ -5173,7 +5174,7 @@ namespace BioLib
                         {
                             for (int z = 0; z < b.SizeZ; z++)
                             {
-                                Bitmap bmp = GetTile(b, b.GetFrameIndex(z, c, t), b.level, tileX, tileY, tileSizeX, tileSizeY);
+                                Bitmap bmp = b.GetTile(b, b.GetFrameIndex(z, c, t), b.level, tileX, tileY, tileSizeX, tileSizeY);
                                 b.Buffers.Add(bmp);
                                 bmp.Stats = Statistics.FromBytes(bmp);
                             }
@@ -7090,7 +7091,7 @@ namespace BioLib
                 for (int p = 0; p < pages; p++)
                 {
                     Progress = ((float)p / (float)pages) * 100;
-                    b.Buffers.Add(GetTile(b, p, b.Level, tilex, tiley, tileSizeX, tileSizeY));
+                    b.Buffers.Add(b.GetTile(b, p, b.Level, tilex, tiley, tileSizeX, tileSizeY));
                 }
             }
             int pls;
@@ -7211,7 +7212,7 @@ namespace BioLib
         /// @param tileSizeY the height of the tile
         /// 
         /// @return A Bitmap object.
-        public static Bitmap GetTile(BioImage b, int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
+        public Bitmap GetTile(BioImage b, int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
         {
             if (b.Tag != null)
             {
@@ -7646,44 +7647,107 @@ namespace BioLib
         {
             b = OpenFile(b.file);
         }
+
+        private bool TryGetTile(int level, int tileX, int tileY, out SKBitmap bitmap)
+        {
+            var key = (level, tileX, tileY);
+
+            lock (tileLock)
+            {
+                if (tileCache.TryGetValue(key, out bitmap))
+                    return true;
+            }
+
+            // Opportunistic request
+            RequestTile(level, tileX, tileY);
+
+            bitmap = null;
+            return false;
+        }
+
         private double prev = 0;
-        /// <summary>
-        /// Updates the Buffers based on current pyramidal origin and resolution.
-        /// </summary>
-        /// <summary>
-        /// Enhanced UpdateBuffersPyramidal with aggressive tile culling
-        /// Only fetch tiles that are actually visible in the current viewport
-        /// plus a small margin for smooth panning
-        /// </summary>
         public async Task UpdateBuffersPyramidal()
         {
             if (!isPyramidal)
                 return;
 
-            // Calculate viewport bounds with margin for prefetching
-            const double PREFETCH_MARGIN = 1.2;  // 20% margin beyond visible area
+            Buffers.Clear();
 
-            double viewportWidth = PyramidalSize.Width;
-            double viewportHeight = PyramidalSize.Height;
+            const double PREFETCH_MARGIN = 1.2;
 
-            // Get optimal pyramid level for current resolution
-            int optimalLevel = GetOptimalPyramidLevel();
+            int level = GetOptimalPyramidLevel();
 
-            // Calculate visible extent in world coordinates
-            BruTile.Extent visibleExtent = CalculateVisibleExtent(
+            // --------------------------------------------------------------------
+            // 1. Visible extent in BASE-resolution coordinates
+            // --------------------------------------------------------------------
+            var visibleExtent = CalculateVisibleExtent(
                 PyramidalOrigin,
-                viewportWidth,
-                viewportHeight,
-                optimalLevel);
+                PyramidalSize.Width,
+                PyramidalSize.Height,
+                level);
 
-            // Expand extent by margin
-            BruTile.Extent fetchExtent = ExpandExtent(visibleExtent, PREFETCH_MARGIN);
+            var fetchExtent = ExpandExtent(visibleExtent, PREFETCH_MARGIN);
 
-            // Get tiles for this extent only
-            var tilesToFetch = GetTilesForExtent(fetchExtent, optimalLevel);
+            var tilesToFetch = GetTilesForExtent(fetchExtent, level);
 
-            // Fetch tiles (existing logic, but with reduced tile set)
-            await FetchTilesAsync(tilesToFetch, optimalLevel);
+            await FetchTilesAsync(tilesToFetch, level);
+
+            double imageHeightBase = Resolutions[0].SizeY;
+
+            foreach (var tile in tilesToFetch)
+            {
+                // ----------------------------------------------------------------
+                // 2. Tile extent in BASE space
+                // ----------------------------------------------------------------
+                var tileExtent = tile.Extent;
+
+                // ----------------------------------------------------------------
+                // 3. Compute visible intersection (BASE space)
+                // ----------------------------------------------------------------
+                var intersection = tileExtent.Intersect(visibleExtent);
+                if (intersection == null || intersection.Width == 0 || intersection.Height == 0)
+                    continue;
+
+                // ----------------------------------------------------------------
+                // 4. BASE → SCREEN conversion
+                // ----------------------------------------------------------------
+                double baseX = intersection.MinX;
+                double baseY = imageHeightBase - intersection.MaxY; // Y inversion
+
+                float screenX = (float)((baseX - PyramidalOrigin.X) / Resolution);
+                float screenY = (float)((baseY - PyramidalOrigin.Y) / Resolution);
+
+                float screenW = (float)(intersection.Width / Resolution);
+                float screenH = (float)(intersection.Height / Resolution);
+
+                if (screenW <= 0 || screenH <= 0)
+                    continue;
+
+                // ----------------------------------------------------------------
+                // 5. Fetch BASE slice matching the intersection
+                // ----------------------------------------------------------------
+                Bitmap[] slice = await GetSlice(
+                    (int)baseX,
+                    (int)intersection.MinY,
+                    (int)intersection.Width,
+                    (int)intersection.Height,
+                    Resolution);
+
+                if (slice == null || slice.Length == 0)
+                    continue;
+
+                // ----------------------------------------------------------------
+                // 6. Create screen-space buffer
+                // ----------------------------------------------------------------
+                Buffers.Add(
+                    new Bitmap(
+                        (int)Math.Ceiling(screenW),
+                        (int)Math.Ceiling(screenH),
+                        PixelFormat.Format24bppRgb,
+                        slice[0].Bytes,
+                        Coordinate,
+                        string.Empty));
+            }
         }
 
         // ============================================================================
@@ -7885,11 +7949,18 @@ namespace BioLib
         {
             // Use BruTile's GetTileInfos with the specific extent
             ITileSchema schema = null;
-            if(OpenSlideBase == null)
+            if (OpenSlideBase == null)
+            {
                 schema = SlideBase.Schema;
+                var ex = extent.WorldToPixelInvertedY(schema.Resolutions[level].UnitsPerPixel);
+                return schema.GetTileInfos(ex, level).ToList();
+            }
             else
+            {
                 schema = OpenSlideBase.Schema;
-            return schema.GetTileInfos(extent, level).ToList();
+                var ex = extent.WorldToPixelInvertedY(schema.Resolutions[level].UnitsPerPixel);
+                return schema.GetTileInfos(ex, level).ToList();
+            }
         }
 
         private async Task<byte[]> FetchSingleTileAsync(TileInfo tile, int level)
@@ -7913,12 +7984,288 @@ namespace BioLib
             }
             return null;
         }
-
         private void PrefetchTilesInDirection(double dirX, double dirY)
         {
-            // Implementation of predictive prefetch
-            // This is optional but can improve perceived performance
+            if (!this.isPyramidal)
+                return;
+
+            var res = this.OpenSlideBase.Schema.Resolutions[Level];
+
+            int tileW = res.TileWidth;
+            int tileH = res.TileHeight;
+
+            // Normalize direction
+            double len = Math.Sqrt(dirX * dirX + dirY * dirY);
+            if (len < 1e-6)
+                return;
+
+            dirX /= len;
+            dirY /= len;
+
+            const double prefetchDistancePx = 300;
+
+            // Viewport in base-resolution pixels
+            double viewW = this.PyramidalSize.Width * Resolution;
+            double viewH = this.PyramidalSize.Height * Resolution;
+
+            double viewX = PyramidalOrigin.X;
+            double viewY = PyramidalOrigin.Y;
+
+            // Predict future viewport
+            double futureX = viewX + dirX * prefetchDistancePx * Resolution;
+            double futureY = viewY + dirY * prefetchDistancePx * Resolution;
+
+            // Union of current + future viewport
+            double minX = Math.Min(viewX, futureX);
+            double minY = Math.Min(viewY, futureY);
+            double maxX = Math.Max(viewX + viewW, futureX + viewW);
+            double maxY = Math.Max(viewY + viewH, futureY + viewH);
+
+            // Tile indices
+            int tileMinX = (int)Math.Floor(minX / tileW);
+            int tileMinY = (int)Math.Floor(minY / tileH);
+            int tileMaxX = (int)Math.Floor(maxX / tileW);
+            int tileMaxY = (int)Math.Floor(maxY / tileH);
+
+            // Clamp to image bounds
+            int maxTileX = (int)Math.Ceiling(this.SizeX / (double)tileW) - 1;
+            int maxTileY = (int)Math.Ceiling(this.SizeY / (double)tileH) - 1;
+
+            tileMinX = Math.Max(0, tileMinX);
+            tileMinY = Math.Max(0, tileMinY);
+            tileMaxX = Math.Min(maxTileX, tileMaxX);
+            tileMaxY = Math.Min(maxTileY, tileMaxY);
+
+            // Prefetch tiles
+            for (int ty = tileMinY; ty <= tileMaxY; ty++)
+            {
+                for (int tx = tileMinX; tx <= tileMaxX; tx++)
+                {
+                    //GetTile(this, 0, Level, tx, ty, tileW, tileH);
+                    RequestTile(Level, tx, ty);
+                }
+            }
         }
+        // Tile cache: key = (level, tx, ty)
+        private readonly Dictionary<(int, int, int), SKBitmap> tileCache =
+            new Dictionary<(int, int, int), SKBitmap>();
+
+        // In-flight requests to avoid duplicates
+        private readonly HashSet<(int, int, int)> tileRequestsInFlight =
+            new HashSet<(int, int, int)>();
+
+        private readonly object tileLock = new object();
+
+        private static SKImage Convert24bppBitmapToSKImage(Bitmap sourceBitmap)
+        {
+            int width = sourceBitmap.Width;
+            int height = sourceBitmap.Height;
+
+            SKBitmap skBitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque);
+
+            BitmapData bitmapData = sourceBitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, sourceBitmap.PixelFormat);
+
+            unsafe
+            {
+                byte* sourcePtr = (byte*)bitmapData.Scan0.ToPointer();
+                byte* destPtr = (byte*)skBitmap.GetPixels().ToPointer();
+
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        destPtr[0] = sourcePtr[0]; // Blue
+                        destPtr[1] = sourcePtr[1]; // Green
+                        destPtr[2] = sourcePtr[2]; // Red
+                        destPtr[3] = 255;          // Alpha (fully opaque)
+
+                        sourcePtr += 3;
+                        destPtr += 4;
+                    }
+                }
+            }
+
+            sourceBitmap.UnlockBits(bitmapData);
+
+            return SKImage.FromBitmap(skBitmap);
+        }
+        private static SKImage Convert32bppBitmapToSKImage(Bitmap sourceBitmap)
+        {
+            int width = sourceBitmap.Width;
+            int height = sourceBitmap.Height;
+
+            SKBitmap skBitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque);
+
+            BitmapData bitmapData = sourceBitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, sourceBitmap.PixelFormat);
+
+            unsafe
+            {
+                byte* sourcePtr = (byte*)bitmapData.Scan0.ToPointer();
+                byte* destPtr = (byte*)skBitmap.GetPixels().ToPointer();
+
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        destPtr[0] = sourcePtr[0]; // Blue
+                        destPtr[1] = sourcePtr[1]; // Green
+                        destPtr[2] = sourcePtr[2]; // Red
+                        destPtr[3] = 255;          // Alpha (fully opaque)
+
+                        sourcePtr += 4;
+                        destPtr += 4;
+                    }
+                }
+            }
+
+            sourceBitmap.UnlockBits(bitmapData);
+
+            return SKImage.FromBitmap(skBitmap);
+        }
+        private static SKImage Convert8bppBitmapToSKImage(Bitmap sourceBitmap)
+        {
+            // Ensure the input bitmap is 8bpp indexed
+            if (sourceBitmap.PixelFormat != PixelFormat.Format8bppIndexed)
+                throw new ArgumentException("Bitmap must be 8bpp indexed.", nameof(sourceBitmap));
+
+            // Lock the bitmap for reading pixel data
+            BitmapData bitmapData = sourceBitmap.LockBits(
+                new Rectangle(0, 0, sourceBitmap.Width, sourceBitmap.Height),
+                ImageLockMode.ReadOnly,
+                sourceBitmap.PixelFormat);
+
+            try
+            {
+
+                // Read the pixel data
+                int dataSize = bitmapData.Stride * bitmapData.Height;
+                byte[] pixelData = new byte[dataSize];
+                Marshal.Copy(bitmapData.Scan0, pixelData, 0, dataSize);
+
+                // Create an SKBitmap with the same dimensions as the input bitmap
+                using (var skBitmap = new SKBitmap(sourceBitmap.Width, sourceBitmap.Height, SKColorType.Gray8, SKAlphaType.Premul))
+                {
+                    // Copy the pixel data into the SKBitmap
+                    var skBitmapPixels = skBitmap.GetPixelSpan();
+                    for (int y = 0; y < skBitmap.Height; y++)
+                    {
+                        int srcOffset = y * bitmapData.Stride;
+                        int destOffset = y * skBitmap.Width;
+
+                        for (int x = 0; x < skBitmap.Width; x++)
+                        {
+                            skBitmapPixels[destOffset + x] = pixelData[srcOffset + x];
+                        }
+                    }
+
+                    // Create an SKImage from the SKBitmap
+                    return SKImage.FromBitmap(skBitmap);
+                }
+            }
+            finally
+            {
+                // Unlock the bitmap
+                sourceBitmap.UnlockBits(bitmapData);
+            }
+        }
+        public static SKImage Convert16bppBitmapToSKImage(Bitmap sourceBitmap)
+        {
+            Bitmap bm = sourceBitmap.GetImageRGB();
+            int width = bm.Width;
+            int height = bm.Height;
+
+            SKBitmap skBitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque);
+
+            BitmapData bitmapData = sourceBitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, bm.PixelFormat);
+
+            unsafe
+            {
+                byte* sourcePtr = (byte*)bm.Data.ToPointer();
+                byte* destPtr = (byte*)skBitmap.GetPixels().ToPointer();
+
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        destPtr[0] = sourcePtr[0]; // Blue
+                        destPtr[1] = sourcePtr[1]; // Green
+                        destPtr[2] = sourcePtr[2]; // Red
+                        destPtr[3] = 255;          // Alpha (fully opaque)
+
+                        sourcePtr += 3;
+                        destPtr += 4;
+                    }
+                }
+            }
+
+            sourceBitmap.UnlockBits(bitmapData);
+
+            return SKImage.FromBitmap(skBitmap);
+        }
+        public static SKImage BitmapToSKImage(AForge.Bitmap bitm)
+        {
+            if (bitm.PixelFormat == PixelFormat.Format24bppRgb)
+                return Convert24bppBitmapToSKImage(bitm);
+            if (bitm.PixelFormat == PixelFormat.Format32bppArgb)
+                return Convert32bppBitmapToSKImage(bitm);
+            if (bitm.PixelFormat == PixelFormat.Float)
+                return Convert32bppBitmapToSKImage(bitm.GetImageRGBA());
+            if (bitm.PixelFormat == PixelFormat.Format16bppGrayScale)
+                return Convert16bppBitmapToSKImage(bitm.GetImageRGB());
+            if (bitm.PixelFormat == PixelFormat.Format48bppRgb)
+                return Convert16bppBitmapToSKImage(bitm.GetImageRGB());
+            if (bitm.PixelFormat == PixelFormat.Format8bppIndexed)
+                return Convert8bppBitmapToSKImage(bitm);
+            else
+                throw new NotSupportedException("PixelFormat " + bitm.PixelFormat + " is not supported for SKImage.");
+        }
+
+        private void RequestTile(int level, int tileX, int tileY)
+        {
+            var key = (level, tileX, tileY);
+
+            lock (tileLock)
+            {
+                // Already cached
+                if (tileCache.ContainsKey(key))
+                    return;
+
+                // Already being fetched
+                if (tileRequestsInFlight.Contains(key))
+                    return;
+
+                tileRequestsInFlight.Add(key);
+            }
+
+            // Background fetch
+            Task.Run(() =>
+            {
+                SKImage bmp = null;
+
+                try
+                {
+                    if(openslideBase != null)
+                    {
+                        // BioLib-style tile fetch (adjust if needed)
+                        bmp = BitmapToSKImage(GetTile(this, 0, level, tileX, tileY, this.OpenSlideBase.Schema.GetTileWidth(level), this.OpenSlideBase.Schema.GetTileHeight(level)));
+                    }
+                    
+                }
+                catch
+                {
+                    // Tile load failure should not crash renderer
+                }
+
+                lock (tileLock)
+                {
+                    tileRequestsInFlight.Remove(key);
+
+                    if (bmp != null)
+                        tileCache[key] = SKBitmap.FromImage(bmp);
+                }
+            });
+        }
+
         public void UpdateBuffersWells()
         {
             try
