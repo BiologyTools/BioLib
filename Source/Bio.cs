@@ -4109,10 +4109,6 @@ namespace BioLib
         /// @return A filtered image.
         public Bitmap GetFiltered(int ind, IntRange r, IntRange g, IntRange b)
         {
-            if (Buffers.Count == 0 || isPyramidal)
-            {
-                UpdateBuffersPyramidal().Wait();
-            }
             if (Buffers[ind].PixelFormat == PixelFormat.Float)
             {
                 if (Statistics.StackMax <= 1)
@@ -7666,87 +7662,92 @@ namespace BioLib
         }
 
         private double prev = 0;
+        /// <summary>
+        /// Updates the Buffers based on current pyramidal origin and resolution.
+        /// </summary>
         public async Task UpdateBuffersPyramidal()
         {
-            if (!isPyramidal)
-                return;
-
-            Buffers.Clear();
-
-            const double PREFETCH_MARGIN = 1.2;
-
-            int level = GetOptimalPyramidLevel();
-
-            // --------------------------------------------------------------------
-            // 1. Visible extent in BASE-resolution coordinates
-            // --------------------------------------------------------------------
-            var visibleExtent = CalculateVisibleExtent(
-                PyramidalOrigin,
-                PyramidalSize.Width,
-                PyramidalSize.Height,
-                level);
-
-            var fetchExtent = ExpandExtent(visibleExtent, PREFETCH_MARGIN);
-
-            var tilesToFetch = GetTilesForExtent(fetchExtent, level);
-
-            await FetchTilesAsync(tilesToFetch, level);
-
-            double imageHeightBase = Resolutions[0].SizeY;
-
-            foreach (var tile in tilesToFetch)
+            try
             {
-                // ----------------------------------------------------------------
-                // 2. Tile extent in BASE space
-                // ----------------------------------------------------------------
-                var tileExtent = tile.Extent;
+                if (Type != ImageType.pyramidal)
+                    return;
+                for (int i = 0; i < Buffers.Count; i++)
+                {
+                    Buffers[i].Dispose();
+                }
+                Buffers.Clear();
+                const double PREFETCH_MARGIN = 1.2;
+                int level = GetOptimalPyramidLevel();
+                for (int z = 0; z < SizeZ; z++)
+                {
+                    for (int c = 0; c < SizeC; c++)
+                    {
+                        for (int t = 0; t < SizeT; t++)
+                        {
+                            ZCT co = new ZCT(z, c, t);
+                            if (openSlideImage != null)
+                            {
+                            startos:
+                                double minX = PyramidalOrigin.X;
+                                double minY = PyramidalOrigin.Y;
+                                double maxX = minX + (PyramidalSize.Width * Resolution);
+                                double maxY = minY + (PyramidalSize.Height * Resolution);
 
-                // ----------------------------------------------------------------
-                // 3. Compute visible intersection (BASE space)
-                // ----------------------------------------------------------------
-                var intersection = tileExtent.Intersect(visibleExtent);
-                if (intersection == null || intersection.Width == 0 || intersection.Height == 0)
-                    continue;
-
-                // ----------------------------------------------------------------
-                // 4. BASE → SCREEN conversion
-                // ----------------------------------------------------------------
-                double baseX = intersection.MinX;
-                double baseY = imageHeightBase - intersection.MaxY; // Y inversion
-
-                float screenX = (float)((baseX - PyramidalOrigin.X) / Resolution);
-                float screenY = (float)((baseY - PyramidalOrigin.Y) / Resolution);
-
-                float screenW = (float)(intersection.Width / Resolution);
-                float screenH = (float)(intersection.Height / Resolution);
-
-                if (screenW <= 0 || screenH <= 0)
-                    continue;
-
-                // ----------------------------------------------------------------
-                // 5. Fetch BASE slice matching the intersection
-                // ----------------------------------------------------------------
-                Bitmap[] slice = await GetSlice(
-                    (int)baseX,
-                    (int)intersection.MinY,
-                    (int)intersection.Width,
-                    (int)intersection.Height,
-                    Resolution);
-
-                if (slice == null || slice.Length == 0)
-                    continue;
-
-                // ----------------------------------------------------------------
-                // 6. Create screen-space buffer
-                // ----------------------------------------------------------------
-                Buffers.Add(
-                    new Bitmap(
-                        (int)Math.Ceiling(screenW),
-                        (int)Math.Ceiling(screenH),
-                        PixelFormat.Format24bppRgb,
-                        slice[0].Bytes,
-                        Coordinate,
-                        string.Empty));
+                                var extent = new Extent(minX, minY, maxX, maxY);
+                                var sliceInfo = new OpenSlideGTK.SliceInfo
+                                {
+                                    Extent = extent,
+                                    Resolution = resolution,
+                                };
+                                
+                                byte[] bts = await openslideBase.GetSlice(sliceInfo);
+                                if (bts == null)
+                                {
+                                    pyramidalOrigin = new PointD(0, 0);
+                                    Resolution = GetUnitPerPixel(level) * 1.1f;
+                                    goto startos;
+                                }
+                                Bitmap bmp = new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, co, "");
+                                Buffers.Add(bmp);
+                            }
+                            else
+                            {
+                            start:
+                                double minX = PyramidalOrigin.X;
+                                double minY = PyramidalOrigin.Y;
+                                double width = PyramidalSize.Width * Resolution;
+                                double height = PyramidalSize.Height * Resolution;
+                                double maxX = minX + width;
+                                double maxY = minY + height;
+                                var extent = new Extent(minX, minY, maxX, maxY);
+                                var sliceInfo = new SliceInfo
+                                {
+                                    Extent = extent,
+                                    Resolution = resolution,
+                                    Coordinate = co,
+                                };
+                                byte[] bts = await slideBase.GetSlice(sliceInfo);
+                                if (bts == null)
+                                {
+                                    pyramidalOrigin = new PointD(0, 0);
+                                    Resolution = GetUnitPerPixel(level) * 1.1f;
+                                    goto start;
+                                }
+                                Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, co, "");
+                                Buffers.Add(bmp);
+                            }
+                        }
+                    }
+                }
+                BioImage.AutoThreshold(this, false);
+                if (bitsPerPixel > 8)
+                    StackThreshold(true);
+                else
+                    StackThreshold(false);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
             }
         }
 
@@ -7833,8 +7834,10 @@ namespace BioLib
                             OpenSlideBase.Schema.Extent,
                             level
                         );
-
-                        OpenSlideBase.cache.cache.Add(info, data);
+                        BruTile.TileInfo tf = new BruTile.TileInfo();
+                        tf.Extent = info.Extent;
+                        tf.Index = info.Index;
+                        OpenSlideBase.stitch.AddTile(new Tuple<TileInfo,byte[]>(tf, data));
                     }
                     else
                     {
@@ -8314,7 +8317,8 @@ namespace BioLib
                 {
                     int lev = LevelFromResolution(Resolution);
                     openslideBase.SetSliceInfo(lev, Resolutions[lev].PixelFormat, Coordinate);
-                    byte[] bts = openslideBase.GetSlice(new OpenSlideGTK.SliceInfo(x, y, w, h, resolution));
+                    var sl = new OpenSlideGTK.SliceInfo(x, y, w, h, resolution);
+                    byte[] bts = await openslideBase.GetSlice(sl);
                     Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
                 }
                 else

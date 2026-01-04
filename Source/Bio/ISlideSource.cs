@@ -180,6 +180,7 @@ namespace BioLib
                 cache = new TileCache(this);
             var curLevel = Image.BioImage.LevelFromResolution(sliceInfo.Resolution);
             var curUnitsPerPixel = Schema.Resolutions[curLevel].UnitsPerPixel;
+
             var tileInfos = Schema.GetTileInfos(sliceInfo.Extent, curLevel);
             List<Tuple<Extent, byte[]>> tiles = new List<Tuple<Extent, byte[]>>();
             foreach (BruTile.TileInfo t in tileInfos)
@@ -187,7 +188,7 @@ namespace BioLib
                 TileInformation tf = new TileInformation(t.Index,t.Extent,sliceInfo.Coordinate);
                 byte[] c = await cache.GetTile(tf);
                 if(c!=null)
-                tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
+                    tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
             }
             var srcPixelExtent = sliceInfo.Extent.WorldToPixelInvertedY(curUnitsPerPixel);
             var dstPixelExtent = sliceInfo.Extent.WorldToPixelInvertedY(sliceInfo.Resolution);
@@ -195,6 +196,21 @@ namespace BioLib
             var dstPixelWidth = sliceInfo.Parame.DstPixelWidth > 0 ? sliceInfo.Parame.DstPixelWidth : dstPixelExtent.Width;
             destExtent = new Extent(0, 0, dstPixelWidth, dstPixelHeight);
             sourceExtent = srcPixelExtent;
+            if (UseGPU)
+            {
+                try
+                {
+                    if (tileInfos.Count() > 0)
+                        return stitch.StitchImages(tileInfos.ToList(), (int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY), curUnitsPerPixel);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.Message.ToString());
+                    UseVips = true;
+                    UseGPU = false;
+                }
+            }
+            else
             if (UseVips)
             {
                 try
@@ -202,7 +218,7 @@ namespace BioLib
                     NetVips.Image im = null;
                     if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
                         im = ImageUtil.JoinVips16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    else if(this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
+                    else if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
                         im = ImageUtil.JoinVipsRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
                     return im.WriteToMemory();
                 }
@@ -456,7 +472,7 @@ namespace BioLib
         /// <param name="unitsPerPixel">um/pixel</param>
         public SliceInfo(double xPixel, double yPixel, double widthPixel, double heightPixel, double unitsPerPixel, ZCT coord)
         {
-            Extent = new Extent(xPixel, yPixel, xPixel + widthPixel,yPixel + heightPixel).PixelToWorldInvertedY(unitsPerPixel);
+            Extent = new Extent(xPixel, yPixel, xPixel + widthPixel,yPixel + heightPixel);
             Resolution = unitsPerPixel;
             Coordinate = coord;
         }
