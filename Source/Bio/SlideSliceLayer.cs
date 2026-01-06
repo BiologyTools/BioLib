@@ -41,7 +41,7 @@ namespace BioLib
                 _lastResolution = resolution;
                 MRect box2 = box.Grow(SymbolStyle.DefaultWidth * 2.0 * resolution, SymbolStyle.DefaultHeight * 2.0 * resolution);
                 var sliceInfo = new SliceInfo() { Extent = box2.ToExtent(), Resolution = resolution };
-                var bytes = _slideSource.GetSlice(sliceInfo);
+                var bytes = _slideSource.GetSlice(sliceInfo, new AForge.PointD(box.MinX,box.MinY), new AForge.Size((int)box.Width,(int) box.Height));
                 if (bytes != null && _lastFeatures.FirstOrDefault() is IFeature feature)
                 {
                     feature = new RasterFeature(new MRaster(bytes.Result, box2));

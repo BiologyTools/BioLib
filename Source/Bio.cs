@@ -7726,7 +7726,7 @@ namespace BioLib
                                     Resolution = resolution,
                                     Coordinate = co,
                                 };
-                                byte[] bts = await slideBase.GetSlice(sliceInfo);
+                                byte[] bts = await slideBase.GetSlice(sliceInfo, PyramidalOrigin, PyramidalSize);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
@@ -7770,90 +7770,7 @@ namespace BioLib
             return 25;
         }
 
-        // ============================================================================
-        // OPTIMIZATION 3: Priority-based tile fetching
-        // ============================================================================
-
-        /// <summary>
-        /// Fetches tiles in priority order: center viewport first, then edges.
-        /// Ensures visible content appears before prefetch content.
-        /// </summary>
-        private async Task FetchTilesAsync(List<BruTile.TileInfo> tiles, int level)
-        {
-            if (tiles == null || tiles.Count == 0)
-                return;
-
-            // --------------------------------------------------------------------
-            // 1. Calculate viewport center (base-resolution coordinates)
-            // --------------------------------------------------------------------
-            double centerX = PyramidalOrigin.X + (PyramidalSize.Width * 0.5);
-            double centerY = PyramidalOrigin.Y + (PyramidalSize.Height * 0.5);
-
-            // --------------------------------------------------------------------
-            // 2. Sort tiles by squared distance (avoid sqrt)
-            // --------------------------------------------------------------------
-            var prioritizedTiles = tiles
-                .OrderBy(tile =>
-                {
-                    double dx = tile.Extent.CenterX - centerX;
-                    double dy = tile.Extent.CenterY - centerY;
-                    return (dx * dx) + (dy * dy);
-                })
-                .ToList();
-
-            // --------------------------------------------------------------------
-            // 3. Fetch tiles in batches
-            // --------------------------------------------------------------------
-            int batchSize = GetOptimalBatchSize();
-
-            for (int i = 0; i < prioritizedTiles.Count; i += batchSize)
-            {
-                var batch = prioritizedTiles.Skip(i).Take(batchSize).ToList();
-
-                // Parallel fetch within batch
-                byte[][] results = await Task.WhenAll(
-                    batch.Select(tile => FetchSingleTileAsync(tile, level))
-                );
-
-                // ----------------------------------------------------------------
-                // 4. Insert into appropriate cache
-                // ----------------------------------------------------------------
-                for (int j = 0; j < batch.Count; j++)
-                {
-                    var tile = batch[j];
-                    var data = results[j];
-
-                    if (data == null)
-                        continue;
-
-                    if (OpenSlideBase != null)
-                    {
-                        var info = new Info(
-                            Coordinate,
-                            tile.Index,
-                            OpenSlideBase.Schema.Extent,
-                            level
-                        );
-                        BruTile.TileInfo tf = new BruTile.TileInfo();
-                        tf.Extent = info.Extent;
-                        tf.Index = info.Index;
-                        OpenSlideBase.stitch.AddTile(new Tuple<TileInfo,byte[]>(tf, data));
-                    }
-                    else
-                    {
-                        var info = new Info(
-                            Coordinate,
-                            tile.Index,
-                            SlideBase.Schema.Extent,
-                            level
-                        );
-                        TileInformation tf = new TileInformation(tile.Index,tile.Extent,Coordinate);
-                        SlideBase.cache.AddTile(tf, data);
-                    }
-                }
-            }
-        }
-
+        
 
         // ============================================================================
         // OPTIMIZATION 4: Smarter pyramid level selection
@@ -8324,7 +8241,7 @@ namespace BioLib
                 else
                 {
                 start:
-                    byte[] bts = await slideBase.GetSlice(new SliceInfo(x, y, w, h, resolution, Coordinate));
+                    byte[] bts = await slideBase.GetSlice(new SliceInfo(x, y, w, h, resolution, Coordinate), PyramidalOrigin, PyramidalSize);
                     if (bts == null)
                     {
                         if (x == 0 && y == 0)

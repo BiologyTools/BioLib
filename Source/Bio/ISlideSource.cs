@@ -174,7 +174,104 @@ namespace BioLib
         public static bool UseGPU = true;
         public TileCache cache = null;
         public Stitch stitch = new Stitch();
-        public async Task<byte[]> GetSlice(SliceInfo sliceInfo)
+
+        private int GetOptimalBatchSize(PointD PyramidalOrigin, AForge.Size PyramidalSize)
+        {
+
+            // Small viewport (< 800x600): fetch all tiles at once
+            if (PyramidalSize.Width < 800 && PyramidalSize.Height < 600)
+                return 100;
+
+            // Medium viewport (< 1920x1080): moderate batching
+            if (PyramidalSize.Width < 1920 && PyramidalSize.Height < 1080)
+                return 50;
+
+            // Large viewport (fullscreen): aggressive batching
+            // Process visible center tiles first, then outer tiles
+            return 25;
+        }
+
+        private async Task<byte[]> FetchSingleTileAsync(TileInfo tile, int level)
+        {
+            // Your existing tile fetch logic here
+            // This should use the cache and only fetch if not cached
+            try
+            {
+                byte[] tileData = await GetTileAsync(tile);
+                // Process tile data...
+                return tileData;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching tile: {ex.Message}");
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Fetches tiles in priority order: center viewport first, then edges.
+        /// Ensures visible content appears before prefetch content.
+        /// </summary>
+        public async Task FetchTilesAsync(List<BruTile.TileInfo> tiles, int level, ZCT coordinate, PointD PyramidalOrigin, AForge.Size PyramidalSize)
+        {
+            if (tiles == null || tiles.Count == 0)
+                return;
+
+            // --------------------------------------------------------------------
+            // 1. Calculate viewport center (base-resolution coordinates)
+            // --------------------------------------------------------------------
+            double centerX = PyramidalOrigin.X + (PyramidalSize.Width * 0.5);
+            double centerY = PyramidalOrigin.Y + (PyramidalSize.Height * 0.5);
+
+            // --------------------------------------------------------------------
+            // 2. Sort tiles by squared distance (avoid sqrt)
+            // --------------------------------------------------------------------
+            var prioritizedTiles = tiles
+                .OrderBy(tile =>
+                {
+                    double dx = tile.Extent.CenterX - centerX;
+                    double dy = tile.Extent.CenterY - centerY;
+                    return (dx * dx) + (dy * dy);
+                })
+                .ToList();
+
+            // --------------------------------------------------------------------
+            // 3. Fetch tiles in batches
+            // --------------------------------------------------------------------
+            int batchSize = GetOptimalBatchSize(PyramidalOrigin, PyramidalSize);
+
+            for (int i = 0; i < prioritizedTiles.Count; i += batchSize)
+            {
+                var batch = prioritizedTiles.Skip(i).Take(batchSize).ToList();
+
+                // Parallel fetch within batch
+                byte[][] results = await Task.WhenAll(
+                    batch.Select(tile => FetchSingleTileAsync(tile, level))
+                );
+
+                // ----------------------------------------------------------------
+                // 4. Insert into appropriate cache
+                // ----------------------------------------------------------------
+                for (int j = 0; j < batch.Count; j++)
+                {
+                    var tile = batch[j];
+                    var data = results[j];
+
+                    if (data == null)
+                        continue;
+                    var info = new Info(
+                        coordinate,
+                        tile.Index,
+                        this.Schema.Extent,
+                        level
+                    );
+                    TileInformation tf = new TileInformation(tile.Index, tile.Extent, coord);
+                    cache.AddTile(tf, data);
+                }
+            }
+        }
+
+        public async Task<byte[]> GetSlice(SliceInfo sliceInfo, PointD PyramidalOrign, AForge.Size PyramidalSize)
         {
             if (cache == null)
                 cache = new TileCache(this);
@@ -182,14 +279,8 @@ namespace BioLib
             var curUnitsPerPixel = Schema.Resolutions[curLevel].UnitsPerPixel;
 
             var tileInfos = Schema.GetTileInfos(sliceInfo.Extent, curLevel);
-            List<Tuple<Extent, byte[]>> tiles = new List<Tuple<Extent, byte[]>>();
-            foreach (BruTile.TileInfo t in tileInfos)
-            {
-                TileInformation tf = new TileInformation(t.Index,t.Extent,sliceInfo.Coordinate);
-                byte[] c = await cache.GetTile(tf);
-                if(c!=null)
-                    tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
-            }
+            await FetchTilesAsync(tileInfos.ToList(), curLevel, sliceInfo.Coordinate, PyramidalOrign, PyramidalSize);
+
             var srcPixelExtent = sliceInfo.Extent.WorldToPixelInvertedY(curUnitsPerPixel);
             var dstPixelExtent = sliceInfo.Extent.WorldToPixelInvertedY(sliceInfo.Resolution);
             var dstPixelHeight = sliceInfo.Parame.DstPixelHeight > 0 ? sliceInfo.Parame.DstPixelHeight : dstPixelExtent.Height;
@@ -215,10 +306,18 @@ namespace BioLib
             {
                 try
                 {
+                    List<Tuple<Extent, byte[]>> tiles = new List<Tuple<Extent, byte[]>>();
+                    foreach (BruTile.TileInfo t in tileInfos)
+                    {
+                        TileInformation tf = new TileInformation(t.Index,t.Extent,sliceInfo.Coordinate);
+                        byte[] c = await cache.GetTile(tf);
+                        if(c!=null)
+                            tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
+                    }
                     NetVips.Image im = null;
-                    if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
+                    if (Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
                         im = ImageUtil.JoinVips16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    else if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
+                    else if (Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
                         im = ImageUtil.JoinVipsRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
                     return im.WriteToMemory();
                 }
@@ -232,6 +331,14 @@ namespace BioLib
             try
             {
                 Image im = null;
+                List<Tuple<Extent, byte[]>> tiles = new List<Tuple<Extent, byte[]>>();
+                foreach (BruTile.TileInfo t in tileInfos)
+                {
+                    TileInformation tf = new TileInformation(t.Index, t.Extent, sliceInfo.Coordinate);
+                    byte[] c = await cache.GetTile(tf);
+                    if (c != null)
+                        tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
+                }
                 if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
                 {
                     im = ImageUtil.Join16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
@@ -452,7 +559,7 @@ namespace BioLib
         /// </summary>
         /// <param name="sliceInfo">Slice info</param>
         /// <returns></returns>
-        Task<byte[]> GetSlice(SliceInfo sliceInfo);
+        Task<byte[]> GetSlice(SliceInfo sliceInfo, PointD PyramidalOrigin, AForge.Size PyramidalSize);
     }
 
     /// <summary>
