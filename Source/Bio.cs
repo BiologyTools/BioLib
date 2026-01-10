@@ -2024,7 +2024,7 @@ namespace BioLib
             get { return resolution; }
             set
             {
-                if (value <= 0 || value == resolution)
+                if (value <= 0)
                     return;
                 resolution = value;
             }
@@ -7676,8 +7676,6 @@ namespace BioLib
                     Buffers[i].Dispose();
                 }
                 Buffers.Clear();
-                const double PREFETCH_MARGIN = 1.2;
-                int level = GetOptimalPyramidLevel();
                 for (int z = 0; z < SizeZ; z++)
                 {
                     for (int c = 0; c < SizeC; c++)
@@ -7690,23 +7688,28 @@ namespace BioLib
                             startos:
                                 double minX = PyramidalOrigin.X;
                                 double minY = PyramidalOrigin.Y;
-                                double maxX = minX + (PyramidalSize.Width * Resolution);
-                                double maxY = minY + (PyramidalSize.Height * Resolution);
-
+                                double width = PyramidalSize.Width * Resolution;
+                                double height = PyramidalSize.Height * Resolution;
+                                double maxX = minX + width;
+                                double maxY = minY + height;
                                 var extent = new Extent(minX, minY, maxX, maxY);
+                                var slicep = new OpenSlideGTK.SliceParame();
+                                slicep.DstPixelWidth = PyramidalSize.Width;
+                                slicep.DstPixelHeight = PyramidalSize.Height;
+                                slicep.Quality = 100;
                                 var sliceInfo = new OpenSlideGTK.SliceInfo
                                 {
                                     Extent = extent,
-                                    Resolution = resolution,
+                                    Resolution = Resolution, 
+                                    Parame = slicep, 
                                 };
-                                
-                                byte[] bts = await openslideBase.GetSlice(sliceInfo);
+                                byte[] bts = await openslideBase.GetSlice(sliceInfo, Coordinate);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
-                                    Resolution = GetUnitPerPixel(level) * 1.1f;
                                     goto startos;
                                 }
+                                OpenSlideBase.SetSliceInfo(level, this.Resolutions[0].PixelFormat, Coordinate);
                                 Bitmap bmp = new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, co, "");
                                 Buffers.Add(bmp);
                             }
@@ -7720,19 +7723,25 @@ namespace BioLib
                                 double maxX = minX + width;
                                 double maxY = minY + height;
                                 var extent = new Extent(minX, minY, maxX, maxY);
+                                var slicep = new SliceParame();
+                                slicep.DstPixelWidth = PyramidalSize.Width;
+                                slicep.DstPixelHeight = PyramidalSize.Height;
+                                slicep.Quality = 100;
                                 var sliceInfo = new SliceInfo
                                 {
                                     Extent = extent,
                                     Resolution = resolution,
                                     Coordinate = co,
+                                    Parame = slicep,
                                 };
                                 byte[] bts = await slideBase.GetSlice(sliceInfo, PyramidalOrigin, PyramidalSize);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
-                                    Resolution = GetUnitPerPixel(level) * 1.1f;
+                                    Resolution = GetUnitPerPixel(level);
                                     goto start;
                                 }
+                                //SlideBase.SetSliceInfo(level, this.Resolutions[0].PixelFormat, Coordinate);
                                 Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, co, "");
                                 Buffers.Add(bmp);
                             }
@@ -8235,7 +8244,7 @@ namespace BioLib
                     int lev = LevelFromResolution(Resolution);
                     openslideBase.SetSliceInfo(lev, Resolutions[lev].PixelFormat, Coordinate);
                     var sl = new OpenSlideGTK.SliceInfo(x, y, w, h, resolution);
-                    byte[] bts = await openslideBase.GetSlice(sl);
+                    byte[] bts = await openslideBase.GetSlice(sl, Coordinate);
                     Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
                 }
                 else

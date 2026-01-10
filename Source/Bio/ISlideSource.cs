@@ -27,7 +27,13 @@ namespace BioLib
         {
             this.capacity = capacity;
         }
-
+        public int Count
+        {
+            get
+            {
+                return cacheMap.Count;
+            }
+        }
         public TValue Get(Info key)
         {
             foreach (LinkedListNode<(Info key, TValue value)> item in cacheMap.Values)
@@ -64,6 +70,18 @@ namespace BioLib
             lruList.AddLast(newNode);
             cacheMap[key] = newNode;
         }
+
+        public void RemoveTile(Info key)
+        {
+            foreach (LinkedListNode<(Info key, TValue value)> item in cacheMap.Values)
+            {
+                Info k = item.Value.key;
+                if (k.Coordinate == key.Coordinate && k.Index == key.Index)
+                {
+                    lruList.Remove(item);
+                }
+            }
+        }
         public void Dispose()
         {
             foreach (LinkedListNode<(Info key, TValue value)> item in cacheMap.Values)
@@ -84,6 +102,22 @@ namespace BioLib
             this.cache = new LruCache<TileInformation, byte[]>(capacity);
         }
 
+        public void DisposeTile(TileInformation info)
+        {
+            for (int i = 0; i < cache.Count; i++)
+            {
+                var inf = new LruCache<TileInformation, byte[]>.Info();
+                cache.RemoveTile(inf);
+            }
+        }
+        public void DisposeTile(TileInfo info)
+        {
+            for (int i = 0; i < cache.Count; i++)
+            {
+                var inf = new LruCache<TileInformation, byte[]>.Info();
+                cache.RemoveTile(inf);
+            }
+        }
         public async Task<byte[]> GetTile(TileInformation info)
         {
             LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
@@ -174,21 +208,27 @@ namespace BioLib
         public static bool UseGPU = true;
         public TileCache cache = null;
         public Stitch stitch = new Stitch();
-
+        public bool HasTile(TileInfo tile, ZCT coord)
+        {
+            if (cache.GetTile(new TileInformation(tile.Index, tile.Extent, coord)) != null)
+                return true;
+            else
+                return false;
+        }
         private int GetOptimalBatchSize(PointD PyramidalOrigin, AForge.Size PyramidalSize)
         {
 
             // Small viewport (< 800x600): fetch all tiles at once
             if (PyramidalSize.Width < 800 && PyramidalSize.Height < 600)
-                return 100;
+                return 150;
 
             // Medium viewport (< 1920x1080): moderate batching
             if (PyramidalSize.Width < 1920 && PyramidalSize.Height < 1080)
-                return 50;
+                return 75;
 
             // Large viewport (fullscreen): aggressive batching
             // Process visible center tiles first, then outer tiles
-            return 25;
+            return 50;
         }
 
         private async Task<byte[]> FetchSingleTileAsync(TileInfo tile, int level)
