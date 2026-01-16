@@ -7237,6 +7237,8 @@ namespace BioLib
                 {
                     return bmp;
                 }
+                else
+                    vips = false;
             }
             //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
             if (b.openSlideImage != null)
@@ -7262,6 +7264,7 @@ namespace BioLib
                 b.imRead.close();
                 b.imRead.setMetadataStore(b.meta);
                 b.imRead.setId(b.file);
+                curfile = b.file;
             }
             else
             {
@@ -7703,7 +7706,7 @@ namespace BioLib
                                     Resolution = Resolution, 
                                     Parame = slicep, 
                                 };
-                                byte[] bts = await openslideBase.GetSlice(sliceInfo, Coordinate);
+                                byte[] bts = await openslideBase.GetSlice(sliceInfo);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
@@ -8244,7 +8247,7 @@ namespace BioLib
                     int lev = LevelFromResolution(Resolution);
                     openslideBase.SetSliceInfo(lev, Resolutions[lev].PixelFormat, Coordinate);
                     var sl = new OpenSlideGTK.SliceInfo(x, y, w, h, resolution);
-                    byte[] bts = await openslideBase.GetSlice(sl, Coordinate);
+                    byte[] bts = await openslideBase.GetSlice(sl);
                     Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
                 }
                 else

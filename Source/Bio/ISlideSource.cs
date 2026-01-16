@@ -319,6 +319,10 @@ namespace BioLib
             var curUnitsPerPixel = Schema.Resolutions[curLevel].UnitsPerPixel;
 
             var tileInfos = Schema.GetTileInfos(sliceInfo.Extent, curLevel);
+            if(tileInfos.Count() == 0)
+            {
+                tileInfos = Schema.GetTileInfos(sliceInfo.Extent.PixelToWorldInvertedY(curUnitsPerPixel), curLevel);
+            }
             await FetchTilesAsync(tileInfos.ToList(), curLevel, sliceInfo.Coordinate, PyramidalOrign, PyramidalSize);
 
             var srcPixelExtent = sliceInfo.Extent.WorldToPixelInvertedY(curUnitsPerPixel);

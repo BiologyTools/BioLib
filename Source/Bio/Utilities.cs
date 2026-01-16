@@ -105,7 +105,7 @@ namespace BioLib
         }
 
         /// <summary>
-        /// Join by <paramref name="srcPixelTiles"/> and cut by <paramref name="srcPixelExtent"/> then scale to <paramref name="dstPixelExtent"/>(only height an width is useful).
+        /// Join by <paramref name="srcPixelTiles"/> and cut by <paramref name="srcPixelExtent"/> then scale to <paramref name="dstPixelExtent"/>(only height and width is useful).
         /// </summary>
         /// <param name="srcPixelTiles">tile with tile extent collection</param>
         /// <param name="srcPixelExtent">canvas extent</param>
@@ -113,66 +113,215 @@ namespace BioLib
         /// <returns></returns>
         public static Image<Rgb24> JoinRGB24(IEnumerable<Tuple<Extent, byte[]>> srcPixelTiles, Extent srcPixelExtent, Extent dstPixelExtent)
         {
-            if (srcPixelTiles == null || srcPixelTiles.Count() == 0)
+            if (srcPixelTiles == null || !srcPixelTiles.Any())
                 return null;
-            srcPixelExtent = srcPixelExtent.ToIntegerExtent();
-            dstPixelExtent = dstPixelExtent.ToIntegerExtent();
-            int canvasWidth = (int)srcPixelExtent.Width;
-            int canvasHeight = (int)srcPixelExtent.Height;
-            var dstWidth = (int)dstPixelExtent.Width;
-            var dstHeight = (int)dstPixelExtent.Height;
-            Image<Rgb24> canvas = new Image<Rgb24>(canvasWidth, canvasHeight);
-            foreach (var tile in srcPixelTiles)
+
+            try
             {
-                try
+                // Safely convert to integer extents
+                srcPixelExtent = SafeToIntegerExtent(srcPixelExtent);
+                dstPixelExtent = SafeToIntegerExtent(dstPixelExtent);
+
+                int canvasWidth = (int)srcPixelExtent.Width;
+                int canvasHeight = (int)srcPixelExtent.Height;
+                int dstWidth = (int)dstPixelExtent.Width;
+                int dstHeight = (int)dstPixelExtent.Height;
+
+                // Validate dimensions
+                if (canvasWidth <= 0 || canvasHeight <= 0)
                 {
-                    var tileExtent = tile.Item1.ToIntegerExtent();
-                    var intersect = srcPixelExtent.Intersect(tileExtent);
-                    if (intersect.Width == 0 || intersect.Height == 0)
-                        continue;
-                    if(tile.Item2 == null)
-                        continue;
-                    Image<Rgb24> tileRawData = (Image<Rgb24>)CreateImageFromBytes(tile.Item2, (int)tileExtent.Width, (int)tileExtent.Height,AForge.PixelFormat.Format24bppRgb);
-                    var tileOffsetPixelX = (int)Math.Ceiling(intersect.MinX - tileExtent.MinX);
-                    var tileOffsetPixelY = (int)Math.Ceiling(intersect.MinY - tileExtent.MinY);
-                    var canvasOffsetPixelX = (int)Math.Ceiling(intersect.MinX - srcPixelExtent.MinX);
-                    var canvasOffsetPixelY = (int)Math.Ceiling(intersect.MinY - srcPixelExtent.MinY);
-                    //We copy the tile region to the canvas.
-                    for (int y = 0; y < intersect.Height; y++)
-                    {
-                        for (int x = 0; x < intersect.Width; x++)
-                        {
-                            int indx = canvasOffsetPixelX + x;
-                            int indy = canvasOffsetPixelY + y;
-                            int tindx = tileOffsetPixelX + x;
-                            int tindy = tileOffsetPixelY + y;
-                            canvas[indx, indy] = tileRawData[tindx, tindy];
-                        }
-                    }
-                    tileRawData.Dispose();
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.ToString());
-                }
-                
-            }
-            if (dstWidth != canvasWidth || dstHeight != canvasHeight)
-            {
-                try
-                {
-                    canvas.Mutate(x => x.Resize(dstWidth, dstHeight));
-                    return canvas;
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.Message);
+                    Console.WriteLine($"Invalid canvas dimensions: {canvasWidth}x{canvasHeight}");
+                    return null;
                 }
 
+                Image<Rgb24> canvas = new Image<Rgb24>(canvasWidth, canvasHeight);
+
+                foreach (var tile in srcPixelTiles)
+                {
+                    try
+                    {
+                        // Skip invalid tiles
+                        if (tile?.Item2 == null || tile.Item2.Length == 0)
+                            continue;
+
+                        // Safely convert tile extent
+                        var tileExtent = SafeToIntegerExtent(tile.Item1);
+
+                        // Validate tile extent
+                        if (tileExtent.Width <= 0 || tileExtent.Height <= 0)
+                            continue;
+
+                        // Calculate intersection manually to avoid errors
+                        var intersect = SafeIntersect(srcPixelExtent, tileExtent);
+
+                        // Skip if no intersection
+                        if (intersect == null || intersect.Value.Width <= 0 || intersect.Value.Height <= 0)
+                            continue;
+
+                        // Create image from tile data
+                        Image<Rgb24> tileRawData = null;
+                        try
+                        {
+                            tileRawData = (Image<Rgb24>)CreateImageFromBytes(
+                                tile.Item2,
+                                (int)tileExtent.Width,
+                                (int)tileExtent.Height,
+                                AForge.PixelFormat.Format24bppRgb
+                            );
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Failed to create image from tile data: {ex.Message}");
+                            continue;
+                        }
+
+                        if (tileRawData == null)
+                            continue;
+
+                        // Calculate offsets (using Floor instead of Ceiling for better precision)
+                        int tileOffsetPixelX = (int)Math.Max(0, intersect.Value.MinX - tileExtent.MinX);
+                        int tileOffsetPixelY = (int)Math.Max(0, intersect.Value.MinY - tileExtent.MinY);
+                        int canvasOffsetPixelX = (int)Math.Max(0, intersect.Value.MinX - srcPixelExtent.MinX);
+                        int canvasOffsetPixelY = (int)Math.Max(0, intersect.Value.MinY - srcPixelExtent.MinY);
+
+                        // Calculate safe copy dimensions
+                        int copyWidth = (int)Math.Min(
+                            Math.Min(intersect.Value.Width, tileRawData.Width - tileOffsetPixelX),
+                            canvas.Width - canvasOffsetPixelX
+                        );
+
+                        int copyHeight = (int)Math.Min(
+                            Math.Min(intersect.Value.Height, tileRawData.Height - tileOffsetPixelY),
+                            canvas.Height - canvasOffsetPixelY
+                        );
+
+                        // Validate copy dimensions
+                        if (copyWidth <= 0 || copyHeight <= 0)
+                        {
+                            tileRawData.Dispose();
+                            continue;
+                        }
+
+                        // Copy the tile region to the canvas with bounds checking
+                        for (int y = 0; y < copyHeight; y++)
+                        {
+                            int canvasY = canvasOffsetPixelY + y;
+                            int tileY = tileOffsetPixelY + y;
+
+                            // Safety check
+                            if (canvasY < 0 || canvasY >= canvas.Height ||
+                                tileY < 0 || tileY >= tileRawData.Height)
+                                break;
+
+                            for (int x = 0; x < copyWidth; x++)
+                            {
+                                int canvasX = canvasOffsetPixelX + x;
+                                int tileX = tileOffsetPixelX + x;
+
+                                // Safety check
+                                if (canvasX < 0 || canvasX >= canvas.Width ||
+                                    tileX < 0 || tileX >= tileRawData.Width)
+                                    break;
+
+                                canvas[canvasX, canvasY] = tileRawData[tileX, tileY];
+                            }
+                        }
+
+                        tileRawData.Dispose();
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine($"Error processing tile: {e.Message}");
+                    }
+                }
+
+                // Resize if needed
+                if (dstWidth > 0 && dstHeight > 0 &&
+                    (dstWidth != canvasWidth || dstHeight != canvasHeight))
+                {
+                    try
+                    {
+                        canvas.Mutate(x => x.Resize(dstWidth, dstHeight));
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine($"Error resizing canvas: {e.Message}");
+                    }
+                }
+
+                return canvas;
             }
-            return canvas;
+            catch (Exception e)
+            {
+                Console.WriteLine($"Fatal error in JoinRGB24: {e.Message}\n{e.StackTrace}");
+                return null;
+            }
         }
 
+        /// <summary>
+        /// Safely convert extent to integer extent, ensuring min < max
+        /// </summary>
+        private static Extent SafeToIntegerExtent(Extent extent)
+        {
+            if (extent == null)
+                return new Extent(0, 0, 1, 1);
+
+            try
+            {
+                double minX = Math.Floor(extent.MinX);
+                double maxX = Math.Ceiling(extent.MaxX);
+                double minY = Math.Floor(extent.MinY);
+                double maxY = Math.Ceiling(extent.MaxY);
+
+                // Ensure min < max by at least 1 pixel
+                if (minX >= maxX)
+                {
+                    maxX = minX + 1;
+                }
+
+                if (minY >= maxY)
+                {
+                    maxY = minY + 1;
+                }
+
+                return new Extent(minX, minY, maxX, maxY);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Error in SafeToIntegerExtent: {e.Message}");
+                return new Extent(0, 0, 1, 1);
+            }
+        }
+
+        /// <summary>
+        /// Safely calculate intersection of two extents
+        /// </summary>
+        private static Extent? SafeIntersect(Extent a, Extent b)
+        {
+            if (a == null || b == null)
+                return null;
+
+            try
+            {
+                double minX = Math.Max(a.MinX, b.MinX);
+                double minY = Math.Max(a.MinY, b.MinY);
+                double maxX = Math.Min(a.MaxX, b.MaxX);
+                double maxY = Math.Min(a.MaxY, b.MaxY);
+
+                // Check if there's an actual intersection
+                if (minX >= maxX || minY >= maxY)
+                {
+                    return null; // No intersection
+                }
+
+                return new Extent(minX, minY, maxX, maxY);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Error in SafeIntersect: {e.Message}");
+                return null;
+            }
+        }
         /// <summary>
         /// Join by <paramref name="srcPixelTiles"/> and cut by <paramref name="srcPixelExtent"/> then scale to <paramref name="dstPixelExtent"/>(only height an width is useful).
         /// </summary>

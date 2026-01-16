@@ -1,36 +1,50 @@
-__global__ void copyTileToCanvas(
-    unsigned char* canvas, int canvasWidth, int canvasHeight,
-    unsigned char* tile, int tileWidth, int tileHeight,
-    int offsetX, int offsetY,
-    int canvasTileWidth, int canvasTileHeight)
+﻿// StitchTileKernel.cu
+// Windows-ready CUDA kernel for 32bpp RGBA tile stitching
+
+#include <cuda_runtime.h>
+#include <device_launch_parameters.h>
+extern "C" __global__
+void StitchViewport(
+    const unsigned char** tilePtrs,
+    const int* tileWidths,
+    const int* tileHeights,
+    const int* tileStartX,
+    const int* tileStartY,
+    size_t numTiles,
+
+    unsigned char* viewport,
+    size_t viewportWidth,
+    size_t viewportHeight,
+    size_t bytesPerPixel)
 {
-    // Calculate the global x and y index for the thread
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-    // Ensure this thread only processes pixels within the bounds of the tile and canvas section
-    if (x < canvasTileWidth && y < canvasTileHeight) {
-        int canvasX = x + offsetX;
-        int canvasY = y + offsetY;
+    if (x >= viewportWidth || y >= viewportHeight)
+        return;
 
-        // Ensure canvas indices are within bounds of the canvas extent
-        if (canvasX < canvasWidth && canvasY < canvasHeight) {
-            // Calculate scaling factors to map canvasTileWidth and canvasTileHeight to tile dimensions
-            float scaleX = static_cast<float>(tileWidth) / static_cast<float>(canvasTileWidth);
-            float scaleY = static_cast<float>(tileHeight) / static_cast<float>(canvasTileHeight);
+    size_t dstIndex = (y * viewportWidth + x) * bytesPerPixel;
 
-            // Compute the corresponding tile indices
-            int tileX = min(static_cast<int>(x * scaleX), tileWidth - 1);
-            int tileY = min(static_cast<int>(y * scaleY), tileHeight - 1);
+    for (size_t i = 0; i < numTiles; ++i)
+    {
+        int tx = x - tileStartX[i];
+        int ty = y - tileStartY[i];
 
-            // Calculate the indices for both canvas and tile in the 1D arrays
-            int tileIdx = (tileY * tileWidth + tileX) * 3;   // Each pixel has 3 components (RGB)
-            int canvasIdx = (canvasY * canvasWidth + canvasX) * 3;
+        if (tx >= 0 && ty >= 0 &&
+            tx < tileWidths[i] &&
+            ty < tileHeights[i])
+        {
+            const unsigned char* src = tilePtrs[i];
+            size_t srcIndex = (ty * tileWidths[i] + tx) * bytesPerPixel;
 
-            // Copy the pixel (RGB components) from the tile to the canvas
-            canvas[canvasIdx] = tile[tileIdx];        // Blue component
-            canvas[canvasIdx + 1] = tile[tileIdx + 1];    // Green component
-            canvas[canvasIdx + 2] = tile[tileIdx + 2];        // Red component
+            // Copy RGBA (32bpp)
+            viewport[dstIndex + 0] = src[srcIndex + 0];
+            viewport[dstIndex + 1] = src[srcIndex + 1];
+            viewport[dstIndex + 2] = src[srcIndex + 2];
+            viewport[dstIndex + 3] = src[srcIndex + 3];
+
+            return; // first tile wins
         }
     }
 }
+
