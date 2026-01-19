@@ -104,7 +104,17 @@ namespace BioLib
             micron
         }
         public Type type;
+        public PointD Point
+        {
+            get
+            {
+                if (Points.Count > 0)
+                    return Points[0];
+                else
+                    return new PointD(X, Y);
 
+            }
+        }
         public static SKPaint SelectBoxColor = new() { Style = SKPaintStyle.Stroke, Color = new SKColor(255, 0, 0) };
         public static float selectBoxSize = 14f;
         private List<PointD> pos = new List<PointD>();
