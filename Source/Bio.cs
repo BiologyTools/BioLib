@@ -8102,7 +8102,7 @@ namespace BioLib
         }
         public static SKImage Convert16bppBitmapToSKImage(Bitmap sourceBitmap)
         {
-            Bitmap bm = sourceBitmap.GetImageRGB();
+            Bitmap bm = sourceBitmap.GetImageRGBA();
             int width = bm.Width;
             int height = bm.Height;
 
@@ -8143,9 +8143,9 @@ namespace BioLib
             if (bitm.PixelFormat == PixelFormat.Float)
                 return Convert32bppBitmapToSKImage(bitm.GetImageRGBA());
             if (bitm.PixelFormat == PixelFormat.Format16bppGrayScale)
-                return Convert16bppBitmapToSKImage(bitm.GetImageRGB());
+                return Convert16bppBitmapToSKImage(bitm.GetImageRGBA());
             if (bitm.PixelFormat == PixelFormat.Format48bppRgb)
-                return Convert16bppBitmapToSKImage(bitm.GetImageRGB());
+                return Convert16bppBitmapToSKImage(bitm.GetImageRGBA());
             if (bitm.PixelFormat == PixelFormat.Format8bppIndexed)
                 return Convert8bppBitmapToSKImage(bitm);
             else
