@@ -1924,6 +1924,7 @@ namespace BioLib
         }
         public WellPlate Plate = null;
         public int[,,] Coords;
+        public static GLContext Context;
         private ZCT coordinate;
         public ZCT Coordinate
         {
@@ -7660,7 +7661,6 @@ namespace BioLib
         }
 
         private double prev = 0;
-        public GLContext Context;
         /// <summary>
         /// Updates the Buffers based on current pyramidal origin and resolution.
         /// </summary>
@@ -7702,7 +7702,7 @@ namespace BioLib
                                     Resolution = Resolution, 
                                     Parame = slicep, 
                                 };
-                                byte[] bts = await openslideBase.GetSlice(sliceInfo, this.Resolutions[Level].PixelFormat, GLContext.Current);
+                                byte[] bts = await openslideBase.GetSlice(sliceInfo, this.Resolutions[Level].PixelFormat);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
@@ -8246,7 +8246,7 @@ namespace BioLib
                     int lev = LevelFromResolution(Resolution);
                     openslideBase.SetSliceInfo(lev, Resolutions[lev].PixelFormat, Coordinate);
                     var sl = new OpenSlideGTK.SliceInfo(x, y, w, h, resolution);
-                    byte[] bts = await openslideBase.GetSlice(sl, Resolutions[Level].PixelFormat, this.Context);
+                    byte[] bts = await openslideBase.GetSlice(sl, Resolutions[Level].PixelFormat);
                     Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), ""));
                 }
                 else
