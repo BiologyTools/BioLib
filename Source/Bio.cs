@@ -7,6 +7,7 @@ using BitMiracle.LibTiff.Classic;
 using BruTile;
 using BruTile.Extensions;
 using Cairo;
+using Gdk;
 using Gtk;
 using loci.common.services;
 using loci.formats;
@@ -4455,15 +4456,9 @@ namespace BioLib
             }
             else
                 ImageJ.Initialize(imageJPath);
+
         }
-        public static void Initialize()
-        {
-            //We initialize OME on a seperate thread so the user doesn't have to wait for initialization to
-            //view images. 
-            InitFactory();
-            InitReader();
-            InitWriter();
-        }
+
         static bool inf = false, inr = false, inw = false;
         /// > Initialize the OME-XML library
         private static void InitFactory()
@@ -7665,6 +7660,11 @@ namespace BioLib
         }
 
         private double prev = 0;
+        public static GLContext Context;
+        public static void SetContext(GLContext con)
+        {
+            Context = con;
+        }
         /// <summary>
         /// Updates the Buffers based on current pyramidal origin and resolution.
         /// </summary>
@@ -7706,11 +7706,12 @@ namespace BioLib
                                     Resolution = Resolution, 
                                     Parame = slicep, 
                                 };
-                                byte[] bts = await openslideBase.GetSlice(sliceInfo);
+                                byte[] bts = await openslideBase.GetSlice(sliceInfo, this.Resolutions[Level].PixelFormat, BioImage.Context);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
-                                    goto startos;
+                                    resolution = this.OpenSlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel;
+                                    return;
                                 }
                                 OpenSlideBase.SetSliceInfo(level, this.Resolutions[0].PixelFormat, Coordinate);
                                 Bitmap bmp = new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, co, "");
@@ -7737,12 +7738,12 @@ namespace BioLib
                                     Coordinate = co,
                                     Parame = slicep,
                                 };
-                                byte[] bts = await slideBase.GetSlice(sliceInfo, PyramidalOrigin, PyramidalSize);
+                                byte[] bts = await SlideBase.GetSlice(sliceInfo, PyramidalOrigin, PyramidalSize);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
-                                    Resolution = GetUnitPerPixel(level);
-                                    goto start;
+                                    resolution = this.OpenSlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel;
+                                    return;
                                 }
                                 //SlideBase.SetSliceInfo(level, this.Resolutions[0].PixelFormat, Coordinate);
                                 Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, co, "");
@@ -8237,7 +8238,7 @@ namespace BioLib
                 Console.WriteLine(e.Message);
             }
         }
-        public async Task<Bitmap[]> GetSlice(int x, int y, int w, int h, double resolution)
+        public async Task<Bitmap[]> GetSlice(int x, int y, int w, int h, double resolution, GLContext con)
         {
             List<Bitmap> Buffers = new List<Bitmap>();
             for (int i = 0; i < imagesPerSeries; i++)
@@ -8247,8 +8248,8 @@ namespace BioLib
                     int lev = LevelFromResolution(Resolution);
                     openslideBase.SetSliceInfo(lev, Resolutions[lev].PixelFormat, Coordinate);
                     var sl = new OpenSlideGTK.SliceInfo(x, y, w, h, resolution);
-                    byte[] bts = await openslideBase.GetSlice(sl);
-                    Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, new ZCT(), ""));
+                    byte[] bts = await openslideBase.GetSlice(sl, Resolutions[Level].PixelFormat, con);
+                    Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), ""));
                 }
                 else
                 {
