@@ -1,6 +1,7 @@
 ﻿using AForge;
 using BruTile;
 using BruTile.Cache;
+using Gdk;
 using OpenSlideGTK;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -207,7 +208,7 @@ namespace BioLib
         public static bool UseVips = true;
         public static bool UseGPU = true;
         public TileCache cache = null;
-        public Stitch stitch = new Stitch(BioImage.Context);
+        public Stitch stitch;
         public bool HasTile(TileInfo tile, ZCT coord)
         {
             if (cache.GetTile(new TileInformation(tile.Index, tile.Extent, coord)) != null)
@@ -335,7 +336,7 @@ namespace BioLib
                 try
                 {
                     if (tileInfos.Count() > 0)
-                        return stitch.StitchImages(tileInfos.ToList(), (int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY), curUnitsPerPixel, BioImage.Context);
+                        return stitch.StitchImages(tileInfos.ToList(), (int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY), curUnitsPerPixel);
                 }
                 catch (Exception e)
                 {

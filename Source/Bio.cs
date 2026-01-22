@@ -7660,11 +7660,7 @@ namespace BioLib
         }
 
         private double prev = 0;
-        public static GLContext Context;
-        public static void SetContext(GLContext con)
-        {
-            Context = con;
-        }
+        public GLContext Context;
         /// <summary>
         /// Updates the Buffers based on current pyramidal origin and resolution.
         /// </summary>
@@ -7706,7 +7702,7 @@ namespace BioLib
                                     Resolution = Resolution, 
                                     Parame = slicep, 
                                 };
-                                byte[] bts = await openslideBase.GetSlice(sliceInfo, this.Resolutions[Level].PixelFormat, BioImage.Context);
+                                byte[] bts = await openslideBase.GetSlice(sliceInfo, this.Resolutions[Level].PixelFormat, GLContext.Current);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
@@ -7760,6 +7756,7 @@ namespace BioLib
             }
             catch (Exception e)
             {
+                
                 Console.WriteLine(e.Message);
             }
         }
@@ -8238,8 +8235,9 @@ namespace BioLib
                 Console.WriteLine(e.Message);
             }
         }
-        public async Task<Bitmap[]> GetSlice(int x, int y, int w, int h, double resolution, GLContext con)
+        public async Task<Bitmap[]> GetSlice(int x, int y, int w, int h, double resolution)
         {
+            GLContext con = GLContext.Current;
             List<Bitmap> Buffers = new List<Bitmap>();
             for (int i = 0; i < imagesPerSeries; i++)
             {
@@ -8248,7 +8246,7 @@ namespace BioLib
                     int lev = LevelFromResolution(Resolution);
                     openslideBase.SetSliceInfo(lev, Resolutions[lev].PixelFormat, Coordinate);
                     var sl = new OpenSlideGTK.SliceInfo(x, y, w, h, resolution);
-                    byte[] bts = await openslideBase.GetSlice(sl, Resolutions[Level].PixelFormat, con);
+                    byte[] bts = await openslideBase.GetSlice(sl, Resolutions[Level].PixelFormat, this.Context);
                     Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), ""));
                 }
                 else
