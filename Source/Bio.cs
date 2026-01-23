@@ -7700,17 +7700,17 @@ namespace BioLib
                                 {
                                     Extent = extent,
                                     Resolution = Resolution, 
-                                    Parame = slicep, 
+                                    Parame = slicep,
                                 };
-                                byte[] bts = await openslideBase.GetSlice(sliceInfo, this.Resolutions[Level].PixelFormat);
+                                byte[] bts = await openslideBase.GetSlice(sliceInfo, PixelFormat.Format24bppRgb);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
                                     resolution = this.OpenSlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel;
                                     return;
                                 }
-                                OpenSlideBase.SetSliceInfo(level, this.Resolutions[0].PixelFormat, Coordinate);
-                                Bitmap bmp = new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, co, "");
+                                OpenSlideBase.SetSliceInfo(level, PixelFormat.Format24bppRgb, Coordinate);
+                                Bitmap bmp = new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, co, "");
                                 Buffers.Add(bmp);
                             }
                             else
