@@ -11,6 +11,7 @@ using SixLabors.ImageSharp;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using OpenSlideGTK;
 
 namespace BioLib
 {
@@ -23,12 +24,13 @@ namespace BioLib
         private double _lastResolution = 0;
         private IEnumerable<IFeature> _lastFeatures = new List<IFeature>();//new Features(new[] { new Feature() });
         private Extent _lastExtent;
-
-        public SlideSliceLayer(ISlideSource slideSource) : base()
+        private Stitch.TileCopyGL tileCopy;
+        public SlideSliceLayer(ISlideSource slideSource, Stitch.TileCopyGL tileCopy) : base()
         {
             _slideSource = slideSource;
             Name = "SliceLayer";
             Extent = slideSource.Schema.Extent.ToMRect();
+            this.tileCopy = tileCopy;
         }
 
         public override IEnumerable<IFeature> GetFeatures(MRect box, double resolution)

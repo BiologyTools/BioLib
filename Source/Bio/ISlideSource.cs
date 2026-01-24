@@ -336,7 +336,7 @@ namespace BioLib
                 try
                 {
                     if (tileInfos.Count() > 0)
-                        return stitch.StitchImages(tileInfos.ToList(), (int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY), curUnitsPerPixel);
+                        return stitch.StitchImages(tileInfos.ToList(), (int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY), curUnitsPerPixel, stitch.tileCopy);
                 }
                 catch (Exception e)
                 {
@@ -523,8 +523,8 @@ namespace BioLib
             var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
             var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
             var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
-            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight,tileInfo.Coordinate);
-            return bgraData;
+            var bgraData = Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight,tileInfo.Coordinate);
+            return bgraData.Result;
         }
         static ZCT coord = new ZCT();
         public async Task<byte[]> GetTileAsync(BruTile.TileInfo tileInfo)

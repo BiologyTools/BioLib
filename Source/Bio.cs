@@ -7664,7 +7664,7 @@ namespace BioLib
         /// <summary>
         /// Updates the Buffers based on current pyramidal origin and resolution.
         /// </summary>
-        public async Task UpdateBuffersPyramidal()
+        public async void UpdateBuffersPyramidal(Stitch.TileCopyGL tileCopy)
         {
             try
             {
@@ -7702,15 +7702,15 @@ namespace BioLib
                                     Resolution = Resolution, 
                                     Parame = slicep,
                                 };
-                                byte[] bts = await openslideBase.GetSlice(sliceInfo, PixelFormat.Format24bppRgb);
+                                byte[] bts = await openslideBase.GetSliceAsync(sliceInfo);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
                                     resolution = this.OpenSlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel;
                                     return;
                                 }
-                                OpenSlideBase.SetSliceInfo(level, PixelFormat.Format24bppRgb, Coordinate);
-                                Bitmap bmp = new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format24bppRgb, bts, co, "");
+                                OpenSlideBase.SetSliceInfo(level, PixelFormat.Format32bppArgb, Coordinate); 
+                                Bitmap bmp = new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format32bppArgb, bts, co, "");
                                 Buffers.Add(bmp);
                             }
                             else
@@ -7742,7 +7742,7 @@ namespace BioLib
                                     return;
                                 }
                                 //SlideBase.SetSliceInfo(level, this.Resolutions[0].PixelFormat, Coordinate);
-                                Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, co, "");
+                                Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format32bppArgb, bts, co, "");
                                 Buffers.Add(bmp);
                             }
                         }
@@ -7779,8 +7779,6 @@ namespace BioLib
             // Process visible center tiles first, then outer tiles
             return 25;
         }
-
-        
 
         // ============================================================================
         // OPTIMIZATION 4: Smarter pyramid level selection
@@ -8021,30 +8019,36 @@ namespace BioLib
         }
         private static SKImage Convert32bppBitmapToSKImage(Bitmap sourceBitmap)
         {
+            if (sourceBitmap.PixelFormat != PixelFormat.Format32bppArgb &&
+                sourceBitmap.PixelFormat != PixelFormat.Format32bppPArgb)
+                throw new ArgumentException("Bitmap must be 32bpp ARGB or PARGB");
+
             int width = sourceBitmap.Width;
             int height = sourceBitmap.Height;
 
-            SKBitmap skBitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque);
+            var skBitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
 
-            BitmapData bitmapData = sourceBitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, sourceBitmap.PixelFormat);
+            BitmapData bitmapData = sourceBitmap.LockBits(
+                new Rectangle(0, 0, width, height),
+                ImageLockMode.ReadOnly,
+                sourceBitmap.PixelFormat);
 
             unsafe
             {
-                byte* sourcePtr = (byte*)bitmapData.Scan0.ToPointer();
-                byte* destPtr = (byte*)skBitmap.GetPixels().ToPointer();
+                byte* srcBase = (byte*)bitmapData.Scan0.ToPointer();
+                byte* dstBase = (byte*)skBitmap.GetPixels().ToPointer();
+
+                int srcStride = bitmapData.Stride;
+                int dstStride = skBitmap.RowBytes;
+                int rowBytes = width * 4;
 
                 for (int y = 0; y < height; y++)
                 {
-                    for (int x = 0; x < width; x++)
-                    {
-                        destPtr[0] = sourcePtr[0]; // Blue
-                        destPtr[1] = sourcePtr[1]; // Green
-                        destPtr[2] = sourcePtr[2]; // Red
-                        destPtr[3] = 255;          // Alpha (fully opaque)
-
-                        sourcePtr += 4;
-                        destPtr += 4;
-                    }
+                    Buffer.MemoryCopy(
+                        srcBase + y * srcStride,
+                        dstBase + y * dstStride,
+                        dstStride,
+                        rowBytes);
                 }
             }
 
@@ -8052,6 +8056,7 @@ namespace BioLib
 
             return SKImage.FromBitmap(skBitmap);
         }
+
         private static SKImage Convert8bppBitmapToSKImage(Bitmap sourceBitmap)
         {
             // Ensure the input bitmap is 8bpp indexed
@@ -8246,7 +8251,7 @@ namespace BioLib
                     int lev = LevelFromResolution(Resolution);
                     openslideBase.SetSliceInfo(lev, Resolutions[lev].PixelFormat, Coordinate);
                     var sl = new OpenSlideGTK.SliceInfo(x, y, w, h, resolution);
-                    byte[] bts = await openslideBase.GetSlice(sl, Resolutions[Level].PixelFormat);
+                    byte[] bts = await openslideBase.GetSliceAsync(sl);
                     Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), ""));
                 }
                 else
