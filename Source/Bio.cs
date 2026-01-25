@@ -7304,7 +7304,7 @@ namespace BioLib
             try
             {
                 byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
-                return new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved);
+                return new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved).GetImageRGBA();
             }
             catch (Exception e)
             {
