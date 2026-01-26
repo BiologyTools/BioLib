@@ -40,7 +40,7 @@ namespace BioLib
             foreach (LinkedListNode<(Info key, TValue value)> item in cacheMap.Values)
             {
                 Info k = item.Value.key;
-                if(k.Coordinate == key.Coordinate && k.Index == key.Index)
+                if (k.Coordinate == key.Coordinate && k.Index == key.Index)
                 {
                     lruList.Remove(item);
                     lruList.AddLast(item);
@@ -130,8 +130,8 @@ namespace BioLib
                 return data;
             }
             byte[] tile = await LoadTile(info);
-            if(tile!=null)
-            AddTile(info, tile);
+            if (tile != null)
+                AddTile(info, tile);
             return tile;
         }
 
@@ -181,7 +181,7 @@ namespace BioLib
         private static IDictionary<string, Func<string, bool, ISlideSource>> keyValuePairs = new Dictionary<string, Func<string, bool, ISlideSource>>();
         public static ISlideSource Create(BioImage source, SlideImage im, bool enableCache = true)
         {
-            
+
             var ext = Path.GetExtension(source.file).ToUpper();
             try
             {
@@ -191,12 +191,12 @@ namespace BioLib
                 if (!string.IsNullOrEmpty(SlideBase.DetectVendor(source.file)))
                 {
                     SlideBase b = new SlideBase(source, im, enableCache);
-                    
+
                 }
             }
-            catch (Exception e) 
-            { 
-                Console.WriteLine(e.Message); 
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
             }
             return null;
         }
@@ -319,7 +319,7 @@ namespace BioLib
             var curUnitsPerPixel = Schema.Resolutions[curLevel].UnitsPerPixel;
 
             var tileInfos = Schema.GetTileInfos(sliceInfo.Extent, curLevel);
-            if(tileInfos.Count() == 0)
+            if (tileInfos.Count() == 0)
             {
                 tileInfos = Schema.GetTileInfos(sliceInfo.Extent.PixelToWorldInvertedY(curUnitsPerPixel), curLevel);
             }
@@ -335,8 +335,66 @@ namespace BioLib
             {
                 try
                 {
-                    if (tileInfos.Count() > 0)
+                    if (stitch == null || stitch.tileCopy == null)
+                    {
+                        Console.WriteLine("GPU stitching not initialized - falling back to CPU");
+                        UseGPU = false;
+                    }
+                    else if (tileInfos.Count() > 0)
+                    {
+                        // Get standard tile dimensions from schema
+                        var schemaTileWidth = Schema.Resolutions[curLevel].TileWidth;
+                        var schemaTileHeight = Schema.Resolutions[curLevel].TileHeight;
+
+                        // Upload tiles to GPU stitch before rendering
+                        foreach (BruTile.TileInfo t in tileInfos)
+                        {
+                            if (!stitch.HasTile(t))
+                            {
+                                TileInformation tf = new TileInformation(t.Index, t.Extent, sliceInfo.Coordinate);
+                                byte[] tileData = await cache.GetTile(tf);
+                                if (tileData != null)
+                                {
+                                    // Calculate actual tile dimensions (edge tiles may be smaller)
+                                    var curTileWidth = (int)(t.Extent.MaxX > Schema.Extent.Width
+                                        ? schemaTileWidth - (t.Extent.MaxX - Schema.Extent.Width) / curUnitsPerPixel
+                                        : schemaTileWidth);
+                                    var curTileHeight = (int)(-t.Extent.MinY > Schema.Extent.Height
+                                        ? schemaTileHeight - (-t.Extent.MinY - Schema.Extent.Height) / curUnitsPerPixel
+                                        : schemaTileHeight);
+
+                                    // Validate dimensions against actual data
+                                    int expectedSize = curTileWidth * curTileHeight * 4;
+                                    if (tileData.Length != expectedSize)
+                                    {
+                                        // Fallback: derive from data length assuming RGBA
+                                        int pixelCount = tileData.Length / 4;
+                                        if (pixelCount == schemaTileWidth * schemaTileHeight)
+                                        {
+                                            curTileWidth = schemaTileWidth;
+                                            curTileHeight = schemaTileHeight;
+                                        }
+                                        else
+                                        {
+                                            // Try to find matching dimensions
+                                            curTileWidth = schemaTileWidth;
+                                            curTileHeight = pixelCount / schemaTileWidth;
+                                            if (curTileWidth * curTileHeight != pixelCount)
+                                            {
+                                                // Square fallback
+                                                curTileWidth = (int)Math.Sqrt(pixelCount);
+                                                curTileHeight = curTileWidth;
+                                            }
+                                        }
+                                    }
+
+                                    var gpuTile = new Stitch.GpuTile(t, tileData, curTileWidth, curTileHeight);
+                                    stitch.AddTile(gpuTile);
+                                }
+                            }
+                        }
                         return stitch.StitchImages(tileInfos.ToList(), (int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY), curUnitsPerPixel, stitch.tileCopy);
+                    }
                 }
                 catch (Exception e)
                 {
@@ -353,9 +411,9 @@ namespace BioLib
                     List<Tuple<Extent, byte[]>> tiles = new List<Tuple<Extent, byte[]>>();
                     foreach (BruTile.TileInfo t in tileInfos)
                     {
-                        TileInformation tf = new TileInformation(t.Index,t.Extent,sliceInfo.Coordinate);
+                        TileInformation tf = new TileInformation(t.Index, t.Extent, sliceInfo.Coordinate);
                         byte[] c = await cache.GetTile(tf);
-                        if(c!=null)
+                        if (c != null)
                             tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
                     }
                     NetVips.Image im = null;
@@ -523,7 +581,7 @@ namespace BioLib
             var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
             var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
             var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
-            var bgraData = Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight,tileInfo.Coordinate);
+            var bgraData = Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, tileInfo.Coordinate);
             return bgraData.Result;
         }
         static ZCT coord = new ZCT();
@@ -623,7 +681,7 @@ namespace BioLib
         /// <param name="unitsPerPixel">um/pixel</param>
         public SliceInfo(double xPixel, double yPixel, double widthPixel, double heightPixel, double unitsPerPixel, ZCT coord)
         {
-            Extent = new Extent(xPixel, yPixel, xPixel + widthPixel,yPixel + heightPixel);
+            Extent = new Extent(xPixel, yPixel, xPixel + widthPixel, yPixel + heightPixel);
             Resolution = unitsPerPixel;
             Coordinate = coord;
         }

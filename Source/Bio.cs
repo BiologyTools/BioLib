@@ -7,6 +7,7 @@ using BitMiracle.LibTiff.Classic;
 using BruTile;
 using BruTile.Extensions;
 using Cairo;
+using CSScripting;
 using Gdk;
 using Gtk;
 using loci.common.services;
@@ -38,6 +39,7 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using static OpenSlideGTK.Stitch;
 using Bitmap = AForge.Bitmap;
 using Channel = AForge.Channel;
 using Color = AForge.Color;
@@ -7664,7 +7666,7 @@ namespace BioLib
         /// <summary>
         /// Updates the Buffers based on current pyramidal origin and resolution.
         /// </summary>
-        public async void UpdateBuffersPyramidal(Stitch.TileCopyGL tileCopy)
+        public async void UpdateBuffersPyramidal(Stitch.TileCopyGL copy)
         {
             try
             {
@@ -7681,28 +7683,14 @@ namespace BioLib
                     {
                         for (int t = 0; t < SizeT; t++)
                         {
+                            IEnumerable<TileInfo> tileInfos;
                             ZCT co = new ZCT(z, c, t);
                             if (openSlideImage != null)
                             {
                             startos:
-                                double minX = PyramidalOrigin.X;
-                                double minY = PyramidalOrigin.Y;
-                                double width = PyramidalSize.Width * Resolution;
-                                double height = PyramidalSize.Height * Resolution;
-                                double maxX = minX + width;
-                                double maxY = minY + height;
-                                var extent = new Extent(minX, minY, maxX, maxY);
-                                var slicep = new OpenSlideGTK.SliceParame();
-                                slicep.DstPixelWidth = PyramidalSize.Width;
-                                slicep.DstPixelHeight = PyramidalSize.Height;
-                                slicep.Quality = 100;
-                                var sliceInfo = new OpenSlideGTK.SliceInfo
-                                {
-                                    Extent = extent,
-                                    Resolution = Resolution, 
-                                    Parame = slicep,
-                                };
-                                byte[] bts = await openslideBase.GetSliceAsync(sliceInfo);
+                                var slice = new OpenSlideGTK.SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution);
+                                tileInfos = OpenSlideBase.Schema.GetTileInfos(slice.Extent.WorldToPixelInvertedY(resolution), Level);
+                                byte[] bts = openslideBase.stitch.StitchImages(tileInfos.ToList(), PyramidalSize.Width, PyramidalSize.Height, slice.Extent.MinX, slice.Extent.MinY, Resolution, copy);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
@@ -7716,6 +7704,7 @@ namespace BioLib
                             else
                             {
                             start:
+                                
                                 double minX = PyramidalOrigin.X;
                                 double minY = PyramidalOrigin.Y;
                                 double width = PyramidalSize.Width * Resolution;
@@ -7727,6 +7716,7 @@ namespace BioLib
                                 slicep.DstPixelWidth = PyramidalSize.Width;
                                 slicep.DstPixelHeight = PyramidalSize.Height;
                                 slicep.Quality = 100;
+                                tileInfos = GetTilesForExtent(extent, Level);
                                 var sliceInfo = new SliceInfo
                                 {
                                     Extent = extent,
@@ -8257,7 +8247,8 @@ namespace BioLib
                 else
                 {
                 start:
-                    byte[] bts = await slideBase.GetSlice(new SliceInfo(x, y, w, h, resolution, Coordinate), PyramidalOrigin, PyramidalSize);
+                    var sl = new BioLib.SliceInfo(x, y, w, h, resolution, Coordinate);
+                    byte[] bts = await slideBase.GetSlice(sl, PyramidalOrigin, PyramidalSize);
                     if (bts == null)
                     {
                         if (x == 0 && y == 0)
