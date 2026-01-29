@@ -388,12 +388,12 @@ namespace BioLib
                                         }
                                     }
 
-                                    var gpuTile = new Stitch.GpuTile(t, tileData, curTileWidth, curTileHeight);
+                                    var gpuTile = new Stitch.GpuTile(t, tileData);
                                     stitch.AddTile(gpuTile);
                                 }
                             }
                         }
-                        return stitch.StitchImages(tileInfos.ToList(), (int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY), curUnitsPerPixel, stitch.tileCopy);
+                        return stitch.StitchImages(tileInfos.ToList(), (int)Math.Round(dstPixelWidth), (int)Math.Round(dstPixelHeight), Math.Round(srcPixelExtent.MinX), Math.Round(srcPixelExtent.MinY), curUnitsPerPixel);
                     }
                 }
                 catch (Exception e)

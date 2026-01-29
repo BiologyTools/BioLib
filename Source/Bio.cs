@@ -7,7 +7,6 @@ using BitMiracle.LibTiff.Classic;
 using BruTile;
 using BruTile.Extensions;
 using Cairo;
-using CSScripting;
 using Gdk;
 using Gtk;
 using loci.common.services;
@@ -39,7 +38,6 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using static OpenSlideGTK.Stitch;
 using Bitmap = AForge.Bitmap;
 using Channel = AForge.Channel;
 using Color = AForge.Color;
@@ -7666,7 +7664,7 @@ namespace BioLib
         /// <summary>
         /// Updates the Buffers based on current pyramidal origin and resolution.
         /// </summary>
-        public async void UpdateBuffersPyramidal(Stitch.TileCopyGL copy)
+        public async Task UpdateBuffersPyramidal(Stitch.TileCopyGL tileCopy)
         {
             try
             {
@@ -7683,14 +7681,27 @@ namespace BioLib
                     {
                         for (int t = 0; t < SizeT; t++)
                         {
-                            IEnumerable<TileInfo> tileInfos;
                             ZCT co = new ZCT(z, c, t);
                             if (openSlideImage != null)
                             {
                             startos:
-                                var slice = new OpenSlideGTK.SliceInfo(PyramidalOrigin.X, PyramidalOrigin.Y, PyramidalSize.Width, PyramidalSize.Height, resolution);
-                                tileInfos = OpenSlideBase.Schema.GetTileInfos(slice.Extent.WorldToPixelInvertedY(resolution), Level);
-                                byte[] bts = openslideBase.stitch.StitchImages(tileInfos.ToList(), PyramidalSize.Width, PyramidalSize.Height, slice.Extent.MinX, slice.Extent.MinY, Resolution, copy);
+                                double minX = PyramidalOrigin.X * Resolution;
+                                double worldY = -PyramidalOrigin.Y * Resolution;  // Top of viewport in world coords (negative)
+                                double width = PyramidalSize.Width * Resolution;
+                                double height = PyramidalSize.Height * Resolution;
+                                // In OSM, extent goes from bottom-Y to top-Y, so:
+                                var extent = new Extent(minX, worldY - height, minX + width, worldY);
+                                var slicep = new OpenSlideGTK.SliceParame();
+                                slicep.DstPixelWidth = PyramidalSize.Width;
+                                slicep.DstPixelHeight = PyramidalSize.Height;
+                                slicep.Quality = 100;
+                                var sliceInfo = new OpenSlideGTK.SliceInfo
+                                {
+                                    Extent = extent,
+                                    Resolution = Resolution, 
+                                    Parame = slicep,
+                                };
+                                byte[] bts = await openslideBase.GetSliceAsync(sliceInfo);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
@@ -7704,7 +7715,6 @@ namespace BioLib
                             else
                             {
                             start:
-                                
                                 double minX = PyramidalOrigin.X;
                                 double minY = PyramidalOrigin.Y;
                                 double width = PyramidalSize.Width * Resolution;
@@ -7716,7 +7726,6 @@ namespace BioLib
                                 slicep.DstPixelWidth = PyramidalSize.Width;
                                 slicep.DstPixelHeight = PyramidalSize.Height;
                                 slicep.Quality = 100;
-                                tileInfos = GetTilesForExtent(extent, Level);
                                 var sliceInfo = new SliceInfo
                                 {
                                     Extent = extent,
@@ -7746,7 +7755,6 @@ namespace BioLib
             }
             catch (Exception e)
             {
-                
                 Console.WriteLine(e.Message);
             }
         }
@@ -8247,8 +8255,7 @@ namespace BioLib
                 else
                 {
                 start:
-                    var sl = new BioLib.SliceInfo(x, y, w, h, resolution, Coordinate);
-                    byte[] bts = await slideBase.GetSlice(sl, PyramidalOrigin, PyramidalSize);
+                    byte[] bts = await slideBase.GetSlice(new SliceInfo(x, y, w, h, resolution, Coordinate), PyramidalOrigin, PyramidalSize);
                     if (bts == null)
                     {
                         if (x == 0 && y == 0)
