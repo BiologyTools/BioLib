@@ -7664,7 +7664,7 @@ namespace BioLib
         /// <summary>
         /// Updates the Buffers based on current pyramidal origin and resolution.
         /// </summary>
-        public async Task UpdateBuffersPyramidal(Stitch.TileCopyGL tileCopy)
+        public async Task UpdateBuffersPyramidal(Stitch.TileCopyGL tileCopy, int level)
         {
             try
             {
@@ -7701,12 +7701,12 @@ namespace BioLib
                                     Resolution = Resolution, 
                                     Parame = slicep,
                                 };
-                                byte[] bts = await openslideBase.GetSliceAsync(sliceInfo);
+                                byte[] bts = await openslideBase.GetSliceAsync(sliceInfo, level);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
                                     resolution = this.OpenSlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel;
-                                    return;
+                                    goto startos;
                                 }
                                 OpenSlideBase.SetSliceInfo(level, PixelFormat.Format32bppArgb, Coordinate); 
                                 Bitmap bmp = new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format32bppArgb, bts, co, "");
@@ -7738,7 +7738,7 @@ namespace BioLib
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
                                     resolution = this.OpenSlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel;
-                                    return;
+                                    goto start;
                                 }
                                 //SlideBase.SetSliceInfo(level, this.Resolutions[0].PixelFormat, Coordinate);
                                 Bitmap bmp = new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), PixelFormat.Format32bppArgb, bts, co, "");
@@ -7891,16 +7891,15 @@ namespace BioLib
 
         private async Task<byte[]> FetchSingleTileAsync(TileInfo tile, int level)
         {
-            // Your existing tile fetch logic here
-            // This should use the cache and only fetch if not cached
-
             try
             {
+                TileInfo tf = new TileInfo();
+                tf.Index = new TileIndex(tile.Index.Col, tile.Index.Row, level);
                 byte[] tileData;
                 if (OpenSlideBase != null)
-                   tileData = OpenSlideBase.GetTile(tile);
+                   tileData = OpenSlideBase.GetTile(tf);
                 else
-                   tileData = SlideBase.GetTile(tile, Coordinate);
+                   tileData = SlideBase.GetTile(tf, Coordinate);
                 // Process tile data...
                 return tileData;
             }
@@ -8054,7 +8053,6 @@ namespace BioLib
 
             return SKImage.FromBitmap(skBitmap);
         }
-
         private static SKImage Convert8bppBitmapToSKImage(Bitmap sourceBitmap)
         {
             // Ensure the input bitmap is 8bpp indexed
@@ -8240,7 +8238,6 @@ namespace BioLib
         }
         public async Task<Bitmap[]> GetSlice(int x, int y, int w, int h, double resolution)
         {
-            GLContext con = GLContext.Current;
             List<Bitmap> Buffers = new List<Bitmap>();
             for (int i = 0; i < imagesPerSeries; i++)
             {
@@ -8249,7 +8246,7 @@ namespace BioLib
                     int lev = LevelFromResolution(Resolution);
                     openslideBase.SetSliceInfo(lev, Resolutions[lev].PixelFormat, Coordinate);
                     var sl = new OpenSlideGTK.SliceInfo(x, y, w, h, resolution);
-                    byte[] bts = await openslideBase.GetSliceAsync(sl);
+                    byte[] bts = await openslideBase.GetSliceAsync(sl, lev);
                     Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), ""));
                 }
                 else
