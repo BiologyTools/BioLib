@@ -11,14 +11,14 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>3.7.0</AssemblyVersion>
-    <FileVersion>3.7.0</FileVersion>
-    <PackageVersion>3.7.0</PackageVersion>
+    <AssemblyVersion>3.8.0</AssemblyVersion>
+    <FileVersion>3.8.0</FileVersion>
+    <PackageVersion>3.8.0</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; </PackageTags>
-    <PackageReleaseNotes>Fixed ROI saving to OME.TIFF effecting some ROI types. OMERO ROI support both import &amp; export. Improvements to ROI interactions like move tool etc. As well as improved ROI Manager. Also updates framework to .NET 10.</PackageReleaseNotes>
+    <PackageReleaseNotes>OpenGL hardware accelerated stitching.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
@@ -44,13 +44,11 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="OMERO.NET" Version="1.0.5" />
+    <PackageReference Include="OpenSlideGTK" Version="2.4.0" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="SkiaSharp" Version="3.119.1" />
     <PackageReference Include="SkiaSharp.Views.Gtk3" Version="3.119.1" />
   </ItemGroup>
-	<ItemGroup>
-	  <ProjectReference Include="..\OpenSlideSharp\src\OpenSlideSharp\OpenSlideGTK.csproj" />
-	</ItemGroup>
   <ItemGroup>
     <None Update="banner.jpg">
       <Pack>True</Pack>

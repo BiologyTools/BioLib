@@ -2028,6 +2028,16 @@ namespace BioLib
             {
                 if (value <= 0)
                     return;
+                if (OpenSlideBase != null)
+                {
+                    if (value >= OpenSlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel)
+                        return;
+                }
+                else
+                {
+                    if (value >= SlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel)
+                        return;
+                }
                 resolution = value;
             }
         }
@@ -2345,13 +2355,32 @@ namespace BioLib
         PointD pyramidalOrigin = new PointD(0, 0);
         public PointD PyramidalOrigin
         {
-            get { return pyramidalOrigin; }
+            get 
+            {
+                if (pyramidalOrigin.X >= Resolutions[Level].SizeX)
+                    pyramidalOrigin.X = Resolutions[Level].SizeX - 1;
+                if (pyramidalOrigin.Y >= Resolutions[Level].SizeY)
+                    pyramidalOrigin.Y = Resolutions[Level].SizeY - 1;
+                if (pyramidalOrigin.X < 0)
+                    pyramidalOrigin.X = 0;
+                if (pyramidalOrigin.Y < 0)
+                    pyramidalOrigin.Y = 0;
+                return pyramidalOrigin;
+            }
             set
             {
                 if (value.X < Resolutions[Level].SizeX)
                     pyramidalOrigin.X = value.X;
                 if (value.Y < Resolutions[Level].SizeY)
                     pyramidalOrigin.Y = value.Y;
+                if (value.X > Resolutions[Level].SizeX)
+                    pyramidalOrigin.X = value.X - 1;
+                if (value.Y > Resolutions[Level].SizeY)
+                    pyramidalOrigin.Y = value.Y - 1;
+                if (value.X < 0)
+                    pyramidalOrigin.X = 0;
+                if (value.Y < 0)
+                    pyramidalOrigin.Y = 0;
             }
         }
         public int series
