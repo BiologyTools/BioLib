@@ -11,14 +11,14 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>3.8.0</AssemblyVersion>
-    <FileVersion>3.8.0</FileVersion>
-    <PackageVersion>3.8.0</PackageVersion>
+    <AssemblyVersion>3.8.1</AssemblyVersion>
+    <FileVersion>3.8.1</FileVersion>
+    <PackageVersion>3.8.1</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; </PackageTags>
-    <PackageReleaseNotes>OpenGL hardware accelerated stitching.</PackageReleaseNotes>
+    <PackageReleaseNotes>OMERO pyramidal and stack support.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
