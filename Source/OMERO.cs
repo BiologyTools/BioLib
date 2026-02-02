@@ -549,8 +549,13 @@ namespace BioLib
                     int ts = pd.getSizeT();
                     long pid = o.getId();
                     
+<<<<<<< HEAD
                     b.Filename = sts[0];
                     b.ID = name.Replace(" ","_");
+=======
+                    b.Filename = name.Split(' ')[0];
+                    b.ID = b.Filename;
+>>>>>>> d1b625c0374a3cd7df31fc9f0b636a2428cfc42c
                     RawPixelsStorePrx store = gateway.getPixelsStore(sc);
                     long ind = o.getId();
                     long ll = pd.getId();
@@ -582,7 +587,7 @@ namespace BioLib
                             AForge.Channel cch = null;
                             if (pxx == AForge.PixelFormat.Format8bppIndexed || pxx == AForge.PixelFormat.Format16bppGrayScale)
                                 cch = new AForge.Channel(i, bits, 1);
-                            else if (pxx == AForge.PixelFormat.Format24bppRgb || pxx == AForge.PixelFormat.Format48bppRgb)
+                            else if (pxx == AForge.PixelFormat.Format8bppIndexed || pxx == AForge.PixelFormat.Format48bppRgb)
                                 cch = new AForge.Channel(i, bits, 3);
                             else if (pxx == AForge.PixelFormat.Format32bppArgb)
                                 cch = new AForge.Channel(i, bits, 4);
@@ -633,7 +638,7 @@ namespace BioLib
                             int bitso = pxto.getBitSize().getValue();
                             int wo = pxs.getSizeX().getValue();
                             int ho = pxs.getSizeY().getValue();
-                            px = GetPixelFormat(bitso);
+                            px = PixelFormat.Format32bppArgb; //GetPixelFormat(bitso);
                             double pxxo = pxs.getPhysicalSizeX().getValue();
                             double pyyo = pxs.getPhysicalSizeY().getValue();
                             double pzzo = 0;
@@ -677,9 +682,22 @@ namespace BioLib
                                     Pixels ps = pd.asPixels();                                
                                     int chc = ps.sizeOfChannels();
                                     store.setPixelsId(ps.getId().getValue(), true);
+<<<<<<< HEAD
                                     store.setResolutionLevel(b.Level+1);
                                     Bitmap bt = GetTile(b, new AForge.ZCT(z, c, t), 0, 0, 600, 400, b.Level + 1).Result;
                                     b.Buffers.Add(new Bitmap("", 600, 400, PixelFormat.Format32bppArgb, bt.Bytes, new AForge.ZCT(z, c, t), 0, null, false));
+=======
+                                    store.setResolutionLevel(b.Level + 1);
+                                    PixelsType pxt = ps.getPixelsType();
+                                    AForge.PixelFormat px = AForge.PixelFormat.Format32bppArgb;
+                                    int bits = pxt.getBitSize().getValue();
+                                    px = GetPixelFormat(bits);
+                                    Bitmap bmr = GetTile(b, new ZCT(0, 0, 0), (int)b.PyramidalOrigin.X, (int)b.PyramidalOrigin.Y, 256, 256, b.Level);
+                                    Bitmap bmg = GetTile(b, new ZCT(0, 1, 0), (int)b.PyramidalOrigin.X, (int)b.PyramidalOrigin.Y, 256, 256, b.Level);
+                                    Bitmap bmb = GetTile(b, new ZCT(0, 2, 0), (int)b.PyramidalOrigin.X, (int)b.PyramidalOrigin.Y, 256, 256, b.Level);
+                                    byte[] bt = CombineToArgb32(bmr.Bytes, bmg.Bytes, bmb.Bytes, 256, 256);
+                                    b.Buffers.Add(new Bitmap(256,256,PixelFormat.Format32bppArgb,bt,b.Coordinate,""));
+>>>>>>> d1b625c0374a3cd7df31fc9f0b636a2428cfc42c
                                 }
                                 else
                                 {
@@ -715,6 +733,14 @@ namespace BioLib
                     else
                         b.StackThreshold(false);
                     b.Tag = "OMERO";
+<<<<<<< HEAD
+=======
+                    if(b.isPyramidal)
+                    {
+                        b.SlideBase = new SlideBase(b, SlideImage.Open(b));
+                    }
+
+>>>>>>> d1b625c0374a3cd7df31fc9f0b636a2428cfc42c
                     return b;
                 }
                 while (itr.hasNext());
@@ -726,11 +752,36 @@ namespace BioLib
             }
             return null;
         }
+
+        /// <summary>
+        /// Combines three 8-bit channel buffers into one 32-bit ARGB buffer.
+        /// Assumes all input buffers are the same size.
+        /// </summary>
+        public static byte[] CombineToArgb32(byte[] redBuf, byte[] greenBuf, byte[] blueBuf, int width, int height)
+        {
+            // 32-bit image uses 4 bytes per pixel (B, G, R, A)
+            int pixelCount = width * height;
+            byte[] argbBuffer = new byte[pixelCount * 4];
+
+            for (int i = 0; i < pixelCount; i++)
+            {
+                int argbIndex = i * 4;
+
+                // Standard Windows/GDI+ byte order is BGRA
+                argbBuffer[argbIndex] = blueBuf[i];  // Blue
+                argbBuffer[argbIndex + 1] = greenBuf[i]; // Green
+                argbBuffer[argbIndex + 2] = redBuf[i];   // Red
+                argbBuffer[argbIndex + 3] = 255;         // Alpha (Full opacity)
+            }
+
+            return argbBuffer;
+        }
         public static BioImage GetImage(long id)
         {
             string n = browsefacil.getImage(sc, id).getName();
             return GetImage(n,id);
         }
+<<<<<<< HEAD
         public static byte[] CombineToBGRA(byte[] r, byte[] g, byte[] b)
         {
             int length = r.Length;
@@ -749,6 +800,9 @@ namespace BioLib
         }
         public static bool ShowRGB = false;
         public static Bitmap GetFullPlane(BioImage b, ZCT coord, int level, int tileSize = 1024)
+=======
+        public static Bitmap GetFullPlane(BioImage b, ZCT coord, int level, int tileSize = 256)
+>>>>>>> d1b625c0374a3cd7df31fc9f0b636a2428cfc42c
         {
             ReConnect();
 
@@ -774,7 +828,7 @@ namespace BioLib
                 // --- Pixel format setup ---
                 PixelsType pxt = ps.getPixelsType();
                 int bits = pxt.getBitSize().getValue();
-                AForge.PixelFormat px = GetPixelFormat(bits);
+                AForge.PixelFormat px = PixelFormat.Format8bppIndexed; //GetPixelFormat(bits);
                 int bytesPerPixel = bits / 8;
                 if (bytesPerPixel <= 0) bytesPerPixel = 1;
 
@@ -805,6 +859,7 @@ namespace BioLib
 
             return null;
         }
+<<<<<<< HEAD
         public static async Task<Bitmap> GetTile(BioImage b, ZCT coord, int x, int y, int width, int height, int level)
         {
             ReConnect();
@@ -821,15 +876,44 @@ namespace BioLib
                     int sp = name.Count(' ');
                     if (sp != 1 || !name.Contains(b.filename))
                         continue;
+=======
+        public static Bitmap GetTile(BioImage b, ZCT coord, int x, int y, int width, int height, int level)
+        {
+            ReConnect();
+            //if (width >= b.SizeX || height >= b.SizeY)
+            //    return GetFullPlane(b, coord, level);
+            var itr = images.iterator();
+            java.util.List li = new java.util.ArrayList();
+            java.util.ArrayList imgs = new java.util.ArrayList();
+            Bitmap[] bms = new Bitmap[3];
+            do
+            {
+                java.util.ArrayList list = new java.util.ArrayList();
+                ImageData o = (ImageData)itr.next();
+                string name = o.getName();
+                var st = name.Split(' ');
+                if (b.Filename.Contains(st[0]) && st.Count() == 2)
+                {
+                    //store.setResolutionLevel(level + 1);
+>>>>>>> d1b625c0374a3cd7df31fc9f0b636a2428cfc42c
                     PixelsData pd = o.getDefaultPixels();
                     int zs = pd.getSizeZ();
                     int cs = pd.getSizeC();
                     int ts = pd.getSizeT();
+<<<<<<< HEAD
                     long ind = o.getId();
+=======
+                    long pid = o.getId();
+                    b.Filename = name;
+                    b.ID = name;
+                    long ind = o.getId();
+                    long ll = pd.getId();
+>>>>>>> d1b625c0374a3cd7df31fc9f0b636a2428cfc42c
                     list.add(java.lang.Long.valueOf(ind));
                     Pixels ps = pd.asPixels();
                     int chc = ps.sizeOfChannels();
                     store.setPixelsId(ps.getId().getValue(), true);
+<<<<<<< HEAD
                     byte[] btb = store.getTile(coord.Z, 2, coord.T, x, y, width, height);
                     byte[] btg = store.getTile(coord.Z, 1, coord.T, x, y, width, height);
                     byte[] btr = store.getTile(coord.Z, 0, coord.T, x, y, width, height);
@@ -841,6 +925,22 @@ namespace BioLib
             {
                 Console.WriteLine(e.Message);
             }
+=======
+                    
+                    byte[] btr = store.getTile(coord.Z, 0, coord.T, x, y, 256, 256);
+                    byte[] btg = store.getTile(coord.Z, 1, coord.T, x, y, 256, 256);
+                    byte[] btb = store.getTile(coord.Z, 2, coord.T, x, y, 256, 256);
+                    PixelsType pxt = ps.getPixelsType();
+                    AForge.PixelFormat px = AForge.PixelFormat.Format8bppIndexed;
+                    int bits = pxt.getBitSize().getValue();
+                    px = GetPixelFormat(bits);;
+                    return new Bitmap(256,256,PixelFormat.Format32bppArgb,CombineToArgb32(btr, btg, btb, width, height),coord,"");
+                }
+            } while (itr.hasNext());
+
+
+
+>>>>>>> d1b625c0374a3cd7df31fc9f0b636a2428cfc42c
             return null;
         }
         public static Dictionary<long,Pixbuf> GetThumbnails(string[] filenames, int width, int height)
@@ -893,16 +993,18 @@ namespace BioLib
         private static PixelFormat GetPixelFormat(int bits)
         {
             PixelFormat px = PixelFormat.Format8bppIndexed;
+            
             if (bits == 8)
                 px = AForge.PixelFormat.Format8bppIndexed;
             else if (bits < 16 || bits == 16)
                 px = AForge.PixelFormat.Format16bppGrayScale;
             else if (bits > 16 && bits <= 24)
-                px = AForge.PixelFormat.Format24bppRgb;
+                px = AForge.PixelFormat.Format8bppIndexed;
             else if (bits == 32)
                 px = PixelFormat.Format32bppArgb;
             else if (bits > 32)
                 px = AForge.PixelFormat.Format48bppRgb;
+            
             return px;
         }
         public static List<string> GetAllFiles()
