@@ -44,13 +44,11 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="OMERO.NET" Version="1.0.5" />
+    <PackageReference Include="OpenSlideGTK" Version="2.5.0" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="SkiaSharp" Version="3.119.1" />
     <PackageReference Include="SkiaSharp.Views.Gtk3" Version="3.119.1" />
   </ItemGroup>
-	<ItemGroup>
-	  <ProjectReference Include="..\OpenSlideSharp\src\OpenSlideSharp\OpenSlideGTK.csproj" />
-	</ItemGroup>
   <ItemGroup>
     <None Update="banner.jpg">
       <Pack>True</Pack>
