@@ -668,7 +668,7 @@ namespace BioLib
 
                     for (int z = 0; z < zs; z++)
                     {
-                        for (int c = 0; c < cs / 3; c++)
+                        for (int c = 0; c < cs; c++)
                         {
                             for (int t = 0; t < ts; t++)
                             {
