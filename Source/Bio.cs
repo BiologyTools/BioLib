@@ -73,7 +73,12 @@ namespace BioLib
         {
             if (images.Contains(im))
                 return;
-            im.Filename = GetImageName(im.Filename);
+            foreach (var item in Images.images)
+            {
+                if (im.Filename.Contains(item.Filename))
+                    return;
+            }
+            im.Filename = im.Filename.Split(' ')[0];
             images.Add(im);
         }
         /// It takes a string as an argument, and returns the number of times that string appears in the
@@ -7248,7 +7253,7 @@ namespace BioLib
                         for (int t = 0; t < b.SizeT; t++)
                         {
                             if(i == index)
-                                return OMERO.GetTile(b, new ZCT(z,c,t), tilex, tiley, tileSizeX, tileSizeY, level);
+                                return OMERO.GetTile(b, new ZCT(z,c,t), tilex, tiley, tileSizeX, tileSizeY, level).Result;
                             i++;
                         }
                     }
@@ -7730,14 +7735,13 @@ namespace BioLib
                                     Resolution = Resolution, 
                                     Parame = slicep,
                                 };
-                                byte[] bts = await openslideBase.GetSliceAsync(sliceInfo, level);
+                                byte[] bts = await openslideBase.GetSliceAsync(sliceInfo, level, Coordinate);
                                 if (bts == null)
                                 {
                                     pyramidalOrigin = new PointD(0, 0);
                                     resolution = this.OpenSlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel;
                                     goto startos;
                                 }
-                                OpenSlideBase.SetSliceInfo(level, PixelFormat.Format32bppArgb, Coordinate); 
                                 Bitmap bmp = new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), PixelFormat.Format32bppArgb, bts, co, "");
                                 Buffers.Add(bmp);
                             }
@@ -7787,7 +7791,7 @@ namespace BioLib
                 Console.WriteLine(e.Message);
             }
         }
-
+        
         // ============================================================================
         // OPTIMIZATION 2: Adaptive tile batching based on viewport size
         // ============================================================================
@@ -8265,38 +8269,7 @@ namespace BioLib
                 Console.WriteLine(e.Message);
             }
         }
-        public async Task<Bitmap[]> GetSlice(int x, int y, int w, int h, double resolution)
-        {
-            List<Bitmap> Buffers = new List<Bitmap>();
-            for (int i = 0; i < imagesPerSeries; i++)
-            {
-                if (openSlideImage != null)
-                {
-                    int lev = LevelFromResolution(Resolution);
-                    openslideBase.SetSliceInfo(lev, Resolutions[lev].PixelFormat, Coordinate);
-                    var sl = new OpenSlideGTK.SliceInfo(x, y, w, h, resolution);
-                    byte[] bts = await openslideBase.GetSliceAsync(sl, lev);
-                    Buffers.Add(new Bitmap((int)Math.Round(OpenSlideBase.destExtent.Width), (int)Math.Round(OpenSlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), ""));
-                }
-                else
-                {
-                start:
-                    byte[] bts = await slideBase.GetSlice(new SliceInfo(x, y, w, h, resolution, Coordinate), PyramidalOrigin, PyramidalSize);
-                    if (bts == null)
-                    {
-                        if (x == 0 && y == 0)
-                        {
-                            Resolution = GetUnitPerPixel(0);
-                        }
-                        pyramidalOrigin = new PointD(0, 0);
-                        goto start;
-                    }
-                    Buffers.Add(new Bitmap((int)Math.Round(SlideBase.destExtent.Width), (int)Math.Round(SlideBase.destExtent.Height), Resolutions[Level].PixelFormat, bts, new ZCT(), ""));
-                }
-            }
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), true, x, y, w, h, resolution);
-            return Buffers.ToArray();
-        }
+
         /// > Update() is a function that calls the Update() function of the parent class
         public void Update()
         {

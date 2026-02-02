@@ -521,9 +521,9 @@ namespace BioLib
         public static BioImage GetImage(string filename, long dataset)
         {
             ReConnect();
+            BioImage b = new BioImage(filename);
             try
             {
-                BioImage b = new BioImage(filename);
                 java.util.Collection col = new java.util.ArrayList();
                 col.add(java.lang.Long.valueOf(dataset));
                 var uims = browsefacil.getImagesForDatasets(sc, col);
@@ -531,13 +531,16 @@ namespace BioLib
                 java.util.List li = new java.util.ArrayList();
                 java.util.ArrayList imgs = new java.util.ArrayList();
                 Images.AddImage(b);
+                
                 do
                 {
                     java.util.ArrayList list = new java.util.ArrayList();
                     ImageData o = (ImageData)itr.next();
                     string name = o.getName();
-                    if (name != filename)
+                    string[] sts = name.Split(' ');
+                    if (filename != name)
                         continue;
+
                     PixelsData pd = o.getDefaultPixels();
                     int xs = pd.getSizeX();
                     int ys = pd.getSizeY();
@@ -546,8 +549,8 @@ namespace BioLib
                     int ts = pd.getSizeT();
                     long pid = o.getId();
                     
-                    b.Filename = name;
-                    b.ID = name;
+                    b.Filename = sts[0];
+                    b.ID = name.Replace(" ","_");
                     RawPixelsStorePrx store = gateway.getPixelsStore(sc);
                     long ind = o.getId();
                     long ll = pd.getId();
@@ -599,7 +602,6 @@ namespace BioLib
                         Console.WriteLine(exx.Message);
                     }
                     var stage = o.asImage().getStageLabel();
-
                     bool pyramidal = false;
                     int ls = 0;
                     try
@@ -666,34 +668,18 @@ namespace BioLib
 
                     for (int z = 0; z < zs; z++)
                     {
-                        for (int c = 0; c < cs; c++)
+                        for (int c = 0; c < cs / 3; c++)
                         {
                             for (int t = 0; t < ts; t++)
                             {
                                 if (b.isPyramidal)
                                 {
-                                    Pixels ps = pd.asPixels();
+                                    Pixels ps = pd.asPixels();                                
                                     int chc = ps.sizeOfChannels();
                                     store.setPixelsId(ps.getId().getValue(), true);
-                                    store.setResolutionLevel(0);
-                                    if (xs > 1920 || ys > 1080)
-                                    {
-                                        byte[] bts = store.getTile(z, c, t, 0, 0, 1920, 1080);
-                                        PixelsType pxt = ps.getPixelsType();
-                                        AForge.PixelFormat px = AForge.PixelFormat.Format8bppIndexed;
-                                        int bits = pxt.getBitSize().getValue();
-                                        px = GetPixelFormat(bits);
-                                        b.Buffers.Add(new AForge.Bitmap("", 1920, 1080, px, bts, new AForge.ZCT(z, c, t), 0, null, false));
-                                    }
-                                    else
-                                    {
-                                        byte[] bts = store.getTile(z, c, t, 0, 0, xs, ys);
-                                        PixelsType pxt = ps.getPixelsType();
-                                        AForge.PixelFormat px = AForge.PixelFormat.Format8bppIndexed;
-                                        int bits = pxt.getBitSize().getValue();
-                                        px = GetPixelFormat(bits);
-                                        b.Buffers.Add(new AForge.Bitmap("", xs, ys, px, bts, new AForge.ZCT(z, c, t), 0, null, false));
-                                    }
+                                    store.setResolutionLevel(b.Level+1);
+                                    Bitmap bt = GetTile(b, new AForge.ZCT(z, c, t), 0, 0, 600, 400, b.Level + 1).Result;
+                                    b.Buffers.Add(new Bitmap("", 600, 400, PixelFormat.Format32bppArgb, bt.Bytes, new AForge.ZCT(z, c, t), 0, null, false));
                                 }
                                 else
                                 {
@@ -710,17 +696,18 @@ namespace BioLib
                             }
                         }
                     }
+                    if(b.isPyramidal)
+                    {
+                        b.SlideBase = new SlideBase(b, SlideImage.Open(b));
+                    }
                     b.Volume = new VolumeD(new Point3D(b.Resolutions[0].StageSizeX, b.Resolutions[0].StageSizeY, b.Resolutions[0].StageSizeZ),
                         new Point3D(b.SizeX * b.PhysicalSizeX, b.SizeY * b.PhysicalSizeY, zs * b.PhysicalSizeZ));
                     b.Annotations.AddRange(OMERO.GetROIs(b.PhysicalSizeX,b.PhysicalSizeY,pid));
                     b.UpdateCoords(zs, cs, ts);
-                    b.bitsPerPixel = b.Buffers[0].BitsPerPixel;
+                    b.bitsPerPixel = 32;
                     b.series = o.getSeries();
                     b.imagesPerSeries = b.Buffers.Count;
                     b.rgbChannels = new int[b.Channels.Count];
-                    b.rgbChannels[0] = 0;
-                    b.rgbChannels[1] = 1;
-                    b.rgbChannels[2] = 2;
                     b.ID = o.getId().ToString();
                     BioImage.AutoThreshold(b, true);
                     if (b.bitsPerPixel > 8)
@@ -728,10 +715,6 @@ namespace BioLib
                     else
                         b.StackThreshold(false);
                     b.Tag = "OMERO";
-                    if(b.isPyramidal)
-                    {
-                        b.SlideBase = new SlideBase(b, SlideImage.Open(b));
-                    }
                     return b;
                 }
                 while (itr.hasNext());
@@ -748,6 +731,23 @@ namespace BioLib
             string n = browsefacil.getImage(sc, id).getName();
             return GetImage(n,id);
         }
+        public static byte[] CombineToBGRA(byte[] r, byte[] g, byte[] b)
+        {
+            int length = r.Length;
+            byte[] result = new byte[length * 4];
+
+            System.Threading.Tasks.Parallel.For(0, length, i =>
+            {
+                int idx = i * 4;
+                result[idx + 3] = b[i];
+                result[idx + 2] = g[i];
+                result[idx + 1] = r[i];
+                result[idx] = 255;
+            });
+
+            return result;
+        }
+        public static bool ShowRGB = false;
         public static Bitmap GetFullPlane(BioImage b, ZCT coord, int level, int tileSize = 1024)
         {
             ReConnect();
@@ -805,48 +805,42 @@ namespace BioLib
 
             return null;
         }
-
-        public static Bitmap GetTile(BioImage b, ZCT coord, int x, int y, int width, int height, int level)
+        public static async Task<Bitmap> GetTile(BioImage b, ZCT coord, int x, int y, int width, int height, int level)
         {
             ReConnect();
-            if (width >= b.SizeX || height >= b.SizeY)
-                return GetFullPlane(b, coord, level);
-            var itr = images.iterator();
-            java.util.List li = new java.util.ArrayList();
-            java.util.ArrayList imgs = new java.util.ArrayList();
-            do
+            try
             {
-                java.util.ArrayList list = new java.util.ArrayList();
-                ImageData o = (ImageData)itr.next();
-                string name = o.getName();
-                if (name != b.Filename)
-                    continue;
-                PixelsData pd = o.getDefaultPixels();
-                int zs = pd.getSizeZ();
-                int cs = pd.getSizeC();
-                int ts = pd.getSizeT();
-                long pid = o.getId();
-                b.Filename = name;
-                b.ID = name;
-                long ind = o.getId();
-                long ll = pd.getId();
-                list.add(java.lang.Long.valueOf(ind));
-                Pixels ps = pd.asPixels();
-                int chc = ps.sizeOfChannels();
-                store.setPixelsId(ps.getId().getValue(), true);
-                store.setResolutionLevel(level);
-
-                if (width == pd.getSizeX() || height == pd.getSizeY())
+                var itr = images.iterator();
+                java.util.List li = new java.util.ArrayList();
+                java.util.ArrayList imgs = new java.util.ArrayList();
+                do
                 {
-
-                }
-                byte[] bts = store.getTile(coord.Z, coord.C, coord.T, x, y, width, height);
-                PixelsType pxt = ps.getPixelsType();
-                AForge.PixelFormat px = AForge.PixelFormat.Format8bppIndexed;
-                int bits = pxt.getBitSize().getValue();
-                px = GetPixelFormat(bits);
-                return new AForge.Bitmap("", width, height, px, bts, coord, 0, null, false);
-            } while (itr.hasNext());
+                    java.util.ArrayList list = new java.util.ArrayList();
+                    ImageData o = (ImageData)itr.next();
+                    string name = o.getName();
+                    int sp = name.Count(' ');
+                    if (sp != 1 || !name.Contains(b.filename))
+                        continue;
+                    PixelsData pd = o.getDefaultPixels();
+                    int zs = pd.getSizeZ();
+                    int cs = pd.getSizeC();
+                    int ts = pd.getSizeT();
+                    long ind = o.getId();
+                    list.add(java.lang.Long.valueOf(ind));
+                    Pixels ps = pd.asPixels();
+                    int chc = ps.sizeOfChannels();
+                    store.setPixelsId(ps.getId().getValue(), true);
+                    byte[] btb = store.getTile(coord.Z, 2, coord.T, x, y, width, height);
+                    byte[] btg = store.getTile(coord.Z, 1, coord.T, x, y, width, height);
+                    byte[] btr = store.getTile(coord.Z, 0, coord.T, x, y, width, height);
+                    byte[] bt = CombineToBGRA(btb, btg, btr);
+                    return new Bitmap("", width, height, PixelFormat.Format32bppArgb, bt, coord, 0, null, false);
+                } while (itr.hasNext());
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
             return null;
         }
         public static Dictionary<long,Pixbuf> GetThumbnails(string[] filenames, int width, int height)
