@@ -781,7 +781,7 @@ namespace BioLib
             string n = browsefacil.getImage(sc, id).getName();
             return GetImage(n,id);
         }
-<<<<<<< HEAD
+
         public static byte[] CombineToBGRA(byte[] r, byte[] g, byte[] b)
         {
             int length = r.Length;
@@ -859,7 +859,7 @@ namespace BioLib
 
             return null;
         }
-<<<<<<< HEAD
+
         public static async Task<Bitmap> GetTile(BioImage b, ZCT coord, int x, int y, int width, int height, int level)
         {
             ReConnect();
