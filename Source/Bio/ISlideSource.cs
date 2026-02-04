@@ -355,7 +355,7 @@ namespace BioLib
             {
                 try
                 {
-                    if (stitch == null || stitch.tileCopy == null)
+                    if (stitch == null)
                     {
                         Console.WriteLine("GPU stitching not initialized - falling back to CPU");
                         UseGPU = false;

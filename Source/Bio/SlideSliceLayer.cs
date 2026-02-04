@@ -24,13 +24,11 @@ namespace BioLib
         private double _lastResolution = 0;
         private IEnumerable<IFeature> _lastFeatures = new List<IFeature>();//new Features(new[] { new Feature() });
         private Extent _lastExtent;
-        private Stitch.TileCopyGL tileCopy;
-        public SlideSliceLayer(ISlideSource slideSource, Stitch.TileCopyGL tileCopy) : base()
+        public SlideSliceLayer(ISlideSource slideSource) : base()
         {
             _slideSource = slideSource;
             Name = "SliceLayer";
             Extent = slideSource.Schema.Extent.ToMRect();
-            this.tileCopy = tileCopy;
         }
 
         public override IEnumerable<IFeature> GetFeatures(MRect box, double resolution)

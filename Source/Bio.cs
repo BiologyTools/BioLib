@@ -7698,7 +7698,7 @@ namespace BioLib
         /// <summary>
         /// Updates the Buffers based on current pyramidal origin and resolution.
         /// </summary>
-        public async Task UpdateBuffersPyramidal(Stitch.TileCopyGL tileCopy, int level)
+        public async Task UpdateBuffersPyramidal(int level)
         {
             try
             {
