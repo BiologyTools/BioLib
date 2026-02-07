@@ -2358,34 +2358,55 @@ namespace BioLib
         AForge.Size s = new AForge.Size(1920, 1080);
         public AForge.Size PyramidalSize { get { return s; } set { s = value; } }
         PointD pyramidalOrigin = new PointD(0, 0);
+        public bool UseOSMNegativeY { get; set; } = true;
+
         public PointD PyramidalOrigin
         {
-            get 
+            get
             {
+                // Clamp X within the image width boundaries
                 if (pyramidalOrigin.X >= Resolutions[Level].SizeX)
                     pyramidalOrigin.X = Resolutions[Level].SizeX - 1;
-                if (pyramidalOrigin.Y >= Resolutions[Level].SizeY)
-                    pyramidalOrigin.Y = Resolutions[Level].SizeY - 1;
                 if (pyramidalOrigin.X < 0)
                     pyramidalOrigin.X = 0;
-                if (pyramidalOrigin.Y < 0)
-                    pyramidalOrigin.Y = 0;
+
+                // Clamp Y only if we are NOT using OSM Negative Y logic
+                if (!UseOSMNegativeY)
+                {
+                    if (pyramidalOrigin.Y >= Resolutions[Level].SizeY)
+                        pyramidalOrigin.Y = Resolutions[Level].SizeY - 1;
+                    if (pyramidalOrigin.Y < 0)
+                        pyramidalOrigin.Y = 0;
+                }
+
                 return pyramidalOrigin;
             }
             set
             {
-                if (value.X < Resolutions[Level].SizeX)
-                    pyramidalOrigin.X = value.X;
-                if (value.Y < Resolutions[Level].SizeY)
+                if (UseOSMNegativeY)
+                {
+                    // In OSM/BruTile mode, we allow Y to be negative and don't clamp the top
+                    // Just pass the values through, perhaps still clamping X width if desired
+                    pyramidalOrigin.X = Math.Max(0, Math.Min(value.X, Resolutions[Level].SizeX - 1));
                     pyramidalOrigin.Y = value.Y;
-                if (value.X > Resolutions[Level].SizeX)
-                    pyramidalOrigin.X = value.X - 1;
-                if (value.Y > Resolutions[Level].SizeY)
-                    pyramidalOrigin.Y = value.Y - 1;
-                if (value.X < 0)
-                    pyramidalOrigin.X = 0;
-                if (value.Y < 0)
-                    pyramidalOrigin.Y = 0;
+                }
+                else
+                {
+                    // Standard Y-positive clamping logic
+                    if (value.X >= 0 && value.X < Resolutions[Level].SizeX)
+                        pyramidalOrigin.X = value.X;
+                    else if (value.X >= Resolutions[Level].SizeX)
+                        pyramidalOrigin.X = Resolutions[Level].SizeX - 1;
+                    else
+                        pyramidalOrigin.X = 0;
+
+                    if (value.Y >= 0 && value.Y < Resolutions[Level].SizeY)
+                        pyramidalOrigin.Y = value.Y;
+                    else if (value.Y >= Resolutions[Level].SizeY)
+                        pyramidalOrigin.Y = Resolutions[Level].SizeY - 1;
+                    else
+                        pyramidalOrigin.Y = 0;
+                }
             }
         }
         public int series
