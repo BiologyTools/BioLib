@@ -220,7 +220,17 @@ namespace BioLib
         public static Extent sourceExtent;
         public static double curUnitsPerPixel = 1;
         public static bool UseVips = true;
-        public static bool UseGPU = true;
+        public static bool UseGPU
+        {
+            get
+            {
+                if (OperatingSystem.IsMacOS())
+                    return false;
+                else
+                    return true;
+            }
+            set;
+        }
         public TileCache cache = null;
         public Stitch stitch = new Stitch();
         public bool HasTile(TileInfo tile, ZCT coord)

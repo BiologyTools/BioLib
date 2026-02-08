@@ -80,19 +80,37 @@ namespace BioLib
         }
         public byte[] GetTile(TileInfo tileInfo, ZCT coord)
         {
-            var r = Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
-            var tileWidth = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
-            var tileHeight = Schema.Resolutions[tileInfo.Index.Level].TileHeight;
-            var curLevelOffsetXPixel = tileInfo.Extent.MinX / MinUnitsPerPixel;
-            var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / MinUnitsPerPixel;
-            var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
-            var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
-            var bgraData = SlideImage.ReadRegion(tileInfo.Index.Level, coord, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight);
-            //We check to see if the data is valid.
-            if (bgraData.Length != curTileWidth * curTileHeight * 4)
-                return null;
-            byte[] bm = ConvertRgbaToRgb(bgraData);
-            return bm;
+            try
+            {
+                if(Schema == null)
+                {
+                    Console.WriteLine("Schema is null.");
+                    return null;
+                }
+                var r = Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
+                var tileWidth = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
+                var tileHeight = Schema.Resolutions[tileInfo.Index.Level].TileHeight;
+                var curLevelOffsetXPixel = tileInfo.Extent.MinX / MinUnitsPerPixel;
+                var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / MinUnitsPerPixel;
+                var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
+                var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
+                if(SlideImage == null)
+                {
+                    Console.WriteLine("SlideImage is null.");
+                    return null;
+                }
+                var bgraData = SlideImage.ReadRegion(tileInfo.Index.Level, coord, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight);
+                //We check to see if the data is valid.
+                if (bgraData.Length != curTileWidth * curTileHeight * 4)
+                    return null;
+                byte[] bm = ConvertRgbaToRgb(bgraData);
+                return bm;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message + " " + e.StackTrace);
+            }
+            return null;
         }
         public static byte[] ConvertRgbaToRgb(byte[] rgbaArray)
         {

@@ -223,7 +223,17 @@ namespace BioLib
         /// <exception cref="OpenSlideException"/>
         public unsafe byte[] ReadRegion(int level, ZCT zct, long x, long y, long width, long height)
         {
-            return BioImage.GetTile(BioImage, BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height).Bytes;
+            try
+            {
+                return BioImage.GetTile(BioImage, BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height).Bytes;
+            }
+            catch (Exception e)
+            {
+                if (BioImage == null)
+                    Console.WriteLine("BioImage is null. ");
+                Console.WriteLine(e.Message + " " + e.StackTrace);
+            }
+            return null;
         }
 
         /// <summary>

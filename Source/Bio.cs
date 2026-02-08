@@ -7089,12 +7089,14 @@ namespace BioLib
                     if (st != null && !file.EndsWith("ome.tif") && useOpenSlide)
                     {
                         Status = "Opening file with OpenSlide.";
+                        Console.WriteLine("Opening file with OpenSlide.");
                         b.openSlideImage = OpenSlideImage.Open(file);
                         b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file, true);
                     }
                     else
                     {
                         Status = "Opening file with BioFormats.";
+                        Console.WriteLine("Opening file with BioFormats.");
                         b.slideBase = new SlideBase(b, SlideImage.Open(b));
                     }
                 }
