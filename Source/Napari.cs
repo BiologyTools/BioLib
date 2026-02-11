@@ -300,21 +300,21 @@ namespace BioLib
 
             if (row.HasTimeAxis)
             {
-                // 5-axis format: axis-0=Z, axis-1=C, axis-2=T, axis-3=X, axis-4=Y
-                z = (int)Math.Round(row.Axis0);
-                c = (int)Math.Round(row.Axis1);
-                t = (int)Math.Round(row.Axis2);
-                x = row.Axis3;
-                y = row.Axis4;
+                // 5-axis format: axis-0=T, axis-1=Z, axis-2=C, axis-3=Y, axis-4=X (Napari ordering)
+                t = (int)Math.Round(row.Axis0);
+                z = (int)Math.Round(row.Axis1);
+                c = (int)Math.Round(row.Axis2);
+                y = row.Axis3;
+                x = row.Axis4;
             }
             else
             {
-                // 4-axis format: axis-0=Z, axis-1=C, axis-2=X, axis-3=Y
+                // 4-axis format: axis-0=Z, axis-1=C, axis-2=Y, axis-3=X (Napari ordering)
                 z = (int)Math.Round(row.Axis0);
                 c = (int)Math.Round(row.Axis1);
                 t = 0;
-                x = row.Axis2;
-                y = row.Axis3;
+                y = row.Axis2;
+                x = row.Axis3;
             }
 
             // Stage: Create ROI structure
@@ -324,8 +324,8 @@ namespace BioLib
                 coord = new ZCT(z, c, t)
             };
 
-            // Stage: Set point location
-            PointD point = new PointD(x, y);
+            // Stage: Set point location (convert from pixel to physical coordinates)
+            PointD point = new PointD(x * PhysicalX, y * PhysicalY);
             roi.AddPoint(point);
 
             // Stage: Set identification
@@ -416,7 +416,7 @@ namespace BioLib
 
             if (firstVertex.HasTimeAxis)
             {
-                // 5-axis format: axis-0=Z, axis-1=C, axis-2=T
+                // 5-axis format: axis-0=T, axis-1=Z, axis-2=C (Napari ordering)
                 t = (int)Math.Round(firstVertex.Axis0);
                 z = (int)Math.Round(firstVertex.Axis1);
                 c = (int)Math.Round(firstVertex.Axis2);
@@ -553,15 +553,15 @@ namespace BioLib
 
                 if (vertex.HasTimeAxis)
                 {
-                    // 5-axis format: axis-3=X, axis-4=Y
-                    x = vertex.Axis3;
-                    y = vertex.Axis4;
+                    // 5-axis format: axis-3=Y, axis-4=X (Napari uses Y,X ordering)
+                    y = vertex.Axis3;
+                    x = vertex.Axis4;
                 }
                 else
                 {
-                    // 4-axis format: axis-2=X, axis-3=Y
-                    x = vertex.Axis2;
-                    y = vertex.Axis3;
+                    // 4-axis format: axis-2=Y, axis-3=X (Napari uses Y,X ordering)
+                    y = vertex.Axis2;
+                    x = vertex.Axis3;
                 }
 
                 points.Add(new PointD(x * PhysicalX, y * PhysicalY));
@@ -581,33 +581,35 @@ namespace BioLib
             int c = roi.coord.C;
             int t = roi.coord.T;
 
-            // Stage: Get point location
+            // Stage: Get point location and convert to pixel coordinates
             PointD point = roi.GetPoint(0);
-            double x = point.X;
-            double y = point.Y;
+            double x = point.X / PhysicalX;
+            double y = point.Y / PhysicalY;
 
             // Stage: Format row based on format type
             if (hasTimeData)
             {
                 // 5-axis format: index,axis-0,axis-1,axis-2,axis-3,axis-4
+                // Napari uses (T,Z,C,Y,X) ordering
                 return FormatCsvLine(
                     index.ToString(CultureInfo.InvariantCulture),
+                    t.ToString(CultureInfo.InvariantCulture),
                     z.ToString(CultureInfo.InvariantCulture),
                     c.ToString(CultureInfo.InvariantCulture),
-                    t.ToString(CultureInfo.InvariantCulture),
-                    x.ToString(CultureInfo.InvariantCulture),
-                    y.ToString(CultureInfo.InvariantCulture)
+                    y.ToString(CultureInfo.InvariantCulture),
+                    x.ToString(CultureInfo.InvariantCulture)
                 );
             }
             else
             {
                 // 4-axis format: index,axis-0,axis-1,axis-2,axis-3
+                // Napari uses (Z,C,Y,X) ordering
                 return FormatCsvLine(
                     index.ToString(CultureInfo.InvariantCulture),
                     z.ToString(CultureInfo.InvariantCulture),
                     c.ToString(CultureInfo.InvariantCulture),
-                    x.ToString(CultureInfo.InvariantCulture),
-                    y.ToString(CultureInfo.InvariantCulture)
+                    y.ToString(CultureInfo.InvariantCulture),
+                    x.ToString(CultureInfo.InvariantCulture)
                 );
             }
         }
@@ -637,7 +639,7 @@ namespace BioLib
                 PointD vertex = vertices[vertexIndex];
                 string row = FormatShapeVertexRow(
                     index, shapeType, vertexIndex,
-                    t,z,c,
+                    z, c, t,
                     vertex.X / PhysicalX, vertex.Y / PhysicalY,
                     hasTimeData
                 );
@@ -657,6 +659,7 @@ namespace BioLib
             if (hasTimeData)
             {
                 // 5-axis format: index,shape-type,vertex-index,axis-0,axis-1,axis-2,axis-3,axis-4
+                // Napari uses (T,Z,C,Y,X) ordering - axis-3 is Y (row), axis-4 is X (column)
                 return FormatCsvLine(
                     index.ToString(CultureInfo.InvariantCulture),
                     shapeType,
@@ -664,21 +667,22 @@ namespace BioLib
                     t.ToString(CultureInfo.InvariantCulture),
                     z.ToString(CultureInfo.InvariantCulture),
                     c.ToString(CultureInfo.InvariantCulture),
-                    x.ToString(CultureInfo.InvariantCulture),
-                    y.ToString(CultureInfo.InvariantCulture)
+                    y.ToString(CultureInfo.InvariantCulture),
+                    x.ToString(CultureInfo.InvariantCulture)
                 );
             }
             else
             {
                 // 4-axis format: index,shape-type,vertex-index,axis-0,axis-1,axis-2,axis-3
+                // Napari uses (Z,C,Y,X) ordering - axis-2 is Y (row), axis-3 is X (column)
                 return FormatCsvLine(
                     index.ToString(CultureInfo.InvariantCulture),
                     shapeType,
                     vertexIndex.ToString(CultureInfo.InvariantCulture),
                     z.ToString(CultureInfo.InvariantCulture),
                     c.ToString(CultureInfo.InvariantCulture),
-                    x.ToString(CultureInfo.InvariantCulture),
-                    y.ToString(CultureInfo.InvariantCulture)
+                    y.ToString(CultureInfo.InvariantCulture),
+                    x.ToString(CultureInfo.InvariantCulture)
                 );
             }
         }
