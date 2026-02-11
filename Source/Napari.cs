@@ -15,10 +15,12 @@ namespace BioLib
     {
         #region Data Structures
         public static bool Initialized => PhysicalX > 0 && PhysicalY > 0;
-        public static void Initialize(double physicalX, double physicalY)
+        public static bool HasTime = false;
+        public static void Initialize(double physicalX, double physicalY, bool hasTime)
         {
             PhysicalX = physicalX;
             PhysicalY = physicalY;
+            HasTime = hasTime;
         }
         public static double PhysicalX;
         public static double PhysicalY;
@@ -168,8 +170,7 @@ namespace BioLib
                 return; // No points to write
 
             // Stage: Determine format (4-axis or 5-axis)
-            bool hasTimeData = pointRois.Any(r => r.coord.T > 0);
-
+            bool hasTimeData = HasTime;
             // Stage: Build CSV content
             List<string> lines = new List<string>();
 
@@ -205,7 +206,7 @@ namespace BioLib
                 return; // No shapes to write
 
             // Stage: Determine format (4-axis or 5-axis)
-            bool hasTimeData = shapeRois.Any(r => r.coord.T > 0);
+            bool hasTimeData = HasTime;
 
             // Stage: Build CSV content
             List<string> lines = new List<string>();
@@ -637,7 +638,7 @@ namespace BioLib
                 string row = FormatShapeVertexRow(
                     index, shapeType, vertexIndex,
                     t,z,c,
-                    vertex.X, vertex.Y,
+                    vertex.X / PhysicalX, vertex.Y / PhysicalY,
                     hasTimeData
                 );
                 rows.Add(row);
