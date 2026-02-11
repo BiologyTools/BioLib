@@ -183,7 +183,7 @@ namespace BioLib
             }
         }
     }
-    /* A struct that is used to store the resolution of an image. */
+
     /* A struct that is used to store the resolution of an image. */
     public struct Resolution
     {
@@ -5044,7 +5044,7 @@ namespace BioLib
                 int SizeX = image.GetField(TiffTag.IMAGEWIDTH)[0].ToInt();
                 int SizeY = image.GetField(TiffTag.IMAGELENGTH)[0].ToInt();
                 b.bitsPerPixel = image.GetField(TiffTag.BITSPERSAMPLE)[0].ToInt();
-                b.littleEndian = !image.IsBigEndian();
+                b.littleEndian = image.IsBigEndian();
                 int RGBChannelCount = image.GetField(TiffTag.SAMPLESPERPIXEL)[0].ToInt();
                 string desc = "";
 

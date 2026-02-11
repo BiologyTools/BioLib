@@ -117,13 +117,14 @@ namespace BioLib
         }
         public static SKPaint SelectBoxColor = new() { Style = SKPaintStyle.Stroke, Color = new SKColor(255, 0, 0) };
         public static float selectBoxSize = 14f;
+        public CoordinateSystem CoordSpace { get; set; } = CoordinateSystem.micron;
         private List<PointD> pos = new List<PointD>();
         public List<PointD> Points 
         { 
             get 
             {
                 if (pos.Count == 0)
-                    Validate();
+                    Validate(false,0,0);
                 return pos;
             } 
             set 
@@ -132,14 +133,17 @@ namespace BioLib
                 UpdateBoundingBox();
             } 
         }
-        public void Validate()
+        public void Validate(bool convertPixelSpace = false, double physX = 1, double physY = 1)
         {
             // Ensure pos exists
             if (pos == null)
                 pos = new List<PointD>();
             else
                 pos.Clear();
-
+            if(convertPixelSpace)
+            {
+                ConvertToMicron(physX, physY);
+            }
             switch (type)
             {
                 case Type.Rectangle:
@@ -161,6 +165,7 @@ namespace BioLib
                     // (Freeform, Polyline, Polygon, Mask, etc.)
                     break;
             }
+            
         }
 
         public bool Contains(PointD p)
@@ -1318,7 +1323,16 @@ namespace BioLib
         /// > Adds a point to the list of points and updates the bounding box
         /// 
         /// @param PointD 
-        public void AddPoint(PointD p)
+        public void ConvertToMicron(double physX, double physY)
+        {
+            List<PointD> points = new List<PointD>();
+            for (int i = 0; i < Points.Count; i++)
+            {
+                points.Add(new PointD(Points[i].X * physX, Points[i].Y * physY));
+            }
+            Points = points;
+        }
+        public void AddPoint(PointD p, bool convertPixelSpace = false, double physX = 1, double physY = 1)
         {
             if(Points == null)
                 Points = new List<PointD>();
@@ -1328,17 +1342,22 @@ namespace BioLib
         /// > Adds a range of points to the Points collection and updates the bounding box
         /// 
         /// @param p The points to add to the polygon
-        public void AddPoints(PointD[] p)
+        public void AddPoints(PointD[] p, bool convertPixelSpace = false, double physX = 1, double physY = 1)
         {
             if (Points == null)
                 Points = new List<PointD>();
-            Points.AddRange(p);
+            if (convertPixelSpace)
+            {
+                ConvertToMicron(physX, physY);
+            }
+            else
+                Points.AddRange(p);
             UpdateBoundingBox();
         }
         /// > Adds a range of integer points to the Points collection and updates the bounding box
         /// 
         /// @param p The points to add to the polygon
-        public void AddPoints(int[] xp, int[] yp)
+        public void AddPoints(int[] xp, int[] yp, bool convertPixelSpace = false, double physX = 1, double physY =1)
         {
             if (Points == null)
                 Points = new List<PointD>();
@@ -1351,7 +1370,7 @@ namespace BioLib
         /// > Adds a range of float points to the Points collection and updates the bounding box
         /// 
         /// @param p The points to add to the polygon
-        public void AddPoints(float[] xp, float[] yp)
+        public void AddPoints(float[] xp, float[] yp, bool convertPixelSpace = false, double physX = 1, double physY =1)
         {
             if (Points == null)
                 Points = new List<PointD>();
