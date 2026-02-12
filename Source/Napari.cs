@@ -35,9 +35,9 @@ namespace BioLib
             public double VertexIndex { get; set; }
             public double Axis0 { get; set; }  // T coordinate (Time)
             public double Axis1 { get; set; }  // Z coordinate
-            public double Axis2 { get; set; }  // C coordinate (Channel)
-            public double Axis3 { get; set; }  // X coordinate (if 5-axis) OR Y coordinate (if 4-axis)
-            public double Axis4 { get; set; }  // Y coordinate (if 5-axis only)
+            public double Axis2 { get; set; }  // C coordinate (Channel) OR Y coordinate (if 4-axis only)
+            public double Axis3 { get; set; }  // Y coordinate (if 5-axis only) OR X coordinate (if 4-axis)
+            public double Axis4 { get; set; }  // X coordinate (if 5-axis)
             public bool HasTimeAxis { get; set; }  // True if 5-axis format (ZCT)
         }
 
