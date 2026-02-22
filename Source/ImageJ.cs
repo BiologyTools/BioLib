@@ -182,7 +182,7 @@ namespace BioLib
             //If not in images we add it to a new tab.
             if (Images.GetImage(fn) == null)
             {
-                BioImage bm = BioImage.OpenFile(f, index, false, false);
+                BioImage bm = BioImage.OpenFileAsync(f, index, false, false).Result;
                 bm.Filename = fn;
                 bm.ID = fn;
                 bm.file = dir + "/" + fn;
@@ -190,7 +190,7 @@ namespace BioLib
             }
             else
             {
-                BioImage b = BioImage.OpenFile(f, index, false, false);
+                BioImage b = BioImage.OpenFileAsync(f, index, false, false).Result;
                 b.ID = bi.ID;
                 b.Filename = bi.ID;
                 b.file = dir + "/" + fn;

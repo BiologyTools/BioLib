@@ -9,6 +9,7 @@ using BruTile.Extensions;
 using Cairo;
 using Gdk;
 using Gtk;
+using javax.swing.text.html;
 using loci.common.services;
 using loci.formats;
 using loci.formats.@in;
@@ -22,6 +23,10 @@ using ome.units.quantity;
 using ome.util;
 using ome.xml.model.primitives;
 using omero.model;
+using OmeZarr.Core.OmeZarr;
+using OmeZarr.Core.OmeZarr.Coordinates;
+using OmeZarr.Core.OmeZarr.Helpers;
+using OmeZarr.Core.OmeZarr.Nodes;
 using OpenSlideGTK;
 using Pango;
 using SkiaSharp;
@@ -43,6 +48,7 @@ using Channel = AForge.Channel;
 using Color = AForge.Color;
 using Context = Cairo.Context;
 using Path = System.IO.Path;
+using PixelFormat = AForge.PixelFormat;
 using Point = AForge.Point;
 using PointD = AForge.PointD;
 using Rectangle = AForge.Rectangle;
@@ -312,8 +318,6 @@ namespace BioLib
             return "new Resolution(" + SizeX + "," + SizeY + "," + format + "," + PhysicalSizeX + "," + PhysicalSizeY + "," + PhysicalSizeZ + "," + StageSizeX + "," + StageSizeY + "," + StageSizeZ + ");";
         }
     }
-
-
     public class Cell
     {
         public List<ROI> ROIs = new List<ROI>();
@@ -1947,6 +1951,7 @@ namespace BioLib
             stack,
             pyramidal,
             well,
+            zarr
         }
         private string id;
         public ImageType Type { get; set; }
@@ -1954,6 +1959,7 @@ namespace BioLib
         public List<Resolution> Resolutions = new List<Resolution>();
         public List<AForge.Bitmap> Buffers = new List<AForge.Bitmap>();
         public List<NetVips.Image> vipPages = new List<NetVips.Image>();
+
         int level = 0;
         public int Level
         {
@@ -1986,6 +1992,8 @@ namespace BioLib
         {
             get
             {
+                if(filename.Contains(".zarr"))
+                    this.Type = ImageType.zarr;
                 if (filename == null || filename == "")
                     return Type.ToString() + ".ome.tif";
                 return filename;
@@ -2354,7 +2362,6 @@ namespace BioLib
                     return Resolutions[0].StageSizeZ;
             }
         }
-
         AForge.Size s = new AForge.Size(1920, 1080);
         public AForge.Size PyramidalSize { get { return s; } set { s = value; } }
         PointD pyramidalOrigin = new PointD(0, 0);
@@ -4284,7 +4291,7 @@ namespace BioLib
             {
                 if (Buffers[0].PixelFormat == PixelFormat.Float || Buffers[0].PixelFormat == PixelFormat.Short)
                 {
-                    return Buffers[index].GetImageRGBA();
+                    return Buffers[index].GetImageRGBA(littleEndian);
                 }
                 else
                     return Buffers[index];
@@ -4847,7 +4854,7 @@ namespace BioLib
             image.Close();
             for (int i = 0; i < pages; i++)
             {
-                bs[i] = OpenFile(file, i, tab, true);
+                bs[i] = OpenFileAsync(file, i, tab, add).Result;
             }
             return bs;
         }
@@ -4856,13 +4863,15 @@ namespace BioLib
         /// @param file The path to the file to open.
         /// 
         /// @return A BioImage object.
-        public static BioImage OpenFile(string file)
+        public static async Task<BioImage> OpenFile(string file, ZCT coord)
         {
-            return OpenFile(file, 0, true, true);
+            if (file.StartsWith("https://"))
+                return await OpenURL(file, coord);
+            return OpenFileAsync(file, 0, true, true).Result;
         }
-        public static BioImage OpenFile(string file, bool tab)
+        public static async Task<BioImage> OpenFile(string file, bool tab)
         {
-            return OpenFile(file, 0, tab, true);
+            return OpenFileAsync(file, 0, tab, true).Result;
         }
         /// It opens a TIFF file and returns a BioImage object
         /// 
@@ -4870,9 +4879,10 @@ namespace BioLib
         /// @param series the series number of the image to open
         /// 
         /// @return A BioImage object.
-        public static BioImage OpenFile(string file, int series, bool tab, bool addToImages)
+        public static async Task<BioImage> OpenFileAsync(string file, int series, bool tab, bool addToImages)
         {
-            return OpenFile(file, series, tab, addToImages, false, 0, 0, 0, 0);
+            BioImage bm =  await OpenFile(file, series, tab, addToImages, false, 0, 0, 0, 0);
+            return bm;
         }
         static bool IsTiffTiled(string imagePath)
         {
@@ -4971,7 +4981,11 @@ namespace BioLib
             res.PixelFormat = GetPixelFormat(RGBChannelCount, bitsPerPixel);
             b.Resolutions.Add(res);
         }
-
+        public OmeZarrReader zarrReader;
+        public MultiscaleNode multiscale;
+        private MultiscaleNode imagef;
+        private ResolutionLevelNode levelf;
+        private List<PlaneResult> planes = new List<PlaneResult>();
         /// The OpenFile function opens a BioImage file, reads its metadata, and loads the image
         /// data into a BioImage object.
         /// 
@@ -4997,10 +5011,12 @@ namespace BioLib
         /// is tiled.
         /// 
         /// @return The method is returning a BioImage object.
-        public static BioImage OpenFile(string file, int series, bool tab, bool addToImages, bool tile, int tileX, int tileY, int tileSizeX, int tileSizeY)
+        public static async Task<BioImage> OpenFile(string file, int series, bool tab, bool addToImages, bool tile, int tileX, int tileY, int tileSizeX, int tileSizeY)
         {
             string fs = file.Replace("\\", "/");
             Console.WriteLine("Opening BioImage: " + file);
+            if(file.StartsWith("https://"))
+                return await BioImage.OpenURL(file,new ZCT(0,0,0));
             if (file.EndsWith(".npy"))
                 return BioImage.FromNumpy(file);
             bool ome = isOME(file);
@@ -5221,7 +5237,7 @@ namespace BioLib
                         {
                             for (int z = 0; z < b.SizeZ; z++)
                             {
-                                Bitmap bmp = b.GetTile(b, b.GetFrameIndex(z, c, t), b.level, tileX, tileY, tileSizeX, tileSizeY);
+                                Bitmap bmp = b.GetTile(b, b.GetFrameIndex(z, c, t), b.level, tileX, tileY, tileSizeX, tileSizeY).Result;
                                 b.Buffers.Add(bmp);
                                 bmp.Stats = Statistics.FromBytes(bmp);
                             }
@@ -5296,6 +5312,76 @@ namespace BioLib
             BioLib.Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, series, tab, addToImages, tile, tileX, tileY, tileSizeX, tileSizeY);
             return b;
         }
+
+        public async static Task<BioImage> OpenURL(string file, ZCT coord)
+        {
+            if(file.StartsWith("https://"))
+            {
+                BioImage b = new BioImage(Path.GetFileName(file));
+                b.zarrReader = OmeZarrReader.OpenAsync(file).Result;
+                int r = b.zarrReader.AsMultiscaleImage().Multiscales.Rank;
+                b.imagef = b.zarrReader.AsMultiscaleImage();
+                b.levelf = await b.imagef.OpenResolutionLevelAsync(0);
+                var levels = b.imagef.OpenAllResolutionLevelsAsync();
+                int ax = b.zarrReader.AsMultiscaleImage().Multiscales[0].Axes.Length;
+                if (ax == 5)
+                {
+                    if (b.zarrReader.AsMultiscaleImage().Multiscales[0].Axes.Length == 5)
+                    { 
+                        b.planes.Add(await b.levelf.ReadPlaneAsync(coord.T, coord.C, coord.Z));
+                        for (int i = 0; i < b.imagef.Multiscales[0].Axes.Count(); i++)
+                        {
+                            byte[] rawBytes = b.planes[i].Data;
+                            if (b.levelf.Rank > 0)
+                            {
+                                if (b.levelf.DataType == "uint16")
+                                {
+                                    AForge.Bitmap bm = new AForge.Bitmap((int)b.levelf.Shape[b.levelf.Rank - 1], (int)b.levelf.Shape[b.levelf.Rank - 2], AForge.PixelFormat.Format16bppGrayScale,
+                                        rawBytes, new AForge.ZCT(coord.T, coord.C, coord.Z), "");
+                                    b.Buffers.Add(bm);
+                                }
+                                else if (b.levelf.DataType == "uint8")
+                                {
+                                    AForge.Bitmap bm = new AForge.Bitmap((int)b.levelf.Shape[b.levelf.Rank - 1], (int)b.levelf.Shape[b.levelf.Rank - 2], AForge.PixelFormat.Format8bppIndexed,
+                                        rawBytes, new AForge.ZCT(coord.T, coord.C, coord.Z), "");
+                                    b.Buffers.Add(bm);
+                                }
+                            }
+                        }
+                    }
+                }
+                else if(ax == 0)
+                {
+                    b.planes.Add(await b.levelf.ReadPlaneAsync(coord.Z, coord.C, coord.T));
+                    for (int i = 0; i < levels.Result.Count; i++)
+                    {
+                        byte[] rawBytes = b.planes[i].Data;
+                        if (b.levelf.Rank > 0)
+                        {
+                            if (b.levelf.DataType == "uint16")
+                            {
+                                AForge.Bitmap bm = new AForge.Bitmap((int)b.levelf.Shape[b.levelf.Rank - 1], (int)b.levelf.Shape[b.levelf.Rank - 2], AForge.PixelFormat.Format16bppGrayScale,
+                                    rawBytes, new AForge.ZCT(coord.Z, coord.C, coord.T), "");
+                                b.Buffers.Add(bm);
+                            }
+                            else if (b.levelf.DataType == "uint8")
+                            {
+                                AForge.Bitmap bm = new AForge.Bitmap((int)b.levelf.Shape[b.levelf.Rank - 1], (int)b.levelf.Shape[b.levelf.Rank - 2], AForge.PixelFormat.Format8bppIndexed,
+                                    rawBytes, new AForge.ZCT(coord.Z, coord.C, coord.T), "");
+                                b.Buffers.Add(bm);
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            if (file.StartsWith("s3"))
+            {
+                throw new NotImplementedException();
+            }
+            throw new NotImplementedException();
+        }
+
         /// > The function checks if the image is a Tiff image and if it is, it checks if the image is a
         /// series of images
         /// 
@@ -6256,7 +6342,7 @@ namespace BioLib
             BioImage b = new BioImage(files[0]);
             for (int i = 0; i < files.Length; i++)
             {
-                BioImage bb = OpenFile(files[i], false);
+                BioImage bb = OpenFile(files[i], false).Result;
                 b.Buffers.AddRange(bb.Buffers);
             }
             b.UpdateCoords(sizeZ, sizeC, sizeT);
@@ -6285,7 +6371,7 @@ namespace BioLib
                     c = int.Parse(st[2].Replace("C", ""));
                     t = int.Parse(st[3].Replace("T", ""));
                 }
-                bb = OpenFile(files[i], tab);
+                bb = OpenFile(files[i], tab).Result;
                 b.Buffers.AddRange(bb.Buffers);
             }
             if (z == 0)
@@ -7097,13 +7183,13 @@ namespace BioLib
                     {
                         Status = "Opening file with BioFormats.";
                         Console.WriteLine("Opening file with BioFormats.");
-                        b.slideBase = new SlideBase(b, SlideImage.Open(b));
+                        b.slideBase = (SlideBase)SlideBase.Create(b, SlideImage.Open(b));
                     }
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine(e.Message.ToString());
-                    b.slideBase = new SlideBase(b, SlideImage.Open(b));
+                    b.slideBase = (SlideBase)SlideBase.Create(b, SlideImage.Open(b));
                 }
                 tile = true;
             }
@@ -7140,7 +7226,7 @@ namespace BioLib
                 for (int p = 0; p < pages; p++)
                 {
                     Progress = ((float)p / (float)pages) * 100;
-                    b.Buffers.Add(b.GetTile(b, p, b.Level, tilex, tiley, tileSizeX, tileSizeY));
+                    b.Buffers.Add(b.GetTile(b, p, b.Level, tilex, tiley, tileSizeX, tileSizeY).Result);
                 }
             }
             int pls;
@@ -7249,6 +7335,7 @@ namespace BioLib
         }
         static bool useVips = true;
         static bool useGPU = true;
+        
         /// It reads a tile from a file, and returns a bitmap
         /// 
         /// @param BioImage This is a class that contains the image file name, the image reader, and the
@@ -7261,23 +7348,34 @@ namespace BioLib
         /// @param tileSizeY the height of the tile
         /// 
         /// @return A Bitmap object.
-        public Bitmap GetTile(BioImage b, int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
+        public async Task<Bitmap> GetTile(BioImage b, int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
         {
+            if(b.Filename.Contains(".zarr") || b.Type == ImageType.zarr)
+            {
+                b.Type = ImageType.pyramidal;
+                if (zarrReader == null)
+                    zarrReader = OmeZarrReader.OpenAsync(b.Filename).Result;
+                    multiscale = zarrReader.AsMultiscaleImage();
+                    levelf = await multiscale.OpenResolutionLevelAsync(level);
+                    var planef = await levelf.ReadTilePixelsAsync(tilex, tiley, tileSizeX, tileSizeY, b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
+                    return new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, planef.Data,b.Coordinate, index);
+            }
             if (b.Tag != null)
             {
-                if (b.Tag.ToString() != "OMERO")
-                    return null;
-                //This is a OMERO file we need to update it.
-                int i = 0;
-                for (int z = 0; z < b.SizeZ; z++)
+                if (b.Tag.ToString() == "OMERO")
                 {
-                    for (int c = 0; c < b.SizeC; c++)
+                    //This is a OMERO file we need to update it.
+                    int i = 0;
+                    for (int z = 0; z < b.SizeZ; z++)
                     {
-                        for (int t = 0; t < b.SizeT; t++)
+                        for (int c = 0; c < b.SizeC; c++)
                         {
-                            if(i == index)
-                                return OMERO.GetTile(b, new ZCT(z,c,t), tilex, tiley, tileSizeX, tileSizeY, level).Result;
-                            i++;
+                            for (int t = 0; t < b.SizeT; t++)
+                            {
+                                if (i == index)
+                                    return OMERO.GetTile(b, new ZCT(z, c, t), tilex, tiley, tileSizeX, tileSizeY, level).Result;
+                                i++;
+                            }
                         }
                     }
                 }
@@ -7361,7 +7459,7 @@ namespace BioLib
             try
             {
                 byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
-                return new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved).GetImageRGBA();
+                return new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved).GetImageRGBA(littleEndian);
             }
             catch (Exception e)
             {
@@ -7636,18 +7734,18 @@ namespace BioLib
         /// It opens a file
         /// 
         /// @param file The file to open.
-        public static void Open(string file)
+        public static void Open(string file, ZCT coord)
         {
-            OpenFile(file);
+            OpenFile(file,coord);
         }
         /// It opens a file
         /// 
         /// @param files The files to open.
-        public static void Open(string[] files)
+        public static void Open(string[] files, ZCT coord)
         {
             foreach (string file in files)
             {
-                Open(file);
+                Open(file,coord);
             }
         }
         /// It takes a list of files, opens them, and then combines them into a single BioImage object
@@ -7676,7 +7774,7 @@ namespace BioLib
                     bs[0] = OpenOME(files[i], tab);
                 else
                 {
-                    bs[i] = OpenFile(files[i], 0, tab, false);
+                    bs[i] = OpenFileAsync(files[i], 0, tab, false).Result;
                 }
             }
             BioImage b = BioImage.CopyInfo(bs[0], true, true);
@@ -7697,7 +7795,7 @@ namespace BioLib
         /// @param BioImage This is the class that contains the image data.
         public static void Update(BioImage b)
         {
-            b = OpenFile(b.file);
+            b = OpenFile(b.file,b.Coordinate).Result;
         }
 
         private bool TryGetTile(int level, int tileX, int tileY, out SKBitmap bitmap)
@@ -8157,7 +8255,7 @@ namespace BioLib
         }
         public static SKImage Convert16bppBitmapToSKImage(Bitmap sourceBitmap)
         {
-            Bitmap bm = sourceBitmap.GetImageRGBA();
+            Bitmap bm = sourceBitmap.GetImageRGBA(sourceBitmap.LittleEndian);
             int width = bm.Width;
             int height = bm.Height;
 
@@ -8196,11 +8294,11 @@ namespace BioLib
             if (bitm.PixelFormat == PixelFormat.Format32bppArgb)
                 return Convert32bppBitmapToSKImage(bitm);
             if (bitm.PixelFormat == PixelFormat.Float)
-                return Convert32bppBitmapToSKImage(bitm.GetImageRGBA());
+                return Convert32bppBitmapToSKImage(bitm.GetImageRGBA(bitm.LittleEndian));
             if (bitm.PixelFormat == PixelFormat.Format16bppGrayScale)
-                return Convert16bppBitmapToSKImage(bitm.GetImageRGBA());
+                return Convert16bppBitmapToSKImage(bitm.GetImageRGBA(bitm.LittleEndian));
             if (bitm.PixelFormat == PixelFormat.Format48bppRgb)
-                return Convert16bppBitmapToSKImage(bitm.GetImageRGBA());
+                return Convert16bppBitmapToSKImage(bitm.GetImageRGBA(bitm.LittleEndian));
             if (bitm.PixelFormat == PixelFormat.Format8bppIndexed)
                 return Convert8bppBitmapToSKImage(bitm);
             else
@@ -8234,7 +8332,7 @@ namespace BioLib
                     if(openslideBase != null)
                     {
                         // BioLib-style tile fetch (adjust if needed)
-                        bmp = BitmapToSKImage(GetTile(this, 0, level, tileX, tileY, this.OpenSlideBase.Schema.GetTileWidth(level), this.OpenSlideBase.Schema.GetTileHeight(level)));
+                        bmp = BitmapToSKImage(GetTile(this, 0, level, tileX, tileY, this.OpenSlideBase.Schema.GetTileWidth(level), this.OpenSlideBase.Schema.GetTileHeight(level)).Result);
                     }
                     
                 }
@@ -8312,7 +8410,7 @@ namespace BioLib
             if (omes)
                 OpenOME(openfile, serie, tab, add, false, 0, 0, 0, 0);
             else
-                OpenFile(openfile, serie, tab, add);
+                OpenFileAsync(openfile, serie, tab, add).Wait();
         }
         static string savefile, saveid;
         static bool some;

@@ -225,7 +225,7 @@ namespace BioLib
         {
             try
             {
-                return BioImage.GetTile(BioImage, BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height).Bytes;
+                return BioImage.GetTile(BioImage, BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height).Result.Bytes; ;
             }
             catch (Exception e)
             {
@@ -248,7 +248,7 @@ namespace BioLib
         /// <returns></returns>
         public unsafe bool TryReadRegion(int level, long x, long y, long width, long height, out byte[] data, ZCT zct)
         {
-            data = BioImage.GetTile(BioImage, BioImage.GetFrameIndex(zct.Z,zct.C,zct.T), level, (int)x, (int)y, (int)width, (int)height).Bytes;
+            data = BioImage.GetTile(BioImage, BioImage.GetFrameIndex(zct.Z,zct.C,zct.T), level, (int)x, (int)y, (int)width, (int)height).Result.Bytes;
             if (data == null)
                 return false;
             else
