@@ -1885,6 +1885,11 @@ namespace BioLib
             public PointD Origin;
             public string ID;
             public string Name;
+            public void SaveZarr(string path, BioImage b)
+            {
+                BioImageDescriptor descriptor = new BioImageDescriptor(b.SizeX,b.SizeY,b.Coordinate);
+                OmeZarrWriter.CreateAsync(path, descriptor);
+            }
             public WellPlate(BioImage b)
             {
                 ID = b.meta.getPlateID(b.series);
