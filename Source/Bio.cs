@@ -4866,7 +4866,7 @@ namespace BioLib
         public static async Task<BioImage> OpenFile(string file, ZCT coord)
         {
             if (file.StartsWith("https://"))
-                return await OpenURL(file, coord);
+                return await OpenURL(file, coord, 0,0,800,600);
             return OpenFileAsync(file, 0, true, true).Result;
         }
         public static async Task<BioImage> OpenFile(string file, bool tab)
@@ -5016,7 +5016,7 @@ namespace BioLib
             string fs = file.Replace("\\", "/");
             Console.WriteLine("Opening BioImage: " + file);
             if(file.StartsWith("https://"))
-                return await BioImage.OpenURL(file,new ZCT(0,0,0));
+                return await BioImage.OpenURL(file,new ZCT(0,0,0),tileX,tileY,tileSizeX,tileSizeY);
             if (file.EndsWith(".npy"))
                 return BioImage.FromNumpy(file);
             bool ome = isOME(file);
@@ -5313,7 +5313,7 @@ namespace BioLib
             return b;
         }
 
-        public async static Task<BioImage> OpenURL(string file, ZCT coord)
+        public async static Task<BioImage> OpenURL(string file, ZCT coord, int originX, int originY, int tileWidth, int tileHeight)
         {
             if(file.StartsWith("https://"))
             {
@@ -5322,57 +5322,51 @@ namespace BioLib
                 int r = b.zarrReader.AsMultiscaleImage().Multiscales.Rank;
                 b.imagef = b.zarrReader.AsMultiscaleImage();
                 b.levelf = await b.imagef.OpenResolutionLevelAsync(0);
-                var levels = b.imagef.OpenAllResolutionLevelsAsync();
-                int ax = b.zarrReader.AsMultiscaleImage().Multiscales[0].Axes.Length;
-                if (ax == 5)
+                var levels = await b.imagef.OpenAllResolutionLevelsAsync();
+                if (levels.Count > 1)
                 {
-                    if (b.zarrReader.AsMultiscaleImage().Multiscales[0].Axes.Length == 5)
-                    { 
-                        b.planes.Add(await b.levelf.ReadPlaneAsync(coord.T, coord.C, coord.Z));
-                        for (int i = 0; i < b.imagef.Multiscales[0].Axes.Count(); i++)
-                        {
-                            byte[] rawBytes = b.planes[i].Data;
-                            if (b.levelf.Rank > 0)
-                            {
-                                if (b.levelf.DataType == "uint16")
-                                {
-                                    AForge.Bitmap bm = new AForge.Bitmap((int)b.levelf.Shape[b.levelf.Rank - 1], (int)b.levelf.Shape[b.levelf.Rank - 2], AForge.PixelFormat.Format16bppGrayScale,
-                                        rawBytes, new AForge.ZCT(coord.T, coord.C, coord.Z), "");
-                                    b.Buffers.Add(bm);
-                                }
-                                else if (b.levelf.DataType == "uint8")
-                                {
-                                    AForge.Bitmap bm = new AForge.Bitmap((int)b.levelf.Shape[b.levelf.Rank - 1], (int)b.levelf.Shape[b.levelf.Rank - 2], AForge.PixelFormat.Format8bppIndexed,
-                                        rawBytes, new AForge.ZCT(coord.T, coord.C, coord.Z), "");
-                                    b.Buffers.Add(bm);
-                                }
-                            }
-                        }
-                    }
-                }
-                else if(ax == 0)
-                {
-                    b.planes.Add(await b.levelf.ReadPlaneAsync(coord.Z, coord.C, coord.T));
-                    for (int i = 0; i < levels.Result.Count; i++)
+                    var vrr = await b.levelf.ReadTileAsync(originX, originY, tileWidth, tileHeight, coord.Z, coord.C, coord.T);
+                    b.planes.Add(vrr);
+                    
+                    if (b.levelf.DataType == "uint16")
                     {
-                        byte[] rawBytes = b.planes[i].Data;
-                        if (b.levelf.Rank > 0)
-                        {
-                            if (b.levelf.DataType == "uint16")
-                            {
-                                AForge.Bitmap bm = new AForge.Bitmap((int)b.levelf.Shape[b.levelf.Rank - 1], (int)b.levelf.Shape[b.levelf.Rank - 2], AForge.PixelFormat.Format16bppGrayScale,
-                                    rawBytes, new AForge.ZCT(coord.Z, coord.C, coord.T), "");
-                                b.Buffers.Add(bm);
-                            }
-                            else if (b.levelf.DataType == "uint8")
-                            {
-                                AForge.Bitmap bm = new AForge.Bitmap((int)b.levelf.Shape[b.levelf.Rank - 1], (int)b.levelf.Shape[b.levelf.Rank - 2], AForge.PixelFormat.Format8bppIndexed,
-                                    rawBytes, new AForge.ZCT(coord.Z, coord.C, coord.T), "");
-                                b.Buffers.Add(bm);
-                            }
-                        }
+                        Resolution res = new Resolution(vrr.Width, vrr.Height, PixelFormat.Format16bppGrayScale, 1, 1, 1, 0, 0, 0);
+                        b.Resolutions.Add(res);
+                        AForge.Bitmap bm = new AForge.Bitmap((int)b.levelf.Shape[b.levelf.Rank - 2], (int)b.levelf.Shape[b.levelf.Rank - 1], AForge.PixelFormat.Format16bppGrayScale,
+                            b.planes[0].Data, new AForge.ZCT(coord.Z, coord.C, coord.T), "");
+                        AForge.Bitmap rgb = bm.GetImageRGBA(true,true);
+                        b.Buffers.Add(rgb);
+                        
+                    }
+                    else if (b.levelf.DataType == "uint8")
+                    {
+                        Resolution res = new Resolution(vrr.Width, vrr.Height, PixelFormat.Format8bppIndexed, 1, 1, 1, 0, 0, 0);
+                        b.Resolutions.Add(res);
+                        AForge.Bitmap bm = new AForge.Bitmap((int)b.levelf.Shape[b.levelf.Rank - 2], (int)b.levelf.Shape[b.levelf.Rank - 1], AForge.PixelFormat.Format8bppIndexed,
+                            b.planes[0].Data, new AForge.ZCT(coord.Z, coord.C, coord.T), "");
+                        AForge.Bitmap rgb = bm.GetImageRGBA(true);
+                        b.Buffers.Add(rgb);
                     }
                 }
+                else
+                {
+                    b.planes.Add(await b.levelf.ReadPlaneAsync(coord.T, coord.C, coord.Z));
+                    if (b.levelf.DataType == "uint16")
+                    {
+                        AForge.Bitmap bm = new AForge.Bitmap((int)b.levelf.Shape[b.levelf.Rank - 1], (int)b.levelf.Shape[b.levelf.Rank - 2], AForge.PixelFormat.Format16bppGrayScale,
+                            b.planes[0].Data, new AForge.ZCT(coord.Z, coord.C, coord.T), "");
+                        b.Buffers.Add(bm);
+                    }
+                    else if (b.levelf.DataType == "uint8")
+                    {
+                        AForge.Bitmap bm = new AForge.Bitmap((int)b.levelf.Shape[b.levelf.Rank - 1], (int)b.levelf.Shape[b.levelf.Rank - 2], AForge.PixelFormat.Format8bppIndexed,
+                            b.planes[0].Data, new AForge.ZCT(coord.Z, coord.C, coord.T), "");
+                        b.Buffers.Add(bm);
+                    }
+                }
+                b.Coordinate = coord;
+                b.Channels.Add(new Channel(0, 8, 4));
+                return b;
             }
             else
             if (file.StartsWith("s3"))
@@ -7357,7 +7351,7 @@ namespace BioLib
                     zarrReader = OmeZarrReader.OpenAsync(b.Filename).Result;
                     multiscale = zarrReader.AsMultiscaleImage();
                     levelf = await multiscale.OpenResolutionLevelAsync(level);
-                    var planef = await levelf.ReadTilePixelsAsync(tilex, tiley, tileSizeX, tileSizeY, b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
+                    var planef = await levelf.ReadTileAsync(tilex, tiley, tileSizeX, tileSizeY, b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
                     return new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, planef.Data,b.Coordinate, index);
             }
             if (b.Tag != null)
