@@ -2026,6 +2026,7 @@ namespace BioLib
         public long loadTimeMS = 0;
         public long loadTimeTicks = 0;
         public bool selected = false;
+        
         public Statistics Statistics
         {
             get
@@ -4964,9 +4965,10 @@ namespace BioLib
         }
         public OmeZarrReader zarrReader;
         public MultiscaleNode multiscale;
-        private MultiscaleNode imagef;
-        private List<ResolutionLevelNode> levels;
-        private List<PlaneResult> planes = new List<PlaneResult>();
+        public MultiscaleNode imagef;
+        public ResolutionLevelNode levelf;
+        public List<ResolutionLevelNode> levels;
+        public List<PlaneResult> planes = new List<PlaneResult>();
         /// The OpenFile function opens a BioImage file, reads its metadata, and loads the image
         /// data into a BioImage object.
         /// 
@@ -5294,105 +5296,147 @@ namespace BioLib
             return b;
         }
 
-        public async static Task<BioImage> OpenURL(string file, ZCT coord, int originX, int originY, int tileWidth, int tileHeight)
-        {
-            if(file.StartsWith("https://"))
+        public static async Task<BioImage> OpenURL(
+        string url,
+        ZCT coord,
+        int originX,
+        int originY,
+        int tileWidth,
+        int tileHeight)
             {
-                BioImage b = new BioImage(Path.GetFileName(file));
-                if(b.zarrReader == null)
-                b.zarrReader = OmeZarrReader.OpenAsync(file).Result;
-                int r = b.zarrReader.AsMultiscaleImage().Multiscales.Rank;
-                if (b.imagef == null)
-                    b.imagef = b.zarrReader.AsMultiscaleImage();
-                b.levels = b.imagef.OpenAllResolutionLevelsAsync().Result.ToList();
-                for (int i = 0; i < b.levels.Count; i++)
+                if (!url.StartsWith("https://"))
+                    throw new NotImplementedException("Only HTTPS OME-Zarr supported.");
+
+                var b = new BioImage(Path.GetFileName(url));
+
+                // -----------------------------
+                // Open reader (async SAFE)
+                // -----------------------------
+                b.zarrReader ??= await OmeZarrReader.OpenAsync(url);
+
+                b.imagef ??= b.zarrReader.AsMultiscaleImage();
+
+                b.levels = (await b.imagef
+                    .OpenAllResolutionLevelsAsync())
+                    .ToList();
+
+                if (b.levels.Count == 0)
+                    throw new Exception("OME-Zarr contains no resolution levels.");
+
+                // -----------------------------
+                // Determine datatype once
+                // -----------------------------
+                string dtype = b.levels[0].DataType;
+
+                PixelFormat pixelFormat = dtype switch
                 {
-                    if (b.levels.Count > 1)
-                    {
-                        var vrr = await b.levels[i].ReadTileAsync(originX, originY, tileWidth, tileHeight, coord.Z, coord.C, coord.T);
-                        b.planes.Add(vrr);
-                        if (vrr.DataType == "uint16")
-                        {
-                            Resolution res = new Resolution(vrr.Width, vrr.Height, PixelFormat.Format16bppGrayScale, 1, 1, 1, 0, 0, 0);
-                            b.Resolutions.Add(res);
-                            if (i == 0)
-                            {
-                                AForge.Bitmap bm = new AForge.Bitmap((int)b.levels[i].Shape[b.levels[i].Rank - 2], (int)b.levels[i].Shape[b.levels[i].Rank - 1], AForge.PixelFormat.Format16bppGrayScale,
-                                    b.planes[0].Data, new AForge.ZCT(coord.Z, coord.C, coord.T), "");
-                                AForge.Bitmap rgb = bm.GetImageRGBA(true, true);
-                                b.Buffers.Add(rgb);
-                            }
-                        }
-                        else if (vrr.DataType == "uint8")
-                        {
-                            Resolution res = new Resolution(vrr.Width, vrr.Height, PixelFormat.Format8bppIndexed, 1, 1, 1, 0, 0, 0);
-                            b.Resolutions.Add(res);
-                            if (i == 0)
-                            {
-                                AForge.Bitmap bm = new AForge.Bitmap((int)b.levels[i].Shape[b.levels[i].Rank - 2], (int)b.levels[i].Shape[b.levels[i].Rank - 1], AForge.PixelFormat.Format8bppIndexed,
-                                b.planes[0].Data, new AForge.ZCT(coord.Z, coord.C, coord.T), "");
-                                AForge.Bitmap rgb = bm.GetImageRGBA(true);
-                                b.Buffers.Add(rgb);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        var v = await b.levels[i].ReadPlaneAsync(coord.T, coord.C, coord.Z);
-                        b.planes.Add(v);
-                        if (v.DataType == "uint16")
-                        {
-                            Resolution res = new Resolution(v.Width, v.Height, PixelFormat.Format16bppGrayScale, 1, 1, 1, 0, 0, 0);
-                            AForge.Bitmap bm = new AForge.Bitmap((int)b.levels[i].Shape[b.levels[i].Rank - 1], (int)b.levels[i].Shape[b.levels[i].Rank - 2], AForge.PixelFormat.Format16bppGrayScale,
-                                b.planes[0].Data, new AForge.ZCT(coord.Z, coord.C, coord.T), "");
-                            b.Buffers.Add(bm);
-                        }
-                        else if (v.DataType == "uint8")
-                        {
-                            Resolution res = new Resolution(v.Width, v.Height, PixelFormat.Format8bppIndexed, 1, 1, 1, 0, 0, 0);
-                            AForge.Bitmap bm = new AForge.Bitmap((int)b.levels[i].Shape[b.levels[i].Rank - 1], (int)b.levels[i].Shape[b.levels[i].Rank - 2], AForge.PixelFormat.Format8bppIndexed,
-                                b.planes[0].Data, new AForge.ZCT(coord.Z, coord.C, coord.T), "");
-                            b.Buffers.Add(bm);
-                        }
-                    }
-                }
-                if(b.Resolutions.Count > 1)
+                    "uint8" => PixelFormat.Format8bppIndexed,
+                    "uint16" => PixelFormat.Format16bppGrayScale,
+                    _ => throw new UnknownFormatException($"Unsupported datatype {dtype}")
+                };
+
+                // -----------------------------
+                // Load pyramid metadata
+                // -----------------------------
+                foreach (var level in b.levels)
                 {
-                    var si = new SlideImage();
-                    si.BioImage = b;
-                    b.SlideBase = new SlideBase(b,si);
+                    int width = GetAxisSize(level, "x");
+                    int height = GetAxisSize(level, "y");
+
+                    b.Resolutions.Add(new Resolution(
+                        width,
+                        height,
+                        pixelFormat,
+                        1, 1, 1, 0, 0, 0));
                 }
+
+                // -----------------------------
+                // Read first tile (display)
+                // -----------------------------
+                var firstLevel = b.levels[0];
+
+                PlaneResult tile =
+                    await firstLevel.ReadTileAsync(
+                        originX,
+                        originY,
+                        tileWidth,
+                        tileHeight,
+                        coord.Z,
+                        coord.C,
+                        coord.T);
+
+                var bm = CreateAForgeBitmap(
+                    tile.Width,
+                    tile.Height,
+                    pixelFormat,
+                    tile.Data,
+                    coord);
+
+                b.Buffers.Add(bm.GetImageRGBA(true, true));
+
+                // -----------------------------
+                // Slide image support
+                // -----------------------------
+                if (b.Resolutions.Count > 1)
+                {
+                    var si = new SlideImage { BioImage = b };
+                    b.SlideBase = new SlideBase(b, si);
+                }
+
+                // -----------------------------
+                // Channels
+                // -----------------------------
+                b.Channels.Add(pixelFormat switch
+                {
+                    PixelFormat.Format8bppIndexed =>
+                        new Channel(0, 8, 1),
+
+                    PixelFormat.Format16bppGrayScale =>
+                        new Channel(0, 16, 2),
+
+                    _ => throw new NotSupportedException()
+                });
+
+                // -----------------------------
+                // Dimension sizes (AXIS SAFE)
+                // -----------------------------
+                b.sizeZ = GetAxisSize(firstLevel, "z", 1);
+                b.sizeC = GetAxisSize(firstLevel, "c", 1);
+                b.sizeT = GetAxisSize(firstLevel, "t", 1);
+
+                b.UpdateCoords(b.sizeZ, b.sizeC, b.sizeT);
                 b.Coordinate = coord;
-                b.Channels.Add(new Channel(0, 8, 4));
-                if (b.levels[0].Shape.Length == 3)
-                {
-                    b.sizeZ = (int)b.levels[0].Shape[0];
-                    b.sizeC = 1;
-                    b.sizeT = 1;
-                }
-                else if (b.levels[0].Shape.Length == 4)
-                {
-                    b.sizeZ = (int)b.levels[0].Shape[1];
-                    b.sizeC = (int)b.levels[0].Shape[0];
-                    b.sizeT = 1;
-                }
-                else if (b.levels[0].Shape.Length == 5)
-                {
-                    b.sizeZ = (int)b.levels[0].Shape[2];
-                    b.sizeC = (int)b.levels[0].Shape[1];
-                    b.sizeT = (int)b.levels[0].Shape[0];
-                }
-                b.UpdateCoords(b.sizeZ,b.sizeC,b.sizeT);
+
                 return b;
             }
-            else
-            if (file.StartsWith("s3"))
-            {
-                throw new NotImplementedException();
-            }
-            throw new NotImplementedException();
+        static AForge.Bitmap CreateAForgeBitmap(
+        int width,
+        int height,
+        PixelFormat px,
+        byte[] data,
+        ZCT coord)
+        {
+            return new AForge.Bitmap(
+                width,
+                height,
+                px,
+                data,
+                new AForge.ZCT(coord.Z, coord.C, coord.T),
+                "");
         }
+        static int GetAxisSize(
+        ResolutionLevelNode level,
+        string axis,
+        int defaultValue = 0)
+            {
+                var axes = level.EffectiveAxes;
 
+                for (int i = 0; i < axes.Length; i++)
+                    if (axes[i].Name == axis)
+                        return (int)level.Shape[i];
+
+                return defaultValue;
+        }
         /// > The function checks if the image is a Tiff image and if it is, it checks if the image is a
         /// series of images
         /// 
