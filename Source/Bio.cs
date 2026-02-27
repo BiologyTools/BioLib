@@ -1,4 +1,4 @@
-﻿
+
 using AForge;
 using AForge.Imaging;
 using AForge.Imaging.Filters;
@@ -3564,6 +3564,8 @@ namespace BioLib
         /* Creating a new BioImage object. */
         public BioImage(string file)
         {
+            if (file == null || file=="")
+                file = System.IO.Path.GetRandomFileName() + ".ome.tif";
             id = file;
             this.file = file;
             filename = Images.GetImageName(id);
@@ -4848,12 +4850,12 @@ namespace BioLib
         public static async Task<BioImage> OpenFile(string file, ZCT coord)
         {
             if (file.StartsWith("https://"))
-                return await OpenURL(file, coord, 0,0,800,600);
-            return OpenFileAsync(file, 0, true, true).Result;
+                return await OpenURL(file, coord, 0, 0, 800, 600).ConfigureAwait(false);
+            return await OpenFileAsync(file, 0, true, true).ConfigureAwait(false);
         }
         public static async Task<BioImage> OpenFile(string file, bool tab)
         {
-            return OpenFileAsync(file, 0, tab, true).Result;
+            return await OpenFileAsync(file, 0, tab, true).ConfigureAwait(false);
         }
         /// It opens a TIFF file and returns a BioImage object
         /// 
@@ -5312,12 +5314,12 @@ namespace BioLib
                 // -----------------------------
                 // Open reader (async SAFE)
                 // -----------------------------
-                b.zarrReader ??= await OmeZarrReader.OpenAsync(url);
+                b.zarrReader ??= await OmeZarrReader.OpenAsync(url).ConfigureAwait(false);
 
                 b.imagef ??= b.zarrReader.AsMultiscaleImage();
 
                 b.levels = (await b.imagef
-                    .OpenAllResolutionLevelsAsync())
+                    .OpenAllResolutionLevelsAsync().ConfigureAwait(false))
                     .ToList();
 
                 if (b.levels.Count == 0)
@@ -5363,7 +5365,7 @@ namespace BioLib
                         tileHeight,
                         coord.Z,
                         coord.C,
-                        coord.T);
+                        coord.T).ConfigureAwait(false);
 
                 var bm = CreateAForgeBitmap(
                     tile.Width,
@@ -5372,7 +5374,7 @@ namespace BioLib
                     tile.Data,
                     coord);
 
-                b.Buffers.Add(bm.GetImageRGBA(true, true));
+                b.Buffers.Add(bm.GetImageRGBA(true));
 
                 // -----------------------------
                 // Slide image support
@@ -5382,7 +5384,7 @@ namespace BioLib
                     var si = new SlideImage { BioImage = b };
                     b.SlideBase = new SlideBase(b, si);
                 }
-
+                
                 // -----------------------------
                 // Channels
                 // -----------------------------
@@ -5406,7 +5408,7 @@ namespace BioLib
 
                 b.UpdateCoords(b.sizeZ, b.sizeC, b.sizeT);
                 b.Coordinate = coord;
-
+                
                 return b;
             }
         static AForge.Bitmap CreateAForgeBitmap(
