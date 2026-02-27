@@ -2727,7 +2727,7 @@ namespace BioLib
         {
             get
             {
-                if (Type == ImageType.pyramidal)
+                if (Type == ImageType.pyramidal || (Type == ImageType.zarr && this.Resolutions.Count > 1))
                     return true;
                 else
                     return false;
@@ -4847,7 +4847,7 @@ namespace BioLib
         /// @param file The path to the file to open.
         /// 
         /// @return A BioImage object.
-        public static async Task<BioImage> OpenFile(string file, ZCT coord)
+        public static async Task<BioImage> OpenFile(string file, ZCT coord = new ZCT())
         {
             if (file.StartsWith("https://"))
                 return await OpenURL(file, coord, 0, 0, 800, 600).ConfigureAwait(false);
@@ -5222,7 +5222,7 @@ namespace BioLib
                         {
                             for (int z = 0; z < b.SizeZ; z++)
                             {
-                                Bitmap bmp = b.GetTile(b, b.GetFrameIndex(z, c, t), b.level, tileX, tileY, tileSizeX, tileSizeY).Result;
+                                Bitmap bmp = b.GetTile(b.GetFrameIndex(z, c, t), b.level, tileX, tileY, tileSizeX, tileSizeY).Result;
                                 b.Buffers.Add(bmp);
                                 bmp.Stats = Statistics.FromBytes(bmp);
                             }
@@ -5374,7 +5374,7 @@ namespace BioLib
                     tile.Data,
                     coord);
 
-                b.Buffers.Add(bm.GetImageRGBA(true));
+                b.Buffers.Add(bm.GetImageRGBA(true,true));
 
                 // -----------------------------
                 // Slide image support
@@ -7283,7 +7283,7 @@ namespace BioLib
                 for (int p = 0; p < pages; p++)
                 {
                     Progress = ((float)p / (float)pages) * 100;
-                    b.Buffers.Add(b.GetTile(b, p, b.Level, tilex, tiley, tileSizeX, tileSizeY).Result);
+                    b.Buffers.Add(b.GetTile(p, b.Level, tilex, tiley, tileSizeX, tileSizeY).Result);
                 }
             }
             int pls;
@@ -7405,9 +7405,10 @@ namespace BioLib
         /// @param tileSizeY the height of the tile
         /// 
         /// @return A Bitmap object.
-        public async Task<Bitmap> GetTile(BioImage b, int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
+        public async Task<Bitmap> GetTile(int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
         {
-            if(b.Filename.Contains(".zarr") || b.Type == ImageType.zarr)
+            BioImage b = this;
+            if (b.Filename.Contains(".zarr") || b.Type == ImageType.zarr)
             {
                 b.Type = ImageType.pyramidal;
                 if (zarrReader == null)
@@ -7788,12 +7789,16 @@ namespace BioLib
                 await OpenAsync(file, OME, tab, images, 0);
             }
         }
+        public static void Open(string file)
+        {
+            OpenFile(file, true).Wait();
+        }
         /// It opens a file
         /// 
         /// @param file The file to open.
-        public static void Open(string file, ZCT coord)
+        public static void Open(string file, int z = 0, int c = 0, int t = 0)
         {
-            OpenFile(file,coord);
+            OpenFile(file, true).Wait();
         }
         /// It opens a file
         /// 
@@ -7802,7 +7807,7 @@ namespace BioLib
         {
             foreach (string file in files)
             {
-                Open(file,coord);
+                Open(file, coord.Z, coord.C, coord.T);
             }
         }
         /// It takes a list of files, opens them, and then combines them into a single BioImage object
@@ -8389,7 +8394,7 @@ namespace BioLib
                     if(openslideBase != null)
                     {
                         // BioLib-style tile fetch (adjust if needed)
-                        bmp = BitmapToSKImage(GetTile(this, 0, level, tileX, tileY, this.OpenSlideBase.Schema.GetTileWidth(level), this.OpenSlideBase.Schema.GetTileHeight(level)).Result);
+                        bmp = BitmapToSKImage(GetTile(0, level, tileX, tileY, this.OpenSlideBase.Schema.GetTileWidth(level), this.OpenSlideBase.Schema.GetTileHeight(level)).Result);
                     }
                     
                 }
