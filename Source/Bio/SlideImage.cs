@@ -1,4 +1,5 @@
 ﻿using AForge;
+using GLib;
 using OpenSlideGTK;
 using OpenSlideGTK.Interop;
 using System;
@@ -246,7 +247,7 @@ namespace BioLib
         /// <param name="height">The height of the region. Must be non-negative.</param>
         /// <param name="data">The BGRA pixel data of this region.</param>
         /// <returns></returns>
-        public unsafe bool TryReadRegion(int level, long x, long y, long width, long height, out byte[] data, ZCT zct)
+        public bool TryReadRegion(int level, long x, long y, long width, long height, out byte[] data, ZCT zct)
         {
             data = BioImage.GetTile(BioImage.GetFrameIndex(zct.Z,zct.C,zct.T), level, (int)x, (int)y, (int)width, (int)height).Result.Bytes;
             if (data == null)
@@ -254,7 +255,21 @@ namespace BioLib
             else
                 return true;
         }
-
+        /// <summary>
+        /// Copy pre-multiplied BGRA data from a whole slide image.
+        /// </summary>
+        /// <param name="level">The desired level.</param>
+        /// <param name="x">The top left x-coordinate, in the level 0 reference frame.</param>
+        /// <param name="y">The top left y-coordinate, in the level 0 reference frame.</param>
+        /// <param name="width">The width of the region. Must be non-negative.</param>
+        /// <param name="height">The height of the region. Must be non-negative.</param>
+        /// <param name="data">The BGRA pixel data of this region.</param>
+        /// <returns></returns>
+        public async Task<byte[]> TryReadRegionAsync(int level, long x, long y, long width, long height, ZCT zct)
+        {
+            Bitmap bts = await BioImage.GetTile(BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height);
+            return bts.Bytes;
+        }
         ///<summary>
         ///Close an OpenSlide object.
         ///</summary>
@@ -307,12 +322,12 @@ namespace BioLib
         {
             try
             {
-                byte[] bts;
-                TryReadRegion(level, curLevelOffsetXPixel, curLevelOffsetYPixel, curTileWidth, curTileHeight,out bts,coord);
+                byte[] bts = await TryReadRegionAsync(level, curLevelOffsetXPixel, curLevelOffsetYPixel, curTileWidth, curTileHeight,coord);
                 return bts;
             }
             catch (Exception e)
             {
+                Console.WriteLine(e.Message + " " + e.StackTrace);  
                 return null;
             }
         }

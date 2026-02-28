@@ -2727,7 +2727,7 @@ namespace BioLib
         {
             get
             {
-                if (Type == ImageType.pyramidal || (Type == ImageType.zarr && this.Resolutions.Count > 1))
+                if (Type == ImageType.pyramidal || (Resolutions.Count > 1))
                     return true;
                 else
                     return false;
@@ -5384,7 +5384,9 @@ namespace BioLib
                     var si = new SlideImage { BioImage = b };
                     b.SlideBase = new SlideBase(b, si);
                 }
-                
+
+                b.Volume = new VolumeD(new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ), new Point3D(b.SizeX * b.PhysicalSizeX, b.SizeY * b.PhysicalSizeY, b.SizeZ * b.PhysicalSizeZ));
+
                 // -----------------------------
                 // Channels
                 // -----------------------------
@@ -5408,7 +5410,11 @@ namespace BioLib
 
                 b.UpdateCoords(b.sizeZ, b.sizeC, b.sizeT);
                 b.Coordinate = coord;
-                
+                AutoThreshold(b, false);
+                if (b.bitsPerPixel > 8)
+                    b.StackThreshold(true);
+                else
+                    b.StackThreshold(false);
                 return b;
             }
         static AForge.Bitmap CreateAForgeBitmap(
@@ -7410,13 +7416,13 @@ namespace BioLib
             BioImage b = this;
             if (b.Filename.Contains(".zarr") || b.Type == ImageType.zarr)
             {
-                b.Type = ImageType.pyramidal;
                 if (zarrReader == null)
-                    zarrReader = OmeZarrReader.OpenAsync(b.Filename).Result;
-                    multiscale = zarrReader.AsMultiscaleImage();
-                    levels = multiscale.OpenAllResolutionLevelsAsync().Result.ToList();
-                    var planef = await levels[0].ReadTileAsync(tilex, tiley, tileSizeX, tileSizeY, b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
-                    return new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, planef.Data,b.Coordinate, index);
+                zarrReader = OmeZarrReader.OpenAsync(b.Filename).Result;
+                multiscale = zarrReader.AsMultiscaleImage();
+                levels = multiscale.OpenAllResolutionLevelsAsync().Result.ToList();
+                var planef = await levels[0].ReadTileAsync(tilex, tiley, tileSizeX, tileSizeY, b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
+                if(planef.DataType == "uint16")
+                return new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format16bppGrayScale, planef.Data,b.Coordinate, index);
             }
             if (b.Tag != null)
             {
@@ -9298,7 +9304,7 @@ namespace BioLib
         /// 
         /// @param BioImage This is the image object that contains the image data.
         /// @param updateImageStats if true, the image stats will be updated.
-        public static void AutoThreshold(BioImage b, bool updateImageStats)
+        public static void AutoThreshold(BioImage b, bool updateImageStats = true)
         {
             bstats = b;
             Statistics statistics = null;
@@ -9343,6 +9349,7 @@ namespace BioLib
                         }
                         else
                             ind = b.GetFrameIndex(z, c, t);
+                        if(b.Buffers.Count > ind)
                         if (b.Buffers[ind].RGBChannelsCount == 1)
                             sts[0].AddStatistics(b.Buffers[ind].Stats[0]);
                         else
