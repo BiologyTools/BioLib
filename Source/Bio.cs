@@ -5311,9 +5311,11 @@ namespace BioLib
             {
                 if (!url.StartsWith("https://"))
                     throw new NotImplementedException("Only HTTPS OME-Zarr supported.");
-
-                var b = new BioImage(Path.GetFileName(url));
-
+                if (url.EndsWith("/"))
+                url = url.Remove(url.LastIndexOf('/'), 1);
+                string zn = Path.GetFileName(url);
+                var b = new BioImage(zn);
+                
                 // -----------------------------
                 // Open reader (async SAFE)
                 // -----------------------------
@@ -5411,6 +5413,7 @@ namespace BioLib
                 b.sizeC = GetAxisSize(firstLevel, "c", 1);
                 b.sizeT = GetAxisSize(firstLevel, "t", 1);
 
+
                 b.UpdateCoords(b.sizeZ, b.sizeC, b.sizeT);
                 b.Coordinate = coord;
                 AutoThreshold(b, false);
@@ -5418,6 +5421,17 @@ namespace BioLib
                     b.StackThreshold(true);
                 else
                     b.StackThreshold(false);
+                Resolution lr;
+                int l = b.Resolutions.Count-1;
+                for (int i = b.Resolutions.Count-1; i > 0; i--)
+                {
+                    Resolution res = b.Resolutions[i];
+                    if (res.SizeX < tileWidth || res.SizeY < tileHeight)
+                    {
+                        l--;
+                    }
+                }
+                b.Level = l;
                 return b;
             }
         static AForge.Bitmap CreateAForgeBitmap(
@@ -7426,7 +7440,12 @@ namespace BioLib
                 if(levels == null)
                 levels = multiscale.OpenAllResolutionLevelsAsync().Result.ToList();
                 var planef = await levels[level].ReadTileAsync(tilex, tiley, tileSizeX, tileSizeY, b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
-                return new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format16bppGrayScale, planef.Data,b.Coordinate, index).GetImageRGBA();
+                if (planef.DataType == "uint16")
+                    return new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format16bppGrayScale, planef.Data, b.Coordinate, index).GetImageRGBA();
+                else if (planef.DataType == "uint8")
+                    return new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format8bppIndexed, planef.Data, b.Coordinate, index).GetImageRGBA();
+                else
+                    throw new NotSupportedException(planef.DataType + " is not supported.");
             }
             if (b.Tag != null)
             {
