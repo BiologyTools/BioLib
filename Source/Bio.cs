@@ -1998,8 +1998,11 @@ namespace BioLib
         {
             get
             {
-                if(filename.Contains(".zarr"))
+                if (filename.Contains(".zarr"))
+                {
                     this.Type = ImageType.zarr;
+                    return filename;
+                }
                 if (filename == null || filename == "")
                     return Type.ToString() + ".ome.tif";
                 return filename;
@@ -5374,7 +5377,7 @@ namespace BioLib
                     tile.Data,
                     coord);
 
-                b.Buffers.Add(bm.GetImageRGBA(true,true));
+                b.Buffers.Add(bm.GetImageRGBA());
 
                 // -----------------------------
                 // Slide image support
@@ -7418,11 +7421,12 @@ namespace BioLib
             {
                 if (zarrReader == null)
                 zarrReader = OmeZarrReader.OpenAsync(b.Filename).Result;
+                if(multiscale == null)
                 multiscale = zarrReader.AsMultiscaleImage();
+                if(levels == null)
                 levels = multiscale.OpenAllResolutionLevelsAsync().Result.ToList();
-                var planef = await levels[0].ReadTileAsync(tilex, tiley, tileSizeX, tileSizeY, b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
-                if(planef.DataType == "uint16")
-                return new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format16bppGrayScale, planef.Data,b.Coordinate, index);
+                var planef = await levels[level].ReadTileAsync(tilex, tiley, tileSizeX, tileSizeY, b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
+                return new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format16bppGrayScale, planef.Data,b.Coordinate, index).GetImageRGBA();
             }
             if (b.Tag != null)
             {
