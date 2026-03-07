@@ -44,6 +44,7 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using static org.fusesource.jansi.@internal.Kernel32;
 using Bitmap = AForge.Bitmap;
 using Channel = AForge.Channel;
 using Color = AForge.Color;
@@ -1888,7 +1889,8 @@ namespace BioLib
             public string Name;
             public void SaveZarr(string path, BioImage b)
             {
-                BioImageDescriptor descriptor = new BioImageDescriptor(b.SizeX,b.SizeY,b.Coordinate);
+                OmeZarr.Core.ZCT co = new OmeZarr.Core.ZCT(b.Coordinate.Z, b.Coordinate.C, b.Coordinate.T);
+                BioImageDescriptor descriptor = new BioImageDescriptor(b.SizeX,b.SizeY,co);
                 OmeZarrWriter.CreateAsync(path, descriptor);
             }
             public WellPlate(BioImage b)
@@ -4858,6 +4860,8 @@ namespace BioLib
         }
         public static async Task<BioImage> OpenFile(string file, bool tab)
         {
+            if (file.StartsWith("https://"))
+                return await OpenURL(file, new ZCT(), 0, 0, 800, 600).ConfigureAwait(false);
             return await OpenFileAsync(file, 0, tab, true).ConfigureAwait(false);
         }
         /// It opens a TIFF file and returns a BioImage object
@@ -5321,8 +5325,8 @@ namespace BioLib
                 // -----------------------------
                 b.zarrReader ??= await OmeZarrReader.OpenAsync(url).ConfigureAwait(false);
 
-                b.imagef ??= b.zarrReader.AsMultiscaleImage();
-
+                b.imagef ??= await b.zarrReader.AsMultiscaleImageAsync();
+                
                 b.levels = (await b.imagef
                     .OpenAllResolutionLevelsAsync().ConfigureAwait(false))
                     .ToList();
@@ -7434,18 +7438,21 @@ namespace BioLib
             if (b.Filename.Contains(".zarr") || b.Type == ImageType.zarr)
             {
                 if (zarrReader == null)
-                zarrReader = OmeZarrReader.OpenAsync(b.Filename).Result;
-                if(multiscale == null)
-                multiscale = zarrReader.AsMultiscaleImage();
+                zarrReader = await OmeZarrReader.OpenAsync(b.Filename);
+                if (multiscale == null)
+                    multiscale = await zarrReader.AsMultiscaleImageAsync();
                 if(levels == null)
-                levels = multiscale.OpenAllResolutionLevelsAsync().Result.ToList();
+                levels = (await multiscale.OpenAllResolutionLevelsAsync()).ToList();
                 var planef = await levels[level].ReadTileAsync(tilex, tiley, tileSizeX, tileSizeY, b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
+                Bitmap bm;
                 if (planef.DataType == "uint16")
-                    return new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format16bppGrayScale, planef.Data, b.Coordinate, index).GetImageRGBA();
+                    bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format16bppGrayScale, planef.Data, b.Coordinate, index);
                 else if (planef.DataType == "uint8")
-                    return new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format8bppIndexed, planef.Data, b.Coordinate, index).GetImageRGBA();
+                    bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format8bppIndexed, planef.Data, b.Coordinate, index);
                 else
                     throw new NotSupportedException(planef.DataType + " is not supported.");
+                Bitmap bmp = bm.GetImageRGBA();
+                return bmp;
             }
             if (b.Tag != null)
             {

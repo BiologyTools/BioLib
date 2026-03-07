@@ -340,6 +340,7 @@ namespace BioLib
                     stitch.AddTile(new Stitch.GpuTile(t,data));
                 }
             }
+            return;
         }
         public async Task<byte[]> GetSlice(SliceInfo sliceInfo, PointD PyramidalOrign, AForge.Size PyramidalSize)
         {
@@ -637,7 +638,7 @@ namespace BioLib
             var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
             var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
 
-            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, new ZCT());
+            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, coord);
             cache.AddTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord), bgraData);
             return bgraData;
         }
