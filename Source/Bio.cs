@@ -2732,7 +2732,7 @@ namespace BioLib
         {
             get
             {
-                if (Type == ImageType.pyramidal || (Resolutions.Count > 1))
+                if (Type == ImageType.pyramidal || (Resolutions.Count > 1) || Type == ImageType.zarr)
                     return true;
                 else
                     return false;
