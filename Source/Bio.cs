@@ -4871,7 +4871,7 @@ namespace BioLib
         /// @return A BioImage object.
         public static async Task<BioImage> OpenFileAsync(string file, int series, bool tab, bool addToImages)
         {
-            BioImage bm =  await OpenFile(file, series, tab, addToImages, false, 0, 0, 0, 0);
+            BioImage bm =  await OpenFile(file, series, tab, addToImages, false, 0, 0, 800, 600);
             return bm;
         }
         static bool IsTiffTiled(string imagePath)
