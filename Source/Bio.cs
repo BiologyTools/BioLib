@@ -23,14 +23,13 @@ using ome.units.quantity;
 using ome.util;
 using ome.xml.model.primitives;
 using omero.model;
-using OmeZarr.Core.OmeZarr;
-using OmeZarr.Core.OmeZarr.Coordinates;
-using OmeZarr.Core.OmeZarr.Helpers;
-using OmeZarr.Core.OmeZarr.Nodes;
-using OmeZarr.Core.Zarr.Metadata;
+using ZarrNET;
+using ZarrNET.Core.OmeZarr.Coordinates;
+using ZarrNET.Core.OmeZarr.Nodes;
 using OpenSlideGTK;
 using Pango;
 using SkiaSharp;
+using sun.security.provider;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -44,7 +43,7 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using static org.fusesource.jansi.@internal.Kernel32;
+using OmeZarr.Core.OmeZarr;              // OmeZarrReader, MultiscaleNode
 using Bitmap = AForge.Bitmap;
 using Channel = AForge.Channel;
 using Color = AForge.Color;
@@ -54,6 +53,12 @@ using PixelFormat = AForge.PixelFormat;
 using Point = AForge.Point;
 using PointD = AForge.PointD;
 using Rectangle = AForge.Rectangle;
+using ZCT = AForge.ZCT;
+using OmeZarr.Core.OmeZarr.Helpers;
+using ZarrNET.Core.OmeZarr.Metadata;
+using ZarrNET.Core.OmeZarr;
+using ZarrNET.Core;
+using OmeZarr.Core.OmeZarr.Nodes;
 
 namespace BioLib
 {
@@ -1887,12 +1892,6 @@ namespace BioLib
             public PointD Origin;
             public string ID;
             public string Name;
-            public void SaveZarr(string path, BioImage b)
-            {
-                OmeZarr.Core.ZCT co = new OmeZarr.Core.ZCT(b.Coordinate.Z, b.Coordinate.C, b.Coordinate.T);
-                BioImageDescriptor descriptor = new BioImageDescriptor(b.SizeX,b.SizeY,co);
-                OmeZarrWriter.CreateAsync(path, descriptor);
-            }
             public WellPlate(BioImage b)
             {
                 ID = b.meta.getPlateID(b.series);
@@ -4854,13 +4853,13 @@ namespace BioLib
         /// @return A BioImage object.
         public static async Task<BioImage> OpenFile(string file, ZCT coord = new ZCT())
         {
-            if (file.StartsWith("https://"))
+            if (file.StartsWith("https://") || file.StartsWith("s3://"))
                 return await OpenURL(file, coord, 0, 0, 800, 600).ConfigureAwait(false);
             return await OpenFileAsync(file, 0, true, true).ConfigureAwait(false);
         }
         public static async Task<BioImage> OpenFile(string file, bool tab)
         {
-            if (file.StartsWith("https://"))
+            if (file.StartsWith("https://") || file.StartsWith("s3://"))
                 return await OpenURL(file, new ZCT(), 0, 0, 800, 600).ConfigureAwait(false);
             return await OpenFileAsync(file, 0, tab, true).ConfigureAwait(false);
         }
@@ -5003,11 +5002,11 @@ namespace BioLib
         /// is tiled.
         /// 
         /// @return The method is returning a BioImage object.
-        public static async Task<BioImage> OpenFile(string file, int series, bool tab, bool addToImages, bool tile, int tileX, int tileY, int tileSizeX, int tileSizeY)
+        public static async Task<BioImage> OpenFile(string file, int series, bool tab, bool addToImages, bool tile, int tileX, int tileY, int tileSizeX = 800, int tileSizeY = 600)
         {
             string fs = file.Replace("\\", "/");
             Console.WriteLine("Opening BioImage: " + file);
-            if(file.StartsWith("https://"))
+            if(file.StartsWith("https://") || file.StartsWith("s3://") || file.Contains(".zarr"))
                 return await BioImage.OpenURL(file,new ZCT(0,0,0),tileX,tileY,tileSizeX,tileSizeY);
             if (file.EndsWith(".npy"))
                 return BioImage.FromNumpy(file);
@@ -5306,138 +5305,257 @@ namespace BioLib
         }
 
         public static async Task<BioImage> OpenURL(
-        string url,
-        ZCT coord,
-        int originX,
-        int originY,
-        int tileWidth,
-        int tileHeight)
+    string url,
+    ZCT coord,
+    int originX,
+    int originY,
+    int tileWidth,
+    int tileHeight)
+        {
+            // -----------------------------------------------------------------
+            // Input cleanup
+            // -----------------------------------------------------------------
+
+            if (url.EndsWith("/"))
+                url = url.TrimEnd('/');
+
+            if (!url.StartsWith("https://") && !url.StartsWith("s3://") && !url.Contains(".zarr"))
+                throw new Exception("URL must start with https://, s3://, or contain .zarr ending.");
+
+            string zn = Path.GetFileName(url);
+            var b = new BioImage(zn);
+
+            // -----------------------------------------------------------------
+            // Open reader
+            // -----------------------------------------------------------------
+
+            b.zarrReader ??= await OmeZarrReader.OpenAsync(url).ConfigureAwait(false);
+            b.imagef ??= b.zarrReader.AsMultiscaleImage();
+
+            b.levels = (await b.imagef
+                .OpenAllResolutionLevelsAsync().ConfigureAwait(false))
+                .ToList();
+
+            if (b.levels.Count == 0)
+                throw new Exception("OME-Zarr contains no resolution levels.");
+
+            // -----------------------------------------------------------------
+            // Determine datatype from the highest resolution level
+            // -----------------------------------------------------------------
+
+            var firstLevel = b.levels[0];
+            string dtype = firstLevel.DataType;
+
+            PixelFormat pixelFormat = dtype switch
             {
-                if (!url.StartsWith("https://"))
-                    throw new NotImplementedException("Only HTTPS OME-Zarr supported.");
-                if (url.EndsWith("/"))
-                url = url.Remove(url.LastIndexOf('/'), 1);
-                string zn = Path.GetFileName(url);
-                var b = new BioImage(zn);
-                
-                // -----------------------------
-                // Open reader (async SAFE)
-                // -----------------------------
-                b.zarrReader ??= await OmeZarrReader.OpenAsync(url).ConfigureAwait(false);
+                "uint8" => PixelFormat.Format8bppIndexed,
+                "uint16" => PixelFormat.Format16bppGrayScale,
+                _ => throw new UnknownFormatException($"Unsupported datatype {dtype}")
+            };
 
-                b.imagef ??= await b.zarrReader.AsMultiscaleImageAsync();
-                
-                b.levels = (await b.imagef
-                    .OpenAllResolutionLevelsAsync().ConfigureAwait(false))
-                    .ToList();
+            // -----------------------------------------------------------------
+            // Load pyramid metadata from all resolution levels
+            // -----------------------------------------------------------------
 
-                if (b.levels.Count == 0)
-                    throw new Exception("OME-Zarr contains no resolution levels.");
+            foreach (var level in b.levels)
+            {
+                int width = GetAxisSize(level, "x");
+                int height = GetAxisSize(level, "y");
 
-                // -----------------------------
-                // Determine datatype once
-                // -----------------------------
-                string dtype = b.levels[0].DataType;
-
-                PixelFormat pixelFormat = dtype switch
-                {
-                    "uint8" => PixelFormat.Format8bppIndexed,
-                    "uint16" => PixelFormat.Format16bppGrayScale,
-                    _ => throw new UnknownFormatException($"Unsupported datatype {dtype}")
-                };
-
-                // -----------------------------
-                // Load pyramid metadata
-                // -----------------------------
-                foreach (var level in b.levels)
-                {
-                    int width = GetAxisSize(level, "x");
-                    int height = GetAxisSize(level, "y");
-
-                    b.Resolutions.Add(new Resolution(
-                        width,
-                        height,
-                        pixelFormat,
-                        1, 1, 1, 0, 0, 0));
-                }
-
-                // -----------------------------
-                // Read first tile (display)
-                // -----------------------------
-                var firstLevel = b.levels[0];
-
-                PlaneResult tile =
-                    await firstLevel.ReadTileAsync(
-                        originX,
-                        originY,
-                        tileWidth,
-                        tileHeight,
-                        coord.Z,
-                        coord.C,
-                        coord.T).ConfigureAwait(false);
-
-                var bm = CreateAForgeBitmap(
-                    tile.Width,
-                    tile.Height,
-                    pixelFormat,
-                    tile.Data,
-                    coord);
-
-                b.Buffers.Add(bm.GetImageRGBA());
-
-                // -----------------------------
-                // Slide image support
-                // -----------------------------
-                if (b.Resolutions.Count > 1)
-                {
-                    var si = new SlideImage { BioImage = b };
-                    b.SlideBase = new SlideBase(b, si);
-                }
-
-                b.Volume = new VolumeD(new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ), new Point3D(b.SizeX * b.PhysicalSizeX, b.SizeY * b.PhysicalSizeY, b.SizeZ * b.PhysicalSizeZ));
-
-                // -----------------------------
-                // Channels
-                // -----------------------------
-                b.Channels.Add(pixelFormat switch
-                {
-                    PixelFormat.Format8bppIndexed =>
-                        new Channel(0, 8, 1),
-
-                    PixelFormat.Format16bppGrayScale =>
-                        new Channel(0, 16, 2),
-
-                    _ => throw new NotSupportedException()
-                });
-
-                // -----------------------------
-                // Dimension sizes (AXIS SAFE)
-                // -----------------------------
-                b.sizeZ = GetAxisSize(firstLevel, "z", 1);
-                b.sizeC = GetAxisSize(firstLevel, "c", 1);
-                b.sizeT = GetAxisSize(firstLevel, "t", 1);
-
-
-                b.UpdateCoords(b.sizeZ, b.sizeC, b.sizeT);
-                b.Coordinate = coord;
-                AutoThreshold(b, false);
-                if (b.bitsPerPixel > 8)
-                    b.StackThreshold(true);
-                else
-                    b.StackThreshold(false);
-                Resolution lr;
-                int l = b.Resolutions.Count-1;
-                for (int i = b.Resolutions.Count-1; i > 0; i--)
-                {
-                    Resolution res = b.Resolutions[i];
-                    if (res.SizeX < tileWidth || res.SizeY < tileHeight)
-                    {
-                        l--;
-                    }
-                }
-                b.Level = l;
-                return b;
+                b.Resolutions.Add(new Resolution(
+                    width, height, pixelFormat,
+                    1, 1, 1, 0, 0, 0));
             }
+
+            // -----------------------------------------------------------------
+            // Dimension sizes from the full-resolution array shape
+            // -----------------------------------------------------------------
+
+            b.sizeZ = GetAxisSize(firstLevel, "z", 1);
+            b.sizeC = GetAxisSize(firstLevel, "c", 1);
+            b.sizeT = GetAxisSize(firstLevel, "t", 1);
+
+            // -----------------------------------------------------------------
+            // Build a clamped 5D PixelRegion for the tile request.
+            //
+            // The array axes are declared in the multiscale metadata (typically
+            // [t, c, z, y, x]).  We iterate them by name so the code is correct
+            // regardless of axis order or count.
+            //
+            // Every axis gets clamped to [0, shape) and guaranteed end > start
+            // so the PixelRegion constructor can never throw.
+            // -----------------------------------------------------------------
+
+            var axes = firstLevel.EffectiveAxes;
+            var shape = firstLevel.Shape;
+
+            int clampedZ = Math.Clamp(coord.Z, 0, Math.Max(0, b.sizeZ - 1));
+            int clampedC = Math.Clamp(coord.C, 0, Math.Max(0, b.sizeC - 1));
+            int clampedT = Math.Clamp(coord.T, 0, Math.Max(0, b.sizeT - 1));
+
+            var start = new long[axes.Length];
+            var end = new long[axes.Length];
+
+            for (int i = 0; i < axes.Length; i++)
+            {
+                var axisName = axes[i].Name.ToLowerInvariant();
+
+                switch (axisName)
+                {
+                    case "t":
+                        start[i] = clampedT;
+                        end[i] = clampedT + 1;
+                        break;
+
+                    case "c":
+                        start[i] = clampedC;
+                        end[i] = clampedC + 1;
+                        break;
+
+                    case "z":
+                        start[i] = clampedZ;
+                        end[i] = clampedZ + 1;
+                        break;
+
+                    case "y":
+                        start[i] = Math.Clamp(originY, 0, Math.Max(0, shape[i] - 1));
+                        end[i] = Math.Min(shape[i], Math.Max(start[i] + 1, (long)originY + tileHeight));
+                        break;
+
+                    case "x":
+                        start[i] = Math.Clamp(originX, 0, Math.Max(0, shape[i] - 1));
+                        end[i] = Math.Min(shape[i], Math.Max(start[i] + 1, (long)originX + tileWidth));
+                        break;
+
+                    default:
+                        start[i] = 0;
+                        end[i] = shape[i];
+                        break;
+                }
+            }
+
+            var region = new PixelRegion(start, end);
+
+            // -----------------------------------------------------------------
+            // Read the tile
+            // -----------------------------------------------------------------
+
+            RegionResult tileResult = await firstLevel
+                .ReadPixelRegionAsync(region)
+                .ConfigureAwait(false);
+
+            // Recover actual tile dimensions from the clamped region
+            int actualTileW = GetRegionAxisSize(axes, start, end, "x");
+            int actualTileH = GetRegionAxisSize(axes, start, end, "y");
+
+            var bm = CreateAForgeBitmap(
+                actualTileW,
+                actualTileH,
+                pixelFormat,
+                tileResult.Data,
+                coord);
+
+            b.Buffers.Add(bm.GetImageRGBA());
+
+            // -----------------------------------------------------------------
+            // Slide image support for pyramidal datasets
+            // -----------------------------------------------------------------
+
+            if (b.Resolutions.Count > 1)
+            {
+                var si = new SlideImage { BioImage = b };
+                b.SlideBase = new SlideBase(b, si);
+            }
+
+            b.Volume = new VolumeD(
+                new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ),
+                new Point3D(
+                    b.SizeX * b.PhysicalSizeX,
+                    b.SizeY * b.PhysicalSizeY,
+                    b.SizeZ * b.PhysicalSizeZ));
+
+            // -----------------------------------------------------------------
+            // Channels
+            // -----------------------------------------------------------------
+
+            b.Channels.Add(pixelFormat switch
+            {
+                PixelFormat.Format8bppIndexed => new Channel(0, 8, 1),
+                PixelFormat.Format16bppGrayScale => new Channel(0, 16, 2),
+                _ => throw new NotSupportedException()
+            });
+
+            // -----------------------------------------------------------------
+            // Coordinate bookkeeping
+            // -----------------------------------------------------------------
+
+            b.UpdateCoords(b.sizeZ, b.sizeC, b.sizeT);
+            b.Coordinate = coord;
+
+            AutoThreshold(b, false);
+
+            if (b.bitsPerPixel > 8)
+                b.StackThreshold(true);
+            else
+                b.StackThreshold(false);
+
+            // -----------------------------------------------------------------
+            // Pick the best pyramid level for the requested tile size.
+            // Walk from lowest-res upward; stop at the first level whose
+            // dimensions are at least as large as the tile.
+            // -----------------------------------------------------------------
+
+            b.Level = 0;
+            for (int i = b.Resolutions.Count - 1; i >= 0; i--)
+            {
+                Resolution res = b.Resolutions[i];
+                if (res.SizeX >= tileWidth && res.SizeY >= tileHeight)
+                {
+                    b.Level = i;
+                    break;
+                }
+            }
+
+            return b;
+        }
+
+        // -------------------------------------------------------------------------
+        // Helpers
+        // -------------------------------------------------------------------------
+
+        /// <summary>
+        /// Gets the extent (end - start) for a named axis from pre-built region arrays.
+        /// </summary>
+        private static int GetRegionAxisSize(
+            AxisMetadata[] axes,
+            long[] start, long[] end,
+            string axisName)
+        {
+            for (int i = 0; i < axes.Length; i++)
+            {
+                if (axes[i].Name.Equals(axisName, StringComparison.OrdinalIgnoreCase))
+                    return (int)(end[i] - start[i]);
+            }
+
+            return 0;
+        }
+        // -------------------------------------------------------------------------
+        // Helper — extracts a named axis size from a resolution level's shape
+        // -------------------------------------------------------------------------
+
+        private static int GetAxisSize(ResolutionLevelNode level, string axisName, int fallback = 0)
+        {
+            var axes = level.EffectiveAxes;
+            var shape = level.Shape;
+
+            for (int i = 0; i < axes.Length; i++)
+            {
+                if (axes[i].Name.Equals(axisName, StringComparison.OrdinalIgnoreCase))
+                    return (int)shape[i];
+            }
+
+            return fallback;
+        }
         static AForge.Bitmap CreateAForgeBitmap(
         int width,
         int height,
@@ -5453,19 +5571,7 @@ namespace BioLib
                 new AForge.ZCT(coord.Z, coord.C, coord.T),
                 "");
         }
-        static int GetAxisSize(
-        ResolutionLevelNode level,
-        string axis,
-        int defaultValue = 0)
-            {
-                var axes = level.EffectiveAxes;
-
-                for (int i = 0; i < axes.Length; i++)
-                    if (axes[i].Name == axis)
-                        return (int)level.Shape[i];
-
-                return defaultValue;
-        }
+        
         /// > The function checks if the image is a Tiff image and if it is, it checks if the image is a
         /// series of images
         /// 
@@ -5995,6 +6101,12 @@ namespace BioLib
             }
 
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, files, f, planes);
+        }
+        public static Random rng = new Random();
+        public static void SaveZarr(BioImage b, string outputFile)
+        {
+            Zarr.SaveZarr(b, outputFile);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, outputFile);
         }
 
         /// <summary>
@@ -7419,30 +7531,17 @@ namespace BioLib
         }
         static bool useVips = true;
         static bool useGPU = true;
-        
-        /// It reads a tile from a file, and returns a bitmap
-        /// 
-        /// @param BioImage This is a class that contains the image file name, the image reader, and the
-        /// coordinates of the image.
-        /// @param ZCT Z, C, T
-        /// @param serie the series number (0-based)
-        /// @param tilex the x coordinate of the tile
-        /// @param tiley the y coordinate of the tile
-        /// @param tileSizeX the width of the tile
-        /// @param tileSizeY the height of the tile
-        /// 
-        /// @return A Bitmap object.
         public async Task<Bitmap> GetTile(int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
         {
             BioImage b = this;
             if (b.Filename.Contains(".zarr") || b.Type == ImageType.zarr)
             {
                 if (zarrReader == null)
-                zarrReader = await OmeZarrReader.OpenAsync(b.Filename);
+                    zarrReader = await OmeZarrReader.OpenAsync(b.Filename);
                 if (multiscale == null)
                     multiscale = await zarrReader.AsMultiscaleImageAsync();
-                if(levels == null)
-                levels = (await multiscale.OpenAllResolutionLevelsAsync()).ToList();
+                if (levels == null)
+                    levels = (await multiscale.OpenAllResolutionLevelsAsync()).ToList();
                 var planef = await levels[level].ReadTileAsync(tilex, tiley, tileSizeX, tileSizeY, b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
                 Bitmap bm;
                 if (planef.DataType == "uint16")
