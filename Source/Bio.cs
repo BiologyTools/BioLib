@@ -7,9 +7,9 @@ using BitMiracle.LibTiff.Classic;
 using BruTile;
 using BruTile.Extensions;
 using Cairo;
+using CSScripting;
 using Gdk;
 using Gtk;
-using javax.swing.text.html;
 using loci.common.services;
 using loci.formats;
 using loci.formats.@in;
@@ -23,13 +23,9 @@ using ome.units.quantity;
 using ome.util;
 using ome.xml.model.primitives;
 using omero.model;
-using ZarrNET;
-using ZarrNET.Core.OmeZarr.Coordinates;
-using ZarrNET.Core.OmeZarr.Nodes;
 using OpenSlideGTK;
 using Pango;
 using SkiaSharp;
-using sun.security.provider;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -43,7 +39,14 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using OmeZarr.Core.OmeZarr;              // OmeZarrReader, MultiscaleNode
+using ZarrNET;
+using ZarrNET.Core;              // OmeZarrReader, MultiscaleNode
+using ZarrNET.Core.Helpers;
+using ZarrNET.Core.Nodes;
+using ZarrNET.Core.OmeZarr;
+using ZarrNET.Core.OmeZarr.Coordinates;
+using ZarrNET.Core.OmeZarr.Metadata;
+using ZarrNET.Core.OmeZarr.Nodes;
 using Bitmap = AForge.Bitmap;
 using Channel = AForge.Channel;
 using Color = AForge.Color;
@@ -54,11 +57,6 @@ using Point = AForge.Point;
 using PointD = AForge.PointD;
 using Rectangle = AForge.Rectangle;
 using ZCT = AForge.ZCT;
-using OmeZarr.Core.OmeZarr.Helpers;
-using ZarrNET.Core.OmeZarr.Metadata;
-using ZarrNET.Core.OmeZarr;
-using ZarrNET.Core;
-using OmeZarr.Core.OmeZarr.Nodes;
 
 namespace BioLib
 {
@@ -5305,219 +5303,221 @@ namespace BioLib
         }
 
         public static async Task<BioImage> OpenURL(
-    string url,
-    ZCT coord,
-    int originX,
-    int originY,
-    int tileWidth,
-    int tileHeight)
-        {
-            // -----------------------------------------------------------------
-            // Input cleanup
-            // -----------------------------------------------------------------
-
-            if (url.EndsWith("/"))
-                url = url.TrimEnd('/');
-
-            if (!url.StartsWith("https://") && !url.StartsWith("s3://") && !url.Contains(".zarr"))
-                throw new Exception("URL must start with https://, s3://, or contain .zarr ending.");
-
-            string zn = Path.GetFileName(url);
-            var b = new BioImage(zn);
-
-            // -----------------------------------------------------------------
-            // Open reader
-            // -----------------------------------------------------------------
-
-            b.zarrReader ??= await OmeZarrReader.OpenAsync(url).ConfigureAwait(false);
-            b.imagef ??= b.zarrReader.AsMultiscaleImage();
-
-            b.levels = (await b.imagef
-                .OpenAllResolutionLevelsAsync().ConfigureAwait(false))
-                .ToList();
-
-            if (b.levels.Count == 0)
-                throw new Exception("OME-Zarr contains no resolution levels.");
-
-            // -----------------------------------------------------------------
-            // Determine datatype from the highest resolution level
-            // -----------------------------------------------------------------
-
-            var firstLevel = b.levels[0];
-            string dtype = firstLevel.DataType;
-
-            PixelFormat pixelFormat = dtype switch
+        string url,
+        ZCT coord,
+        int originX,
+        int originY,
+        int tileWidth,
+        int tileHeight)
             {
-                "uint8" => PixelFormat.Format8bppIndexed,
-                "uint16" => PixelFormat.Format16bppGrayScale,
-                _ => throw new UnknownFormatException($"Unsupported datatype {dtype}")
-            };
+                // -----------------------------------------------------------------
+                // Input cleanup
+                // -----------------------------------------------------------------
 
-            // -----------------------------------------------------------------
-            // Load pyramid metadata from all resolution levels
-            // -----------------------------------------------------------------
+                if (url.EndsWith("/"))
+                    url = url.TrimEnd('/');
 
-            foreach (var level in b.levels)
-            {
-                int width = GetAxisSize(level, "x");
-                int height = GetAxisSize(level, "y");
+                if (!url.StartsWith("https://") && !url.StartsWith("s3://") && !url.Contains(".zarr"))
+                    throw new Exception("URL must start with https://, s3://, or contain .zarr ending.");
 
-                b.Resolutions.Add(new Resolution(
-                    width, height, pixelFormat,
-                    1, 1, 1, 0, 0, 0));
-            }
+                string zn = Path.GetFileName(url);
+                var b = new BioImage(zn);
 
-            // -----------------------------------------------------------------
-            // Dimension sizes from the full-resolution array shape
-            // -----------------------------------------------------------------
+                // -----------------------------------------------------------------
+                // Open reader
+                // -----------------------------------------------------------------
 
-            b.sizeZ = GetAxisSize(firstLevel, "z", 1);
-            b.sizeC = GetAxisSize(firstLevel, "c", 1);
-            b.sizeT = GetAxisSize(firstLevel, "t", 1);
+                b.zarrReader ??= await OmeZarrReader.OpenAsync(url).ConfigureAwait(false);
+                b.imagef ??= b.zarrReader.AsMultiscaleImage();
 
-            // -----------------------------------------------------------------
-            // Build a clamped 5D PixelRegion for the tile request.
-            //
-            // The array axes are declared in the multiscale metadata (typically
-            // [t, c, z, y, x]).  We iterate them by name so the code is correct
-            // regardless of axis order or count.
-            //
-            // Every axis gets clamped to [0, shape) and guaranteed end > start
-            // so the PixelRegion constructor can never throw.
-            // -----------------------------------------------------------------
+                b.levels = (await b.imagef
+                    .OpenAllResolutionLevelsAsync().ConfigureAwait(false))
+                    .ToList();
 
-            var axes = firstLevel.EffectiveAxes;
-            var shape = firstLevel.Shape;
+                if (b.levels.Count == 0)
+                    throw new Exception("OME-Zarr contains no resolution levels.");
 
-            int clampedZ = Math.Clamp(coord.Z, 0, Math.Max(0, b.sizeZ - 1));
-            int clampedC = Math.Clamp(coord.C, 0, Math.Max(0, b.sizeC - 1));
-            int clampedT = Math.Clamp(coord.T, 0, Math.Max(0, b.sizeT - 1));
+                // -----------------------------------------------------------------
+                // Determine datatype from the highest resolution level
+                // -----------------------------------------------------------------
 
-            var start = new long[axes.Length];
-            var end = new long[axes.Length];
+                var firstLevel = b.levels[0];
+                string dtype = firstLevel.DataType;
 
-            for (int i = 0; i < axes.Length; i++)
-            {
-                var axisName = axes[i].Name.ToLowerInvariant();
-
-                switch (axisName)
+                PixelFormat pixelFormat = dtype switch
                 {
-                    case "t":
-                        start[i] = clampedT;
-                        end[i] = clampedT + 1;
-                        break;
+                    "uint8" => PixelFormat.Format8bppIndexed,
+                    "uint16" => PixelFormat.Format16bppGrayScale,
+                    _ => throw new UnknownFormatException($"Unsupported datatype {dtype}")
+                };
 
-                    case "c":
-                        start[i] = clampedC;
-                        end[i] = clampedC + 1;
-                        break;
+                // -----------------------------------------------------------------
+                // Load pyramid metadata from all resolution levels
+                // -----------------------------------------------------------------
 
-                    case "z":
-                        start[i] = clampedZ;
-                        end[i] = clampedZ + 1;
-                        break;
+                foreach (var level in b.levels)
+                {
+                    int width = GetAxisSize(level, "x");
+                    int height = GetAxisSize(level, "y");
 
-                    case "y":
-                        start[i] = Math.Clamp(originY, 0, Math.Max(0, shape[i] - 1));
-                        end[i] = Math.Min(shape[i], Math.Max(start[i] + 1, (long)originY + tileHeight));
-                        break;
-
-                    case "x":
-                        start[i] = Math.Clamp(originX, 0, Math.Max(0, shape[i] - 1));
-                        end[i] = Math.Min(shape[i], Math.Max(start[i] + 1, (long)originX + tileWidth));
-                        break;
-
-                    default:
-                        start[i] = 0;
-                        end[i] = shape[i];
-                        break;
+                    b.Resolutions.Add(new Resolution(
+                        width, height, pixelFormat,
+                        1, 1, 1, 0, 0, 0));
                 }
-            }
 
-            var region = new PixelRegion(start, end);
+                // -----------------------------------------------------------------
+                // Dimension sizes from the full-resolution array shape
+                // -----------------------------------------------------------------
 
-            // -----------------------------------------------------------------
-            // Read the tile
-            // -----------------------------------------------------------------
+                b.sizeZ = GetAxisSize(firstLevel, "z", 1);
+                b.sizeC = GetAxisSize(firstLevel, "c", 1);
+                b.sizeT = GetAxisSize(firstLevel, "t", 1);
 
-            RegionResult tileResult = await firstLevel
-                .ReadPixelRegionAsync(region)
-                .ConfigureAwait(false);
+                // -----------------------------------------------------------------
+                // Build a clamped 5D PixelRegion for the tile request.
+                //
+                // The array axes are declared in the multiscale metadata (typically
+                // [t, c, z, y, x]).  We iterate them by name so the code is correct
+                // regardless of axis order or count.
+                //
+                // Every axis gets clamped to [0, shape) and guaranteed end > start
+                // so the PixelRegion constructor can never throw.
+                // -----------------------------------------------------------------
 
-            // Recover actual tile dimensions from the clamped region
-            int actualTileW = GetRegionAxisSize(axes, start, end, "x");
-            int actualTileH = GetRegionAxisSize(axes, start, end, "y");
+                var axes = firstLevel.EffectiveAxes;
+                var shape = firstLevel.Shape;
 
-            var bm = CreateAForgeBitmap(
-                actualTileW,
-                actualTileH,
-                pixelFormat,
-                tileResult.Data,
-                coord);
+                int clampedZ = Math.Clamp(coord.Z, 0, Math.Max(0, b.sizeZ - 1));
+                int clampedC = Math.Clamp(coord.C, 0, Math.Max(0, b.sizeC - 1));
+                int clampedT = Math.Clamp(coord.T, 0, Math.Max(0, b.sizeT - 1));
 
-            b.Buffers.Add(bm.GetImageRGBA());
+                var start = new long[axes.Length];
+                var end = new long[axes.Length];
 
-            // -----------------------------------------------------------------
-            // Slide image support for pyramidal datasets
-            // -----------------------------------------------------------------
+                for (int i = 0; i < axes.Length; i++)
+                {
+                    var axisName = axes[i].Name.ToLowerInvariant();
 
-            if (b.Resolutions.Count > 1)
-            {
+                    switch (axisName)
+                    {
+                        case "t":
+                            start[i] = clampedT;
+                            end[i] = clampedT + 1;
+                            break;
+
+                        case "c":
+                            start[i] = clampedC;
+                            end[i] = clampedC + 1;
+                            break;
+
+                        case "z":
+                            start[i] = clampedZ;
+                            end[i] = clampedZ + 1;
+                            break;
+
+                        case "y":
+                            start[i] = Math.Clamp(originY, 0, Math.Max(0, shape[i] - 1));
+                            end[i] = Math.Min(shape[i], Math.Max(start[i] + 1, (long)originY + tileHeight));
+                            break;
+
+                        case "x":
+                            start[i] = Math.Clamp(originX, 0, Math.Max(0, shape[i] - 1));
+                            end[i] = Math.Min(shape[i], Math.Max(start[i] + 1, (long)originX + tileWidth));
+                            break;
+
+                        default:
+                            start[i] = 0;
+                            end[i] = shape[i];
+                            break;
+                    }
+                }
+
+                var region = new PixelRegion(start, end);
+
+                // -----------------------------------------------------------------
+                // Read the tile
+                // -----------------------------------------------------------------
+
+                RegionResult tileResult = await firstLevel
+                    .ReadPixelRegionAsync(region)
+                    .ConfigureAwait(false);
+
+                // Recover actual tile dimensions from the clamped region
+                int actualTileW = GetRegionAxisSize(axes, start, end, "x");
+                int actualTileH = GetRegionAxisSize(axes, start, end, "y");
+
+                var bm = CreateAForgeBitmap(
+                    actualTileW,
+                    actualTileH,
+                    pixelFormat,
+                    tileResult.Data,
+                    coord);
+
+                b.Buffers.Add(bm.GetImageRGBA());
+
+                // -----------------------------------------------------------------
+                // Slide image support for pyramidal datasets
+                // -----------------------------------------------------------------
+
+                //if (b.Resolutions.Count > 1)
+                //{
                 var si = new SlideImage { BioImage = b };
                 b.SlideBase = new SlideBase(b, si);
-            }
+                b.openslideBase = null;
+                
+                //}
+                
+                b.Volume = new VolumeD(
+                    new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ),
+                    new Point3D(
+                        b.SizeX * b.PhysicalSizeX,
+                        b.SizeY * b.PhysicalSizeY,
+                        b.SizeZ * b.PhysicalSizeZ));
+                
+                // -----------------------------------------------------------------
+                // Channels
+                // -----------------------------------------------------------------
 
-            b.Volume = new VolumeD(
-                new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ),
-                new Point3D(
-                    b.SizeX * b.PhysicalSizeX,
-                    b.SizeY * b.PhysicalSizeY,
-                    b.SizeZ * b.PhysicalSizeZ));
-
-            // -----------------------------------------------------------------
-            // Channels
-            // -----------------------------------------------------------------
-
-            b.Channels.Add(pixelFormat switch
-            {
-                PixelFormat.Format8bppIndexed => new Channel(0, 8, 1),
-                PixelFormat.Format16bppGrayScale => new Channel(0, 16, 2),
-                _ => throw new NotSupportedException()
-            });
-
-            // -----------------------------------------------------------------
-            // Coordinate bookkeeping
-            // -----------------------------------------------------------------
-
-            b.UpdateCoords(b.sizeZ, b.sizeC, b.sizeT);
-            b.Coordinate = coord;
-
-            AutoThreshold(b, false);
-
-            if (b.bitsPerPixel > 8)
-                b.StackThreshold(true);
-            else
-                b.StackThreshold(false);
-
-            // -----------------------------------------------------------------
-            // Pick the best pyramid level for the requested tile size.
-            // Walk from lowest-res upward; stop at the first level whose
-            // dimensions are at least as large as the tile.
-            // -----------------------------------------------------------------
-
-            b.Level = 0;
-            for (int i = b.Resolutions.Count - 1; i >= 0; i--)
-            {
-                Resolution res = b.Resolutions[i];
-                if (res.SizeX >= tileWidth && res.SizeY >= tileHeight)
+                b.Channels.Add(pixelFormat switch
                 {
-                    b.Level = i;
-                    break;
-                }
-            }
+                    PixelFormat.Format8bppIndexed => new Channel(0, 8, 1),
+                    PixelFormat.Format16bppGrayScale => new Channel(0, 16, 2),
+                    _ => throw new NotSupportedException()
+                });
 
-            return b;
-        }
+                // -----------------------------------------------------------------
+                // Coordinate bookkeeping
+                // -----------------------------------------------------------------
+
+                b.UpdateCoords(b.sizeZ, b.sizeC, b.sizeT);
+                b.Coordinate = coord;
+
+                AutoThreshold(b, false);
+
+                if (b.bitsPerPixel > 8)
+                    b.StackThreshold(true);
+                else
+                    b.StackThreshold(false);
+
+                // -----------------------------------------------------------------
+                // Pick the best pyramid level for the requested tile size.
+                // Walk from lowest-res upward; stop at the first level whose
+                // dimensions are at least as large as the tile.
+                // -----------------------------------------------------------------
+
+                b.Level = 0;
+                for (int i = b.Resolutions.Count - 1; i >= 0; i--)
+                {
+                    Resolution res = b.Resolutions[i];
+                    if (res.SizeX >= tileWidth && res.SizeY >= tileHeight)
+                    {
+                        b.Level = i;
+                        break;
+                    }
+                }
+
+                return b;
+            }
 
         // -------------------------------------------------------------------------
         // Helpers
@@ -7538,20 +7538,70 @@ namespace BioLib
             {
                 if (zarrReader == null)
                     zarrReader = await OmeZarrReader.OpenAsync(b.Filename);
+
                 if (multiscale == null)
                     multiscale = await zarrReader.AsMultiscaleImageAsync();
+
                 if (levels == null)
                     levels = (await multiscale.OpenAllResolutionLevelsAsync()).ToList();
-                var planef = await levels[level].ReadTileAsync(tilex, tiley, tileSizeX, tileSizeY, b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
-                Bitmap bm;
+
+                var planef = await levels[level].ReadTileAsync(
+                    tilex, tiley, tileSizeX, tileSizeY,
+                    b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
+
+                int levelW = b.Resolutions[level].SizeX;
+                int levelH = b.Resolutions[level].SizeY;
+
+                int actualW = Math.Max(0, Math.Min(tileSizeX, levelW - tilex));
+                int actualH = Math.Max(0, Math.Min(tileSizeY, levelH - tiley));
+
+                PixelFormat fmt;
+                int elementSize;
+
                 if (planef.DataType == "uint16")
-                    bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format16bppGrayScale, planef.Data, b.Coordinate, index);
+                {
+                    fmt = AForge.PixelFormat.Format16bppGrayScale;
+                    elementSize = 2;
+                }
                 else if (planef.DataType == "uint8")
-                    bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format8bppIndexed, planef.Data, b.Coordinate, index);
+                {
+                    fmt = AForge.PixelFormat.Format8bppIndexed;
+                    elementSize = 1;
+                }
                 else
+                {
                     throw new NotSupportedException(planef.DataType + " is not supported.");
-                Bitmap bmp = bm.GetImageRGBA();
-                return bmp;
+                }
+
+                int dstStride = tileSizeX * elementSize;
+                int srcStride = actualW * elementSize;
+
+                // Always allocate padded tile buffer
+                byte[] tileData = new byte[tileSizeY * dstStride];
+
+                if (actualW > 0 && actualH > 0)
+                {
+                    for (int row = 0; row < actualH; row++)
+                    {
+                        Buffer.BlockCopy(
+                            planef.Data,
+                            row * srcStride,
+                            tileData,
+                            row * dstStride,
+                            srcStride);
+                    }
+                }
+
+                Bitmap bm = new Bitmap(
+                    "",
+                    tileSizeX,
+                    tileSizeY,
+                    fmt,
+                    tileData,
+                    b.Coordinate,
+                    index);
+
+                return bm.GetImageRGBA();
             }
             if (b.Tag != null)
             {
