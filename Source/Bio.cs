@@ -2380,17 +2380,21 @@ namespace BioLib
         {
             get
             {
-                // Clamp X within the image width boundaries
-                if (pyramidalOrigin.X >= Resolutions[Level].SizeX)
-                    pyramidalOrigin.X = Resolutions[Level].SizeX - 1;
+                // PyramidalOrigin is in full-resolution (level 0) pixel space.
+                // Clamp against Resolutions[0], not the current pyramid level.
+                int fullW = Resolutions[0].SizeX;
+                int fullH = Resolutions[0].SizeY;
+
+                if (pyramidalOrigin.X >= fullW)
+                    pyramidalOrigin.X = fullW - 1;
                 if (pyramidalOrigin.X < 0)
                     pyramidalOrigin.X = 0;
 
                 // Clamp Y only if we are NOT using OSM Negative Y logic
                 if (!UseOSMNegativeY)
                 {
-                    if (pyramidalOrigin.Y >= Resolutions[Level].SizeY)
-                        pyramidalOrigin.Y = Resolutions[Level].SizeY - 1;
+                    if (pyramidalOrigin.Y >= fullH)
+                        pyramidalOrigin.Y = fullH - 1;
                     if (pyramidalOrigin.Y < 0)
                         pyramidalOrigin.Y = 0;
                 }
@@ -2399,27 +2403,30 @@ namespace BioLib
             }
             set
             {
+                // PyramidalOrigin is in full-resolution (level 0) pixel space.
+                int fullW = Resolutions[0].SizeX;
+                int fullH = Resolutions[0].SizeY;
+
                 if (UseOSMNegativeY)
                 {
                     // In OSM/BruTile mode, we allow Y to be negative and don't clamp the top
-                    // Just pass the values through, perhaps still clamping X width if desired
-                    pyramidalOrigin.X = Math.Max(0, Math.Min(value.X, Resolutions[Level].SizeX - 1));
+                    pyramidalOrigin.X = Math.Max(0, Math.Min(value.X, fullW - 1));
                     pyramidalOrigin.Y = value.Y;
                 }
                 else
                 {
                     // Standard Y-positive clamping logic
-                    if (value.X >= 0 && value.X < Resolutions[Level].SizeX)
+                    if (value.X >= 0 && value.X < fullW)
                         pyramidalOrigin.X = value.X;
-                    else if (value.X >= Resolutions[Level].SizeX)
-                        pyramidalOrigin.X = Resolutions[Level].SizeX - 1;
+                    else if (value.X >= fullW)
+                        pyramidalOrigin.X = fullW - 1;
                     else
                         pyramidalOrigin.X = 0;
 
-                    if (value.Y >= 0 && value.Y < Resolutions[Level].SizeY)
+                    if (value.Y >= 0 && value.Y < fullH)
                         pyramidalOrigin.Y = value.Y;
-                    else if (value.Y >= Resolutions[Level].SizeY)
-                        pyramidalOrigin.Y = Resolutions[Level].SizeY - 1;
+                    else if (value.Y >= fullH)
+                        pyramidalOrigin.Y = fullH - 1;
                     else
                         pyramidalOrigin.Y = 0;
                 }
@@ -4974,6 +4981,10 @@ namespace BioLib
         public MultiscaleNode imagef;
         public ResolutionLevelNode levelf;
         public List<ResolutionLevelNode> levels;
+        // S3 connections are recycled after this interval to avoid server-side
+        // connection timeouts that silently drop long-lived HTTP connections.
+        private static readonly TimeSpan S3ConnectionLifetime = TimeSpan.FromMinutes(4);
+        private DateTime _zarrConnectionOpenedAt = DateTime.MinValue;
         public List<PlaneResult> planes = new List<PlaneResult>();
         /// The OpenFile function opens a BioImage file, reads its metadata, and loads the image
         /// data into a BioImage object.
@@ -5327,7 +5338,11 @@ namespace BioLib
                 // Open reader
                 // -----------------------------------------------------------------
 
-                b.zarrReader ??= await OmeZarrReader.OpenAsync(url).ConfigureAwait(false);
+                if (b.zarrReader == null)
+                {
+                    b.zarrReader = await OmeZarrReader.OpenAsync(url).ConfigureAwait(false);
+                    b._zarrConnectionOpenedAt = DateTime.UtcNow;
+                }
                 b.imagef ??= b.zarrReader.AsMultiscaleImage();
 
                 b.levels = (await b.imagef
@@ -7531,19 +7546,52 @@ namespace BioLib
         }
         static bool useVips = true;
         static bool useGPU = true;
+        /// <summary>
+        /// Reopens the Zarr/S3 connection if it has exceeded S3ConnectionLifetime.
+        /// Call this before any tile read to avoid hitting server-side connection timeouts.
+        /// </summary>
+        private async Task EnsureFreshS3ConnectionAsync()
+        {
+            bool expired = zarrReader == null ||
+                           (DateTime.UtcNow - _zarrConnectionOpenedAt) >= S3ConnectionLifetime;
+            if (expired)
+            {
+                // Dispose old reader if it exists
+                if (zarrReader is IAsyncDisposable ad)
+                    await ad.DisposeAsync().ConfigureAwait(false);
+                else if (zarrReader is IDisposable d)
+                    d.Dispose();
+
+                zarrReader  = null;
+                multiscale  = null;
+                imagef      = null;
+                levels      = null;
+
+                zarrReader  = await OmeZarrReader.OpenAsync(Filename).ConfigureAwait(false);
+                multiscale  = await zarrReader.AsMultiscaleImageAsync().ConfigureAwait(false);
+                imagef      = multiscale;
+                levels      = (await multiscale.OpenAllResolutionLevelsAsync().ConfigureAwait(false)).ToList();
+                _zarrConnectionOpenedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                // Ensure sub-objects are initialised even if the reader was set externally
+                if (multiscale == null)
+                {
+                    multiscale = await zarrReader.AsMultiscaleImageAsync().ConfigureAwait(false);
+                    imagef = multiscale;
+                }
+                if (levels == null)
+                    levels = (await multiscale.OpenAllResolutionLevelsAsync().ConfigureAwait(false)).ToList();
+            }
+        }
+
         public async Task<Bitmap> GetTile(int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
         {
             BioImage b = this;
             if (b.Filename.Contains(".zarr") || b.Type == ImageType.zarr)
             {
-                if (zarrReader == null)
-                    zarrReader = await OmeZarrReader.OpenAsync(b.Filename);
-
-                if (multiscale == null)
-                    multiscale = await zarrReader.AsMultiscaleImageAsync();
-
-                if (levels == null)
-                    levels = (await multiscale.OpenAllResolutionLevelsAsync()).ToList();
+                await b.EnsureFreshS3ConnectionAsync().ConfigureAwait(false);
 
                 var planef = await levels[level].ReadTileAsync(
                     tilex, tiley, tileSizeX, tileSizeY,

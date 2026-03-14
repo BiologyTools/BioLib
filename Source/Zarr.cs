@@ -35,7 +35,7 @@ namespace BioLib
             // 1. Resolve dimensions and data type from the BioImage
             // ------------------------------------------------------------------
 
-            var rgbChannelCount = 1;
+            var rgbChannelCount = b.RGBChannelCount;
             var bitsPerSample = b.bitsPerPixel / Math.Max(rgbChannelCount, 1);
             var bytesPerSample = bitsPerSample / 8;
             var zarrDataType = MapDataType(bitsPerSample);
