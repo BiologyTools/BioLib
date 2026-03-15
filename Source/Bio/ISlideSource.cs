@@ -1,4 +1,4 @@
-﻿using AForge;
+using AForge;
 using BruTile;
 using BruTile.Cache;
 using Gdk;
@@ -171,6 +171,11 @@ namespace BioLib
         public void Dispose()
         {
             cache.Dispose();
+        }
+
+        public void Clear()
+        {
+            cache = new LruCache<TileInformation, byte[]>(capacity);
         }
     }
 
