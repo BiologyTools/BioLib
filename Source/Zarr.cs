@@ -2,6 +2,7 @@ using AForge;
 using BioLib;
 using ZarrNET.Core;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using ZarrNET;
 using ZarrNET.Core;
@@ -17,7 +18,10 @@ namespace BioLib
     /// Peak allocation is bounded to a single tile (tileW × tileH × bytesPerSample).
     ///
     /// RGB-interleaved buffers are deinterleaved into separate C planes so
-    /// the output array shape is always (T, C, Z, Y, X) with scalar pixels.a
+    /// the output array shape is always (T, C, Z, Y, X) with scalar pixels.
+    ///
+    /// All resolution levels present in b.Resolutions are written, producing
+    /// a proper OME-NGFF multiscale pyramid.
     /// </summary>
     public static class Zarr
     {
@@ -28,6 +32,7 @@ namespace BioLib
         /// <summary>
         /// Saves the full 5D content of a <see cref="BioImage"/> as an
         /// OME-Zarr v3 dataset at <paramref name="outputDir"/>.
+        /// All pyramid resolution levels in <c>b.Resolutions</c> are written.
         /// </summary>
         public static void SaveZarr(BioImage b, string outputDir)
         {
@@ -35,260 +40,278 @@ namespace BioLib
             // 1. Resolve dimensions and data type from the BioImage
             // ------------------------------------------------------------------
 
-            // For stack images derive format from the loaded buffers.
-            // For pyramidal images (buffers not loaded) derive from bitsPerPixel
-            // and RGBChannelsCount which are always populated.
-            int rgbChannelCount;
-            int bytesPerSample;
-            string zarrDataType;
+            // Guard against zero-size dimensions which cause ZarrNET to throw
+            // "regionStart[0] = 0 is out of bounds [0, 0)".
+            if (b.SizeX <= 0 || b.SizeY <= 0 || b.SizeZ <= 0 || b.SizeC <= 0 || b.SizeT <= 0)
+                throw new InvalidOperationException(
+                    $"BioImage has invalid dimensions: X={b.SizeX} Y={b.SizeY} Z={b.SizeZ} C={b.SizeC} T={b.SizeT}. " +
+                    "Ensure the image is fully loaded before saving as Zarr.");
 
-            if (!b.isPyramidal && b.Buffers != null && b.Buffers.Count > 0)
+            // Derive bits-per-sample and RGB channel count directly from the
+            // buffer PixelFormat — the same pattern used throughout the codebase
+            // (Fiji.cs, QuPath.cs).  This is more reliable than b.RGBChannelCount
+            // or b.bitsPerPixel, which can disagree with the actual buffer layout.
+            //
+            // Format32bppArgb / Format32bppRgb:
+            //   In-memory layout is BGRA (B at byte 0, A at byte 3).
+            //   We write only the 3 colour channels remapped to R,G,B order
+            //   and discard alpha.  srcChannelCount=4 so stride arithmetic is
+            //   correct; outChannelCount=3 is what we write to the Zarr array.
+            var pixelFormat    = b.Buffers[0].PixelFormat;
+            int bitsPerSample;
+            int srcChannelCount;   // channels packed in the raw buffer
+            int outChannelCount;   // channels written to Zarr
+            bool isBGRA = false;
+
+            switch (pixelFormat)
             {
-                var fmt = b.Resolutions[0].PixelFormat;
-                switch (fmt)
-                {
-                    case AForge.PixelFormat.Format8bppIndexed:
-                        bytesPerSample = 1; rgbChannelCount = 1; zarrDataType = "uint8";  break;
-                    case AForge.PixelFormat.Format16bppGrayScale:
-                        bytesPerSample = 2; rgbChannelCount = 1; zarrDataType = "uint16"; break;
-                    case AForge.PixelFormat.Format24bppRgb:
-                        bytesPerSample = 1; rgbChannelCount = 3; zarrDataType = "uint8";  break;
-                    case AForge.PixelFormat.Format48bppRgb:
-                        bytesPerSample = 2; rgbChannelCount = 3; zarrDataType = "uint16"; break;
-                    default:
-                        bytesPerSample = 1; rgbChannelCount = 1; zarrDataType = "uint8";  break;
-                }
-            }
-            else
-            {
-                var fmt = b.Resolutions[0].PixelFormat;
-                switch (fmt)
-                {
-                    case AForge.PixelFormat.Format8bppIndexed:
-                        bytesPerSample = 1; rgbChannelCount = 1; zarrDataType = "uint8"; break;
-                    case AForge.PixelFormat.Format16bppGrayScale:
-                        bytesPerSample = 2; rgbChannelCount = 1; zarrDataType = "uint16"; break;
-                    case AForge.PixelFormat.Format24bppRgb:
-                        bytesPerSample = 1; rgbChannelCount = 3; zarrDataType = "uint8"; break;
-                    case AForge.PixelFormat.Format48bppRgb:
-                        bytesPerSample = 2; rgbChannelCount = 3; zarrDataType = "uint16"; break;
-                    default:
-                        bytesPerSample = 1; rgbChannelCount = 1; zarrDataType = "uint8"; break;
-                }
-                // Pyramidal: buffers are not loaded — derive from metadata.
-                rgbChannelCount = (b.Channels != null && b.Channels.Count > 0) ? b.Channels[0].SamplesPerPixel : 1;
+                case PixelFormat.Format8bppIndexed:
+                    bitsPerSample   = 8;
+                    srcChannelCount = 1;
+                    outChannelCount = 1;
+                    break;
+                case PixelFormat.Format16bppGrayScale:
+                    bitsPerSample   = 16;
+                    srcChannelCount = 1;
+                    outChannelCount = 1;
+                    break;
+                case PixelFormat.Format24bppRgb:
+                    bitsPerSample   = 8;
+                    srcChannelCount = 3;
+                    outChannelCount = 3;
+                    break;
+                case PixelFormat.Format32bppArgb:
+                case PixelFormat.Format32bppRgb:
+                    // Raw buffer is BGRA (4 bytes/pixel).
+                    // We extract 3 channels remapped to R,G,B order and drop A.
+                    bitsPerSample   = 8;
+                    srcChannelCount = 4;
+                    outChannelCount = 3;
+                    isBGRA          = true;
+                    break;
+                case PixelFormat.Format48bppRgb:
+                    bitsPerSample   = 16;
+                    srcChannelCount = 3;
+                    outChannelCount = 3;
+                    break;
+                default:
+                    srcChannelCount = 1;
+                    outChannelCount = 1;
+                    bitsPerSample   = Math.Max(b.bitsPerPixel, 8);
+                    break;
             }
 
-            // Tile size — controls peak memory.  Aligned to the chunk grid so
-            // each tile write targets exactly one chunk in Y and X, avoiding
-            // read-modify-write overhead on the store.
+            var bytesPerSample = bitsPerSample / 8;
+            var zarrDataType   = MapDataType(bitsPerSample);
+            var totalChannels  = b.SizeC * outChannelCount;
+
             int tileW = 512;
             int tileH = 512;
 
-            var coord = new ZarrNET.Core.ZCT(b.Coordinate.Z, b.Coordinate.C, b.Coordinate.T);
+            // ------------------------------------------------------------------
+            // 2. Build per-level descriptors from b.Resolutions
+            //    Level 0 is always the full-resolution image (b.SizeX / b.SizeY).
+            //    Subsequent levels are taken directly from b.Resolutions[1..N].
+            // ------------------------------------------------------------------
 
-            var descriptor = new BioImageDescriptor(b.SizeX, b.SizeY, coord)
+            var levelDescriptors = new List<ResolutionLevelDescriptor>();
+            for (int lvl = 0; lvl < b.Resolutions.Count; lvl++)
             {
-                Name = Path.GetFileNameWithoutExtension(b.Filename),
-                DataType = zarrDataType,
+                var res        = b.Resolutions[lvl];
+                double dsample = b.GetLevelDownsample(lvl);   // 1.0 for level 0
+                levelDescriptors.Add(new ResolutionLevelDescriptor(res.SizeX, res.SizeY, dsample));
+            }
+
+            // Fallback: if there is somehow no Resolutions list, use the image dims.
+            if (levelDescriptors.Count == 0)
+                levelDescriptors.Add(new ResolutionLevelDescriptor(b.SizeX, b.SizeY, 1.0));
+
+            // ------------------------------------------------------------------
+            // 3. Build the base descriptor (T/C/Z/dtype — shared by all levels)
+            // ------------------------------------------------------------------
+
+            var coord = new ZarrNET.Core.ZCT(b.SizeZ, totalChannels, b.SizeT);
+
+            var baseDescriptor = new BioImageDescriptor(b.SizeX, b.SizeY, coord)
+            {
+                Name          = Path.GetFileNameWithoutExtension(b.Filename),
+                DataType      = zarrDataType,
                 PhysicalSizeX = b.PhysicalSizeX,
                 PhysicalSizeY = b.PhysicalSizeY,
                 PhysicalSizeZ = b.PhysicalSizeZ,
-                ChunkY = tileH,
-                ChunkX = tileW,
+                ChunkY        = tileH,
+                ChunkX        = tileW,
             };
 
             // ------------------------------------------------------------------
-            // 2. Create the writer (bootstraps zarr.json metadata on disk)
+            // 4. Create the writer (bootstraps zarr.json metadata on disk for
+            //    all levels at once)
             // ------------------------------------------------------------------
 
-            var writer = OmeZarrWriter.CreateAsync(outputDir, descriptor).Result;
+            var writer = OmeZarrWriter.CreateAsync(outputDir, baseDescriptor, levelDescriptors).Result;
 
             try
             {
                 // ------------------------------------------------------------------
-                // 3. Stream tiles into the array
+                // 5. Stream tiles into each resolution level
                 // ------------------------------------------------------------------
+                for (int levelIndex = 0; levelIndex < levelDescriptors.Count; levelIndex++)
+                {
+                    var lvlDesc = levelDescriptors[levelIndex];
+
                     for (int t = 0; t < b.SizeT; t++)
                     {
                         for (int z = 0; z < b.SizeZ; z++)
                         {
                             for (int c = 0; c < b.SizeC; c++)
                             {
-                                if (rgbChannelCount == 1)
+                                if (outChannelCount == 1)
                                 {
                                     WritePlaneInTiles(
-                                        writer, b, descriptor,
+                                        writer, b, lvlDesc,
                                         t, c, z,
-                                        bytesPerSample, tileW, tileH);
+                                        bytesPerSample, tileW, tileH,
+                                        levelIndex: levelIndex);
                                 }
                                 else
                                 {
-                                    for (int rgb = 0; rgb < rgbChannelCount; rgb++)
+                                    for (int rgb = 0; rgb < outChannelCount; rgb++)
                                     {
-                                        int globalC = c * rgbChannelCount + rgb;
+                                        int globalC = c * outChannelCount + rgb;
 
                                         WritePlaneInTiles(
-                                            writer, b, descriptor,
+                                            writer, b, lvlDesc,
                                             t, globalC, z,
                                             bytesPerSample, tileW, tileH,
+                                            levelIndex: levelIndex,
                                             rgbChannelIndex: rgb,
-                                            rgbChannelCount: rgbChannelCount,
+                                            srcChannelCount: srcChannelCount,
+                                            isBGRA: isBGRA,
                                             logicalC: c);
                                     }
                                 }
                             }
                         }
                     }
+                }
             }
-            finally
+            catch (Exception e)
             {
-                writer.DisposeAsync().AsTask().Wait();
+                Console.WriteLine(e.ToString());
             }
+
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b);
         }
 
         // =====================================================================
-        // Tiled plane writer — kept with SaveZarr because they form one unit
+        // Tiled plane writer
         // =====================================================================
 
         /// <summary>
         /// Walks the XY extent of a single (t, c, z) plane in tile-sized
-        /// chunks, fetching each tile via BioImage.GetTile and writing it
-        /// as a sub-region into the Zarr array.
+        /// chunks at the given resolution level, fetching each tile via
+        /// BioImage.GetTile and writing it as a sub-region into the Zarr array.
         /// </summary>
-        private static void WritePlaneInTiles(
-    OmeZarrWriter writer,
-    BioImage b,
-    BioImageDescriptor desc,
-    int t, int c, int z,
-    int bytesPerSample,
-    int tileW, int tileH,
-    int rgbChannelIndex = -1,
-    int rgbChannelCount = 1,
-    int logicalC = -1)
+        private async static void WritePlaneInTiles(
+            OmeZarrWriter              writer,
+            BioImage                   b,
+            ResolutionLevelDescriptor  lvlDesc,
+            int t, int c, int z,
+            int bytesPerSample,
+            int tileW, int tileH,
+            int levelIndex      = 0,
+            int rgbChannelIndex = -1,
+            int srcChannelCount = 1,
+            bool isBGRA         = false,
+            int logicalC        = -1)
         {
             bool needsDeinterleave = rgbChannelIndex >= 0;
-            int srcC = needsDeinterleave ? logicalC : c;
+            int  srcC              = needsDeinterleave ? logicalC : c;
 
-            if (!b.isPyramidal)
+            for (int tileY = 0; tileY < lvlDesc.SizeY; tileY += tileH)
             {
-                // ── Stack image path ──────────────────────────────────────────
-                // Buffers are fully loaded in memory. Read raw bytes directly,
-                // bypassing GetImageRGBA() which always returns 32bpp RGBA.
-                int frameIndex = b.GetFrameIndex(z, srcC, t);
-                AForge.Bitmap plane = b.Buffers[frameIndex];
-                int stride = plane.Stride;
-
-                for (int tileY = 0; tileY < desc.SizeY; tileY += tileH)
+                for (int tileX = 0; tileX < lvlDesc.SizeX; tileX += tileW)
                 {
-                    for (int tileX = 0; tileX < desc.SizeX; tileX += tileW)
-                    {
-                        int actualW  = Math.Min(tileW, desc.SizeX - tileX);
-                        int actualH  = Math.Min(tileH, desc.SizeY - tileY);
-                        int rowBytes = actualW * bytesPerSample;
+                    // Clamp to image bounds — edge tiles may be smaller.
+                    int actualW = Math.Min(tileW, lvlDesc.SizeX - tileX);
+                    int actualH = Math.Min(tileH, lvlDesc.SizeY - tileY);
+                    int pixelCount         = actualW * actualH;
+                    int interleavedBytes   = pixelCount * srcChannelCount * bytesPerSample;
+                    int singleChannelBytes = pixelCount * bytesPerSample;
 
-                        byte[] pixelBytes = new byte[rowBytes * actualH];
-                        for (int row = 0; row < actualH; row++)
+                    // Fetch tile from BioLib at the requested pyramid level.
+                    var tileBitmap = await b.GetTile(
+                        b.Coords[z, srcC, t], levelIndex, tileX, tileY, actualW, actualH);
+
+                    byte[] pixelBytes = tileBitmap.Bytes;
+
+                    if (needsDeinterleave)
+                    {
+                        // Ensure the buffer is the full interleaved size before
+                        // extracting a single channel from it.
+                        if (pixelBytes.Length != interleavedBytes)
                         {
-                            int srcOffset = (tileY + row) * stride + tileX * bytesPerSample;
-                            Buffer.BlockCopy(plane.Bytes, srcOffset, pixelBytes, row * rowBytes, rowBytes);
+                            var trimmed = new byte[interleavedBytes];
+                            Buffer.BlockCopy(pixelBytes, 0, trimmed, 0,
+                                Math.Min(pixelBytes.Length, interleavedBytes));
+                            pixelBytes = trimmed;
                         }
 
-                        if (needsDeinterleave)
-                            pixelBytes = DeinterleaveChannel(pixelBytes, rgbChannelIndex, rgbChannelCount, bytesPerSample, actualW * actualH);
+                        // For BGRA buffers the byte order is [B, G, R, A].
+                        // Map output channel index:  0→R(byte2), 1→G(byte1), 2→B(byte0)
+                        int srcByteIndex = isBGRA ? (2 - rgbChannelIndex) : rgbChannelIndex;
 
-                        writer.WriteRegionAsync(t, c, z, tileY, tileX, actualH, actualW, pixelBytes).Wait();
+                        pixelBytes = DeinterleaveChannel(
+                            pixelBytes, srcByteIndex, srcChannelCount,
+                            bytesPerSample, pixelCount);
                     }
-                }
-            }
-            else
-            {
-                // ── Pyramidal image path ──────────────────────────────────────
-                // Buffers are not loaded. Fetch each tile via GetTile which reads
-                // from the slide source (SlideImage / Zarr / BioFormats).
-                // GetTile returns a Bitmap whose .Bytes are in the native pixel
-                // format at resolution level 0.
-                for (int tileY = 0; tileY < desc.SizeY; tileY += tileH)
-                {
-                    for (int tileX = 0; tileX < desc.SizeX; tileX += tileW)
+                    else
                     {
-                        int actualW = Math.Min(tileW, desc.SizeX - tileX);
-                        int actualH = Math.Min(tileH, desc.SizeY - tileY);
-
-                        // Set the image coordinate so GetTile reads the right plane.
-                        b.Coordinate = new AForge.ZCT(z, srcC, t);
-
-                        var tileBitmap = b.GetTile(
-                            b.GetFrameIndex(z, srcC, t), 0, tileX, tileY, actualW, actualH).Result;
-
-                        if (tileBitmap == null)
-                            continue;
-
-                        // Extract raw bytes at the correct bit depth, stripping any
-                        // stride padding and discarding alpha if the bitmap is RGBA.
-                        byte[] pixelBytes = ExtractRawPixels(tileBitmap, actualW, actualH, bytesPerSample);
-
-                        if (needsDeinterleave)
-                            pixelBytes = DeinterleaveChannel(pixelBytes, rgbChannelIndex, rgbChannelCount, bytesPerSample, actualW * actualH);
-
-                        writer.WriteRegionAsync(t, c, z, tileY, tileX, actualH, actualW, pixelBytes).Wait();
+                        // Single-channel path: trim/pad to the exact scalar size.
+                        if (pixelBytes.Length != singleChannelBytes)
+                        {
+                            var trimmed = new byte[singleChannelBytes];
+                            Buffer.BlockCopy(pixelBytes, 0, trimmed, 0,
+                                Math.Min(pixelBytes.Length, singleChannelBytes));
+                            pixelBytes = trimmed;
+                        }
                     }
+
+                    writer.WriteRegionAsync(
+                        t, c, z,
+                        tileY, tileX,
+                        actualH, actualW,
+                        pixelBytes,
+                        levelIndex: levelIndex).Wait();
                 }
             }
         }
+
         /// <summary>
         /// Copies exactly width × height × bytesPerSample from the bitmap's
         /// buffer, stripping any stride padding the bitmap format may include.
         /// </summary>
-        /// <summary>
-        /// Extracts raw pixels from a tile bitmap at the target bit depth.
-        /// Handles RGBA bitmaps (from SlideImage paths) by discarding the alpha
-        /// channel and packing only the colour samples.
-        /// </summary>
         private static byte[] ExtractRawPixels(
             Bitmap tileBitmap, int width, int height, int bytesPerSample)
         {
-            int pixelCount = width * height;
-            int totalBytes = pixelCount * bytesPerSample;
-            var src = tileBitmap.Bytes;
-
-            // Fast path: buffer is already exactly the right size.
-            if (src.Length == totalBytes)
-                return src;
-
-            // If the bitmap is 32bpp RGBA (4 bytes/px) and we want 1 byte/px (grayscale 8-bit),
-            // take the red channel (byte 0 of each pixel).
-            if (bytesPerSample == 1 && src.Length == pixelCount * 4)
-            {
-                var output = new byte[totalBytes];
-                for (int i = 0; i < pixelCount; i++)
-                    output[i] = src[i * 4];
-                return output;
-            }
-
-            // If the bitmap is 32bpp RGBA and we want 2 bytes/px (grayscale 16-bit packed as RGBA),
-            // take the red+green bytes of each pixel as the 16-bit sample.
-            if (bytesPerSample == 2 && src.Length == pixelCount * 4)
-            {
-                var output = new byte[totalBytes];
-                for (int i = 0; i < pixelCount; i++)
-                {
-                    output[i * 2]     = src[i * 4];
-                    output[i * 2 + 1] = src[i * 4 + 1];
-                }
-                return output;
-            }
-
-            // General case: strip stride padding row by row.
-            var result   = new byte[totalBytes];
             int rowBytes = width * bytesPerSample;
-            int stride   = tileBitmap.Stride;
-            for (int row = 0; row < height; row++)
-                Buffer.BlockCopy(src, row * stride, result, row * rowBytes, rowBytes);
+            int totalBytes = rowBytes * height;
+            var sourceBytes = tileBitmap.Bytes;
 
-            return result;
+            if (sourceBytes.Length == totalBytes)
+                return sourceBytes;
+
+            var output = new byte[totalBytes];
+            int sourceStride = tileBitmap.Stride;
+
+            for (int row = 0; row < height; row++)
+            {
+                Buffer.BlockCopy(sourceBytes, row * sourceStride, output, row * rowBytes, rowBytes);
+            }
+
+            return output;
         }
+
         // =====================================================================
         // Shared helpers
         // =====================================================================
@@ -300,30 +323,32 @@ namespace BioLib
         {
             return bitsPerSample switch
             {
-                8 => "uint8",
+                8  => "uint8",
                 16 => "uint16",
                 32 => "float32",
-                _ => "uint16"
+                _  => "uint16"
             };
         }
 
         /// <summary>
-        /// Extracts one colour channel from an interleaved RGB(A) buffer.
+        /// Extracts one colour channel from an interleaved buffer.
         ///
-        /// Given pixels stored as [R0 G0 B0 R1 G1 B1 ...] with
+        /// Given pixels stored as [C0 C1 C2 C0 C1 C2 ...] with
         /// <paramref name="bytesPerSample"/> bytes per component, returns
-        /// a contiguous single-channel plane.
+        /// a contiguous single-channel plane for <paramref name="channelIndex"/>.
+        /// For BGRA sources pass the remapped byte index so that byte-order
+        /// correction happens here.
         /// </summary>
         private static byte[] DeinterleaveChannel(
             byte[] interleaved,
-            int channelIndex,
-            int totalChannels,
-            int bytesPerSample,
-            int pixelCount)
+            int    channelIndex,
+            int    totalChannels,
+            int    bytesPerSample,
+            int    pixelCount)
         {
-            var output = new byte[pixelCount * bytesPerSample];
-            var stride = totalChannels * bytesPerSample;
-            var channelStart = channelIndex * bytesPerSample;
+            var output       = new byte[pixelCount * bytesPerSample];
+            var stride       = totalChannels * bytesPerSample;
+            var channelStart = channelIndex  * bytesPerSample;
 
             for (int px = 0; px < pixelCount; px++)
             {
