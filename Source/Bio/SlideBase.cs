@@ -1,4 +1,4 @@
-﻿using BruTile;
+using BruTile;
 using BruTile.Cache;
 using System;
 using System.Collections.Generic;
@@ -82,29 +82,77 @@ namespace BioLib
         {
             try
             {
-                if(Schema == null)
+                if (Schema == null)
                 {
                     Console.WriteLine("Schema is null.");
                     return null;
                 }
-                var r = Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
-                var tileWidth = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
+                var r          = Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
+                var tileWidth  = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
                 var tileHeight = Schema.Resolutions[tileInfo.Index.Level].TileHeight;
-                var curLevelOffsetXPixel = tileInfo.Extent.MinX / MinUnitsPerPixel;
-                var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / MinUnitsPerPixel;
-                var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
-                var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
-                if(SlideImage == null)
+
+                var curLevelOffsetXPixel = tileInfo.Extent.MinX / r;
+                var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / r;
+
+                // Clamp request to actual image pixels at this level (edge tiles are smaller)
+                var curTileWidth  = (int)(tileInfo.Extent.MaxX  > Schema.Extent.Width
+                    ? tileWidth  - (tileInfo.Extent.MaxX  - Schema.Extent.Width)  / r
+                    : tileWidth);
+                var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height
+                    ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r
+                    : tileHeight);
+
+                // Guard against degenerate extents
+                curTileWidth  = Math.Max(1, curTileWidth);
+                curTileHeight = Math.Max(1, curTileHeight);
+
+                if (SlideImage == null)
                 {
                     Console.WriteLine("SlideImage is null.");
                     return null;
                 }
-                var bgraData = SlideImage.ReadRegion(tileInfo.Index.Level, coord, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight);
-                //We check to see if the data is valid.
-                if (bgraData.Length != curTileWidth * curTileHeight * 4)
+
+                var bgraData = SlideImage.ReadRegion(
+                    tileInfo.Index.Level, coord,
+                    (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel,
+                    curTileWidth, curTileHeight);
+
+                if (bgraData == null || bgraData.Length == 0)
                     return null;
-                byte[] bm = ConvertRgbaToRgb(bgraData);
-                return bm;
+
+                int expectedSize = tileWidth * tileHeight * 4;
+
+                // Full tile — return as-is.
+                // Return the raw BGRA data (4 bytes/pixel) so the GL upload path
+                // receives a buffer that matches PixelFormat.Bgra / PixelType.UnsignedByte.
+                if (bgraData.Length == expectedSize)
+                    return bgraData;
+
+                // Edge tile: ReadRegion returned fewer pixels than a full tile because
+                // this tile hangs off the image boundary. Pad into a full tileWidth x
+                // tileHeight RGBA buffer (rows outside the image stay transparent/zeroed)
+                // so the GL upload always receives a consistently-sized, correctly-strided
+                // buffer and never reads past the end.
+                int actualW = Math.Min(curTileWidth,  tileWidth);
+                int actualH = Math.Min(curTileHeight, tileHeight);
+                int srcStride = actualW * 4;
+
+                // If ReadRegion returned even less than expected, derive safe row count
+                if (bgraData.Length < actualW * actualH * 4)
+                {
+                    int safePixels = bgraData.Length / 4;
+                    actualH = safePixels / actualW;
+                    if (actualH == 0) return null;
+                }
+
+                byte[] padded = new byte[expectedSize]; // zero-initialised = transparent
+                for (int row = 0; row < actualH; row++)
+                {
+                    int srcOffset = row * srcStride;
+                    int dstOffset = row * tileWidth * 4;
+                    Buffer.BlockCopy(bgraData, srcOffset, padded, dstOffset, srcStride);
+                }
+                return padded;
             }
             catch (Exception e)
             {

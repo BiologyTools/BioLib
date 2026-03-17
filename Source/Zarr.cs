@@ -57,7 +57,7 @@ namespace BioLib
             //   We write only the 3 colour channels remapped to R,G,B order
             //   and discard alpha.  srcChannelCount=4 so stride arithmetic is
             //   correct; outChannelCount=3 is what we write to the Zarr array.
-            var pixelFormat    = b.Buffers[0].PixelFormat;
+            var pixelFormat = b.Buffers[0].PixelFormat;
             int bitsPerSample;
             int srcChannelCount;   // channels packed in the raw buffer
             int outChannelCount;   // channels written to Zarr
@@ -66,17 +66,17 @@ namespace BioLib
             switch (pixelFormat)
             {
                 case PixelFormat.Format8bppIndexed:
-                    bitsPerSample   = 8;
+                    bitsPerSample = 8;
                     srcChannelCount = 1;
                     outChannelCount = 1;
                     break;
                 case PixelFormat.Format16bppGrayScale:
-                    bitsPerSample   = 16;
+                    bitsPerSample = 16;
                     srcChannelCount = 1;
                     outChannelCount = 1;
                     break;
                 case PixelFormat.Format24bppRgb:
-                    bitsPerSample   = 8;
+                    bitsPerSample = 8;
                     srcChannelCount = 3;
                     outChannelCount = 3;
                     break;
@@ -84,26 +84,26 @@ namespace BioLib
                 case PixelFormat.Format32bppRgb:
                     // Raw buffer is BGRA (4 bytes/pixel).
                     // We extract 3 channels remapped to R,G,B order and drop A.
-                    bitsPerSample   = 8;
+                    bitsPerSample = 8;
                     srcChannelCount = 4;
                     outChannelCount = 3;
-                    isBGRA          = true;
+                    isBGRA = true;
                     break;
                 case PixelFormat.Format48bppRgb:
-                    bitsPerSample   = 16;
+                    bitsPerSample = 16;
                     srcChannelCount = 3;
                     outChannelCount = 3;
                     break;
                 default:
                     srcChannelCount = 1;
                     outChannelCount = 1;
-                    bitsPerSample   = Math.Max(b.bitsPerPixel, 8);
+                    bitsPerSample = Math.Max(b.bitsPerPixel, 8);
                     break;
             }
 
             var bytesPerSample = bitsPerSample / 8;
-            var zarrDataType   = MapDataType(bitsPerSample);
-            var totalChannels  = b.SizeC * outChannelCount;
+            var zarrDataType = MapDataType(bitsPerSample);
+            var totalChannels = b.SizeC * outChannelCount;
 
             int tileW = 512;
             int tileH = 512;
@@ -117,7 +117,7 @@ namespace BioLib
             var levelDescriptors = new List<ResolutionLevelDescriptor>();
             for (int lvl = 0; lvl < b.Resolutions.Count; lvl++)
             {
-                var res        = b.Resolutions[lvl];
+                var res = b.Resolutions[lvl];
                 double dsample = b.GetLevelDownsample(lvl);   // 1.0 for level 0
                 levelDescriptors.Add(new ResolutionLevelDescriptor(res.SizeX, res.SizeY, dsample));
             }
@@ -134,13 +134,13 @@ namespace BioLib
 
             var baseDescriptor = new BioImageDescriptor(b.SizeX, b.SizeY, coord)
             {
-                Name          = Path.GetFileNameWithoutExtension(b.Filename),
-                DataType      = zarrDataType,
+                Name = Path.GetFileNameWithoutExtension(b.Filename),
+                DataType = zarrDataType,
                 PhysicalSizeX = b.PhysicalSizeX,
                 PhysicalSizeY = b.PhysicalSizeY,
                 PhysicalSizeZ = b.PhysicalSizeZ,
-                ChunkY        = tileH,
-                ChunkX        = tileW,
+                ChunkY = tileH,
+                ChunkX = tileW,
             };
 
             // ------------------------------------------------------------------
@@ -200,7 +200,115 @@ namespace BioLib
                 Console.WriteLine(e.ToString());
             }
 
+            // Write Zarr v2 sidecar files so ImageJ / Fiji's N5 plugin can open
+            // the dataset. The N5 plugin does not support Zarr v3 zarr.json and
+            // requires .zgroup / .zattrs / .zarray files instead.
+            WriteV2CompatibilityFiles(outputDir, b, levelDescriptors, zarrDataType, tileW, tileH, totalChannels);
+
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b);
+        }
+
+        // =====================================================================
+        // Zarr v2 compatibility layer for ImageJ / Fiji N5 plugin
+        // =====================================================================
+
+        /// <summary>
+        /// Writes Zarr v2 sidecar metadata files (.zgroup, .zattrs, .zarray)
+        /// alongside the v3 zarr.json files so that ImageJ/Fiji's N5 plugin
+        /// (which only understands Zarr v2 + OME-NGFF 0.4) can open the dataset.
+        /// </summary>
+        private static void WriteV2CompatibilityFiles(
+            string outputDir,
+            BioImage b,
+            List<ResolutionLevelDescriptor> levelDescriptors,
+            string zarrDataType,
+            int tileW, int tileH,
+            int totalChannels)
+        {
+            var ic = System.Globalization.CultureInfo.InvariantCulture;
+            try
+            {
+                // --- root .zgroup ---
+                File.WriteAllText(Path.Combine(outputDir, ".zgroup"),
+                    "{\n  \"zarr_format\": 2\n}\n");
+
+                // --- root .zattrs (OME-NGFF 0.4 multiscales) ---
+                // Build datasets array entries with pre-computed strings to avoid
+                // escaped-quote issues inside interpolation holes.
+                var datasetEntries = new System.Text.StringBuilder();
+                for (int i = 0; i < levelDescriptors.Count; i++)
+                {
+                    string sv = levelDescriptors[i].Downsample.ToString("G", ic);
+                    if (i > 0) datasetEntries.Append(",\n        ");
+                    datasetEntries.Append(
+                        "{\"path\": \"" + i + "\", " +
+                        "\"coordinateTransformations\": [{\"type\": \"scale\", " +
+                        "\"scale\": [1, 1, 1, " + sv + ", " + sv + "]}]}");
+                }
+
+                string name = Path.GetFileNameWithoutExtension(b.Filename);
+                string psx = (b.PhysicalSizeX > 0 ? b.PhysicalSizeX : 1.0).ToString("G", ic);
+                string psy = (b.PhysicalSizeY > 0 ? b.PhysicalSizeY : 1.0).ToString("G", ic);
+                string psz = (b.PhysicalSizeZ > 0 ? b.PhysicalSizeZ : 1.0).ToString("G", ic);
+
+                string zattrs =
+                    "{\n  \"multiscales\": [\n    {\n" +
+                    "      \"version\": \"0.4\",\n" +
+                    "      \"name\": \"" + name + "\",\n" +
+                    "      \"axes\": [\n" +
+                    "        {\"name\": \"t\", \"type\": \"time\"},\n" +
+                    "        {\"name\": \"c\", \"type\": \"channel\"},\n" +
+                    "        {\"name\": \"z\", \"type\": \"space\", \"unit\": \"micrometer\"},\n" +
+                    "        {\"name\": \"y\", \"type\": \"space\", \"unit\": \"micrometer\"},\n" +
+                    "        {\"name\": \"x\", \"type\": \"space\", \"unit\": \"micrometer\"}\n" +
+                    "      ],\n" +
+                    "      \"datasets\": [\n        " + datasetEntries + "\n      ],\n" +
+                    "      \"coordinateTransformations\": [\n" +
+                    "        {\"type\": \"scale\", \"scale\": [1, 1, " + psz + ", " + psy + ", " + psx + "]}\n" +
+                    "      ]\n" +
+                    "    }\n  ]\n}\n";
+
+                File.WriteAllText(Path.Combine(outputDir, ".zattrs"), zattrs);
+
+                // --- per-level .zarray ---
+                // Map ZarrNET data type string to NumPy dtype string
+                string numpyDtype;
+                if (zarrDataType == "uint8") numpyDtype = "|u1";
+                else if (zarrDataType == "float32") numpyDtype = "<f4";
+                else numpyDtype = "<u2";
+
+                for (int i = 0; i < levelDescriptors.Count; i++)
+                {
+                    var lvl = levelDescriptors[i];
+                    string levelDir = Path.Combine(outputDir, i.ToString());
+                    Directory.CreateDirectory(levelDir);
+
+                    string zarray =
+                        "{\n" +
+                        "  \"zarr_format\": 2,\n" +
+                        "  \"shape\": [" + b.SizeT + ", " + totalChannels + ", " + b.SizeZ + ", " + lvl.SizeY + ", " + lvl.SizeX + "],\n" +
+                        "  \"chunks\": [1, 1, 1, " + tileH + ", " + tileW + "],\n" +
+                        "  \"dtype\": \"" + numpyDtype + "\",\n" +
+                        "  \"compressor\": {\n" +
+                        "    \"id\": \"blosc\",\n" +
+                        "    \"cname\": \"lz4\",\n" +
+                        "    \"clevel\": 5,\n" +
+                        "    \"shuffle\": 1\n" +
+                        "  },\n" +
+                        "  \"fill_value\": 0,\n" +
+                        "  \"order\": \"C\",\n" +
+                        "  \"filters\": null\n" +
+                        "}\n";
+
+                    File.WriteAllText(Path.Combine(levelDir, ".zarray"), zarray);
+                }
+
+                Console.WriteLine("Zarr v2 compatibility files written successfully.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Warning: failed to write Zarr v2 compatibility files: " + ex.Message);
+            }
         }
 
         // =====================================================================
@@ -213,20 +321,20 @@ namespace BioLib
         /// BioImage.GetTile and writing it as a sub-region into the Zarr array.
         /// </summary>
         private async static void WritePlaneInTiles(
-            OmeZarrWriter              writer,
-            BioImage                   b,
-            ResolutionLevelDescriptor  lvlDesc,
+            OmeZarrWriter writer,
+            BioImage b,
+            ResolutionLevelDescriptor lvlDesc,
             int t, int c, int z,
             int bytesPerSample,
             int tileW, int tileH,
-            int levelIndex      = 0,
+            int levelIndex = 0,
             int rgbChannelIndex = -1,
             int srcChannelCount = 1,
-            bool isBGRA         = false,
-            int logicalC        = -1)
+            bool isBGRA = false,
+            int logicalC = -1)
         {
             bool needsDeinterleave = rgbChannelIndex >= 0;
-            int  srcC              = needsDeinterleave ? logicalC : c;
+            int srcC = needsDeinterleave ? logicalC : c;
 
             for (int tileY = 0; tileY < lvlDesc.SizeY; tileY += tileH)
             {
@@ -235,8 +343,8 @@ namespace BioLib
                     // Clamp to image bounds — edge tiles may be smaller.
                     int actualW = Math.Min(tileW, lvlDesc.SizeX - tileX);
                     int actualH = Math.Min(tileH, lvlDesc.SizeY - tileY);
-                    int pixelCount         = actualW * actualH;
-                    int interleavedBytes   = pixelCount * srcChannelCount * bytesPerSample;
+                    int pixelCount = actualW * actualH;
+                    int interleavedBytes = pixelCount * srcChannelCount * bytesPerSample;
                     int singleChannelBytes = pixelCount * bytesPerSample;
 
                     // Fetch tile from BioLib at the requested pyramid level.
@@ -323,10 +431,10 @@ namespace BioLib
         {
             return bitsPerSample switch
             {
-                8  => "uint8",
+                8 => "uint8",
                 16 => "uint16",
                 32 => "float32",
-                _  => "uint16"
+                _ => "uint16"
             };
         }
 
@@ -341,14 +449,14 @@ namespace BioLib
         /// </summary>
         private static byte[] DeinterleaveChannel(
             byte[] interleaved,
-            int    channelIndex,
-            int    totalChannels,
-            int    bytesPerSample,
-            int    pixelCount)
+            int channelIndex,
+            int totalChannels,
+            int bytesPerSample,
+            int pixelCount)
         {
-            var output       = new byte[pixelCount * bytesPerSample];
-            var stride       = totalChannels * bytesPerSample;
-            var channelStart = channelIndex  * bytesPerSample;
+            var output = new byte[pixelCount * bytesPerSample];
+            var stride = totalChannels * bytesPerSample;
+            var channelStart = channelIndex * bytesPerSample;
 
             for (int px = 0; px < pixelCount; px++)
             {

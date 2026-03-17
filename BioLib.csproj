@@ -18,7 +18,7 @@
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; Napari; </PackageTags>
-    <PackageReleaseNotes>Support for reading and writing Zarr datasets.</PackageReleaseNotes>
+    <PackageReleaseNotes>Full support for reading and writing Zarr datasets.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
@@ -49,7 +49,7 @@
     <PackageReference Include="SkiaSharp.Views.Gtk3" Version="3.119.2" />
   </ItemGroup>
 	<ItemGroup>
-	  <ProjectReference Include="..\AForgeBio\AForgeBio.csproj" />
+	  <ProjectReference Include="..\AForgeBio\AForgeBio\AForgeBio.csproj" />
 	  <ProjectReference Include="..\OpenSlideSharp\src\OpenSlideSharp\OpenSlideGTK.csproj" />
 	  <ProjectReference Include="..\ZarrNET\Zarr.NET.csproj" />
 	</ItemGroup>
