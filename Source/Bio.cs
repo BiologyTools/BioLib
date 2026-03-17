@@ -1890,6 +1890,8 @@ namespace BioLib
             public PointD Origin;
             public string ID;
             public string Name;
+            /// <summary>Parameterless constructor used by the Zarr HCS plate path.</summary>
+            public WellPlate() { }
             public WellPlate(BioImage b)
             {
                 ID = b.meta.getPlateID(b.series);
@@ -4987,6 +4989,13 @@ namespace BioLib
         public MultiscaleNode imagef;
         public ResolutionLevelNode levelf;
         public List<ResolutionLevelNode> levels;
+        public PlateMetadata zarrPlate;
+        /// <summary>
+        /// For HCS Plate Zarr stores: one entry per well-field, each containing
+        /// the resolution levels for that field.  Indexed by
+        /// <see cref="WellPlate.Well.Sample.Index"/>.
+        /// </summary>
+        public List<List<ResolutionLevelNode>> ZarrWellLevels = new();
         public List<PlaneResult> planes = new List<PlaneResult>();
         /// The OpenFile function opens a BioImage file, reads its metadata, and loads the image
         /// data into a BioImage object.
@@ -5315,6 +5324,116 @@ namespace BioLib
             return b;
         }
 
+        // -----------------------------------------------------------------
+        // Zarr helpers — plate-aware node resolution
+        // -----------------------------------------------------------------
+
+        /// <summary>
+        /// Returns a <see cref="MultiscaleNode"/> for the first available image
+        /// in a Zarr store, regardless of whether the store is a plain
+        /// MultiscaleImage, a Bioformats2RawCollection, or an HCS Plate.
+        ///
+        /// For Plate stores the first well's first field (index "0") is opened
+        /// via its path relative to the store root.
+        /// </summary>
+        private static async Task<(MultiscaleNode image, PlateMetadata plate)> ResolveMultiscaleAsync(
+            OmeZarrReader reader, string baseUrl)
+        {
+            try
+            {
+                var ms = await reader.AsMultiscaleImageAsync().ConfigureAwait(false);
+                return (ms, null);
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Plate"))
+            {
+                var plate = reader.AsPlate();
+
+                if (plate.Wells == null || !plate.Wells.Any())
+                    throw new Exception("OME-Zarr Plate contains no wells.");
+
+                // NGFF HCS layout: <store>/<rowName>/<colName>/<fieldIndex>
+                // WellReference.Path is "rowName/colName".
+                // Field paths are integer indices starting at 0.
+                var firstWell   = plate.Wells.First();
+                string fieldUrl = baseUrl.TrimEnd('/') + "/" + firstWell.Path.Trim('/') + "/0";
+
+                var fieldReader = await OmeZarrReader.OpenAsync(fieldUrl).ConfigureAwait(false);
+                var fieldMs     = await fieldReader.AsMultiscaleImageAsync().ConfigureAwait(false);
+                return (fieldMs, plate.PlateMetadata);
+            }
+        }
+
+        /// <summary>
+        /// Walks a <see cref="PlateMetadata"/> and populates <paramref name="b"/>.Plate
+        /// with well/sample metadata so the PlateTool UI can display it.
+        ///
+        /// Fields are discovered by probing integer sub-paths (0, 1, 2 …) under
+        /// each well until one fails to open, which matches the NGFF HCS convention.
+        /// </summary>
+        private static async Task BuildZarrWellPlate(BioImage b, PlateMetadata plate, string baseUrl)
+        {
+            var wp  = new WellPlate();
+            wp.Name = plate.Name ?? "";
+            // Build ordered row/column name lists for index lookup using LINQ.
+            var rowNames = plate.Rows    != null ? plate.Rows.Select(r => r.Name).ToList()    : new List<string>();
+            var colNames = plate.Columns != null ? plate.Columns.Select(c => c.Name).ToList() : new List<string>();
+
+            int sampleIndex = 0;
+
+            foreach (var wellMeta in plate.Wells)
+            {
+                // wellMeta.Path == "rowName/colName"
+                string[] parts  = wellMeta.Path.Trim('/').Split('/');
+                string rowName  = parts.Length > 0 ? parts[0] : "";
+                string colName  = parts.Length > 1 ? parts[1] : "";
+
+                int row = rowNames.IndexOf(rowName);
+                int col = colNames.IndexOf(colName);
+                if (row < 0) row = 0;
+                if (col < 0) col = 0;
+
+                var well = new WellPlate.Well
+                {
+                    ID     = wellMeta.Path ?? "",
+                    Row    = row,
+                    Column = col,
+                };
+
+                // Probe field sub-paths 0, 1, 2 … until open fails.
+                for (int fieldIdx = 0; fieldIdx < 512; fieldIdx++)
+                {
+                    string fieldUrl = baseUrl.TrimEnd('/') + "/"
+                                    + wellMeta.Path.Trim('/') + "/"
+                                    + fieldIdx.ToString();
+                    try
+                    {
+                        var fieldReader = await OmeZarrReader.OpenAsync(fieldUrl).ConfigureAwait(false);
+                        var fieldMs     = await fieldReader.AsMultiscaleImageAsync().ConfigureAwait(false);
+                        var fLevels     = (await fieldMs.OpenAllResolutionLevelsAsync().ConfigureAwait(false))
+                                         .ToList();
+
+                        well.Samples.Add(new WellPlate.Well.Sample
+                        {
+                            ID       = fieldIdx.ToString(),
+                            Index    = sampleIndex++,
+                            Position = new PointD(col, row),
+                        });
+
+                        b.ZarrWellLevels.Add(fLevels);
+                    }
+                    catch
+                    {
+                        // No more fields at this index — stop probing this well.
+                        break;
+                    }
+                }
+
+                wp.Wells.Add(well);
+            }
+
+            b.Plate = wp;
+        }
+
         public static async Task<BioImage> OpenURL(
         string url,
         ZCT coord,
@@ -5341,7 +5460,16 @@ namespace BioLib
                 // -----------------------------------------------------------------
 
                 b.zarrReader ??= await OmeZarrReader.OpenAsync(url).ConfigureAwait(false);
-                b.imagef ??= b.zarrReader.AsMultiscaleImage();
+
+                if (b.imagef == null)
+                {
+                    var (ms, plateNode) = await ResolveMultiscaleAsync(b.zarrReader, url).ConfigureAwait(false);
+                    b.imagef     = ms;
+                    b.zarrPlate  = plateNode;
+
+                    if (plateNode != null)
+                        await BuildZarrWellPlate(b, plateNode, url).ConfigureAwait(false);
+                }
 
                 b.levels = (await b.imagef
                     .OpenAllResolutionLevelsAsync().ConfigureAwait(false))
@@ -7553,17 +7681,41 @@ namespace BioLib
                     zarrReader = await OmeZarrReader.OpenAsync(b.Filename);
 
                 if (multiscale == null)
-                    multiscale = await zarrReader.AsMultiscaleImageAsync();
+                {
+                    var (ms, plateNode) = await ResolveMultiscaleAsync(zarrReader, b.Filename).ConfigureAwait(false);
+                    multiscale = ms;
+                    zarrPlate  = plateNode;
 
-                if (levels == null)
-                    levels = (await multiscale.OpenAllResolutionLevelsAsync()).ToList();
+                    if (plateNode != null && Plate == null)
+                        await BuildZarrWellPlate(b, plateNode, b.Filename).ConfigureAwait(false);
+                }
 
-                var planef = await levels[level].ReadTileAsync(
+                // For HCS plates, ZarrWellLevels[b.Level] holds the levels for the
+                // currently selected well-field (set by PlateTool via b.Level).
+                List<ResolutionLevelNode> activeLevels;
+                if (ZarrWellLevels.Count > 0)
+                {
+                    int fieldIndex = Math.Clamp(b.Level, 0, ZarrWellLevels.Count - 1);
+                    activeLevels = ZarrWellLevels[fieldIndex];
+                }
+                else
+                {
+                    if (levels == null)
+                        levels = (await multiscale.OpenAllResolutionLevelsAsync()).ToList();
+                    activeLevels = levels;
+                }
+
+                // Within a field the level parameter selects the pyramid level.
+                int pyramidLevel = ZarrWellLevels.Count > 0 ? 0 : level;
+                pyramidLevel = Math.Clamp(pyramidLevel, 0, activeLevels.Count - 1);
+
+                var planef = await activeLevels[pyramidLevel].ReadTileAsync(
                     tilex, tiley, tileSizeX, tileSizeY,
                     b.Coordinate.T, b.Coordinate.C, b.Coordinate.Z);
 
-                int levelW = b.Resolutions[level].SizeX;
-                int levelH = b.Resolutions[level].SizeY;
+                int resLevel = Math.Clamp(pyramidLevel, 0, b.Resolutions.Count - 1);
+                int levelW = b.Resolutions[resLevel].SizeX;
+                int levelH = b.Resolutions[resLevel].SizeY;
 
                 int actualW = Math.Max(0, Math.Min(tileSizeX, levelW - tilex));
                 int actualH = Math.Max(0, Math.Min(tileSizeY, levelH - tiley));
