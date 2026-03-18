@@ -200,26 +200,26 @@ namespace BioLib
         private static IDictionary<string, Func<string, bool, ISlideSource>> keyValuePairs = new Dictionary<string, Func<string, bool, ISlideSource>>();
         public static ISlideSource Create(BioImage source, SlideImage im, bool enableCache = true)
         {
-
             var ext = Path.GetExtension(source.file).ToUpper();
             try
             {
                 if (keyValuePairs.TryGetValue(ext, out var factory) && factory != null)
                     return factory.Invoke(source.file, enableCache);
-
-                if (!string.IsNullOrEmpty(SlideBase.DetectVendor(source.file)))
-                {
-                    SlideBase b = new SlideBase(source, im, enableCache);
-
-                }
             }
             catch (Exception e)
             {
                 Console.WriteLine(e.Message);
             }
-            return null;
+            // Always fall back to SlideBase for any format including zarr/well.
+            return new SlideBase(source, im, enableCache);
         }
         #endregion
+
+        private static void Log(string msg)
+        {
+            try { System.IO.File.AppendAllText(@"C:\\Users\\Public\\biolog.txt", msg + "\n"); }
+            catch { }
+        }
         public double MinUnitsPerPixel { get; protected set; }
         public static Extent destExtent;
         public static Extent sourceExtent;
@@ -351,8 +351,13 @@ namespace BioLib
         {
             if (cache == null)
                 cache = new TileCache(this);
-            var curLevel = Image.BioImage.LevelFromResolution(sliceInfo.Resolution);
+
+            // Use the schema's own resolution table — not BioImage.Resolutions (plate levels) —
+            // so the level index stays within the rebuilt field schema for well images.
+            var curLevel = OpenSlideGTK.TileUtil.GetLevel(Schema.Resolutions, sliceInfo.Resolution);
             var curUnitsPerPixel = Schema.Resolutions[curLevel].UnitsPerPixel;
+
+            Log($"[GetSlice] resolution={sliceInfo.Resolution:F3} curLevel={curLevel} curUPP={curUnitsPerPixel:F3} schemaLevels={Schema.Resolutions.Count} schemaExtent={Schema.Extent.MinX:F0},{Schema.Extent.MinY:F0},{Schema.Extent.MaxX:F0},{Schema.Extent.MaxY:F0}");
 
             var tileInfos = Schema.GetTileInfos(sliceInfo.Extent, curLevel);
             if (tileInfos.Count() == 0)
@@ -631,6 +636,9 @@ namespace BioLib
                 return null;
             if (cache == null)
                 cache = new TileCache(this);
+
+            Log($"[GetTileAsync] level={tileInfo.Index.Level} extent={tileInfo.Extent.MinX:F0},{tileInfo.Extent.MinY:F0},{tileInfo.Extent.MaxX:F0},{tileInfo.Extent.MaxY:F0} schemaExtent={Schema.Extent.MinX:F0},{Schema.Extent.MinY:F0},{Schema.Extent.MaxX:F0},{Schema.Extent.MaxY:F0}");
+
             if(cache.HasTile(new TileInformation(tileInfo.Index,tileInfo.Extent,coord)))
             {
                 return await cache.GetTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord));
@@ -643,7 +651,12 @@ namespace BioLib
             var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
             var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
 
+            Log($"[GetTileAsync] -> ReadRegionAsync level={tileInfo.Index.Level} px=({curLevelOffsetXPixel:F0},{curLevelOffsetYPixel:F0}) size=({curTileWidth},{curTileHeight})");
+
             var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, coord);
+
+            Log($"[GetTileAsync] -> bgraData={(bgraData == null ? "NULL" : bgraData.Length + " bytes")}");
+
             cache.AddTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord), bgraData);
             return bgraData;
         }

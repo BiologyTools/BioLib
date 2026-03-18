@@ -1,4 +1,4 @@
-﻿using AForge;
+using AForge;
 using GLib;
 using OpenSlideGTK;
 using OpenSlideGTK.Interop;
@@ -10,6 +10,8 @@ using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using ZarrNET.Core.OmeZarr.Nodes;
+using ZarrNET.Core.OmeZarr.Metadata;
 
 namespace BioLib
 {
@@ -87,23 +89,22 @@ namespace BioLib
         {
             get
             {
-                if (BioImage.MacroResolution.HasValue)
+                // For well-plate fields use the active field's pyramid level count.
+                if (BioImage.Type == BioImage.ImageType.well &&
+                    BioImage.ZarrWellLevels?.Count > 0)
                 {
-                    return BioImage.Resolutions.Count - 2;
+                    int fi = Math.Clamp(BioImage.WellIndex, 0, BioImage.ZarrWellLevels.Count - 1);
+                    return BioImage.ZarrWellLevels[fi]?.Count ?? 1;
                 }
-                else
-                    return BioImage.Resolutions.Count;
+                if (BioImage.MacroResolution.HasValue)
+                    return BioImage.Resolutions.Count - 2;
+                return BioImage.Resolutions.Count;
             }
         }
 
         private ImageDimension? _dimensionsRef;
         private readonly object _dimensionsSynclock = new object();
 
-        /// <summary>
-        /// Get the dimensions of level 0 (the largest level). Exactly
-        /// equivalent to calling GetLevelDimensions(0).
-        /// </summary>
-        /// <exception cref="OpenSlideException"/>
         public ImageDimension Dimensions
         {
             get
@@ -119,13 +120,32 @@ namespace BioLib
                 return _dimensionsRef.Value;
             }
         }
-        /// <summary>
-        /// Get the dimensions of a level.
-        /// </summary>
-        /// <param name="level">The desired level.</param>
-        /// <exception cref="OpenSlideException"/>
+
         public ImageDimension GetLevelDimension(int level)
         {
+            // For well-plate fields, derive dimensions from the field's pyramid shape.
+            if (BioImage.Type == BioImage.ImageType.well &&
+                BioImage.ZarrWellLevels?.Count > 0)
+            {
+                int fi = Math.Clamp(BioImage.WellIndex, 0, BioImage.ZarrWellLevels.Count - 1);
+                var fieldLevels = BioImage.ZarrWellLevels[fi];
+                if (fieldLevels != null && fieldLevels.Count > 0)
+                {
+                    int lev   = Math.Clamp(level, 0, fieldLevels.Count - 1);
+                    var shape = fieldLevels[lev].Shape;
+                    var axes  = fieldLevels[lev].EffectiveAxes;
+                    int w = 1, h = 1;
+                    for (int i = 0; i < axes.Length; i++)
+                    {
+                        switch (axes[i].Name.ToLowerInvariant())
+                        {
+                            case "x": w = (int)shape[i]; break;
+                            case "y": h = (int)shape[i]; break;
+                        }
+                    }
+                    return new ImageDimension(w, h);
+                }
+            }
             return new ImageDimension(BioImage.Resolutions[level].SizeX, BioImage.Resolutions[level].SizeY);
         }
 
@@ -142,6 +162,13 @@ namespace BioLib
                 yield return GetLevelDimension(i);
             }
         }
+
+        /// <summary>
+        /// Clears the cached level-0 dimensions so <see cref="Dimensions"/> is
+        /// re-derived from the active well field on the next access.
+        /// Call this whenever <see cref="BioImage.WellIndex"/> changes for a well image.
+        /// </summary>
+        public void ResetDimensionsCache() => _dimensionsRef = null;
         /// <summary>
         /// Calculates the base downsampling factor between two levels of a slide.
         /// </summary>
@@ -265,8 +292,88 @@ namespace BioLib
         /// <param name="height">The height of the region. Must be non-negative.</param>
         /// <param name="data">The BGRA pixel data of this region.</param>
         /// <returns></returns>
+
+        private static void Log(string msg)
+        {
+            try { System.IO.File.AppendAllText(@"C:\\Users\\Public\\biolog.txt", msg + "\n"); }
+            catch { }
+        }
         public async Task<byte[]> TryReadRegionAsync(int level, long x, long y, long width, long height, ZCT zct)
         {
+            Log($"[TryReadRegionAsync] Type={BioImage.Type} WellLevels={BioImage.ZarrWellLevels?.Count}");
+            // Use ZarrWellLevels whenever available — this handles well-plate images
+            // regardless of how Type is set at call time.
+            if (BioImage.ZarrWellLevels?.Count > 0)
+            {
+                Log($"[Well TryReadRegionAsync] level={level} x={x} y={y} w={width} h={height} zct={zct.Z},{zct.C},{zct.T} bioLevel={BioImage.WellIndex} wellLevelCount={BioImage.ZarrWellLevels.Count}");
+                int fi          = Math.Clamp(BioImage.WellIndex, 0, BioImage.ZarrWellLevels.Count - 1);
+                var fieldLevels = BioImage.ZarrWellLevels[fi];
+                if (fieldLevels == null || fieldLevels.Count == 0)
+                {
+                    Log($"[Well TryReadRegionAsync] fieldLevels null/empty for fi={fi}");
+                    return null;
+                }
+
+                int lev       = Math.Clamp(level, 0, fieldLevels.Count - 1);
+                var levelNode = fieldLevels[lev];
+                Log($"[Well TryReadRegionAsync] Using zarr lev={lev}, shape={string.Join(",", levelNode.Shape)}");
+
+                var result = await levelNode.ReadTileAsync(
+                    (int)x, (int)y, (int)width, (int)height,
+                    zct.T, zct.C, zct.Z).ConfigureAwait(false);
+
+                if (result == null)
+                {
+                    Log($"[Well TryReadRegionAsync] ReadTileAsync returned null");
+                    return null;
+                }
+                Log($"[Well TryReadRegionAsync] Got {result.Data.Length} bytes, dtype={result.DataType}");
+
+                // Determine actual returned size from result shape/axes.
+                int resultW = (int)width, resultH = (int)height;
+                for (int i = 0; i < result.Axes.Length; i++)
+                {
+                    switch (result.Axes[i].Name.ToLowerInvariant())
+                    {
+                        case "x": resultW = (int)result.Shape[i]; break;
+                        case "y": resultH = (int)result.Shape[i]; break;
+                    }
+                }
+
+                // Convert raw pixel data to BGRA (4 bytes/pixel) which is what
+                // the tile renderer expects.
+                int pixelCount  = (int)width * (int)height;
+                byte[] bgra     = new byte[pixelCount * 4];
+                bool is16       = result.DataType == "uint16";
+                int srcStride   = resultW * (is16 ? 2 : 1);
+                int dstStride   = (int)width * 4;
+
+                for (int row = 0; row < Math.Min(resultH, (int)height); row++)
+                {
+                    for (int col = 0; col < Math.Min(resultW, (int)width); col++)
+                    {
+                        int srcOff = row * srcStride + col * (is16 ? 2 : 1);
+                        int dstOff = row * dstStride + col * 4;
+                        byte gray;
+                        if (is16)
+                        {
+                            ushort v = (ushort)(result.Data[srcOff] | (result.Data[srcOff + 1] << 8));
+                            gray = (byte)(v >> 8);
+                        }
+                        else
+                        {
+                            gray = result.Data[srcOff];
+                        }
+                        bgra[dstOff]     = gray; // B
+                        bgra[dstOff + 1] = gray; // G
+                        bgra[dstOff + 2] = gray; // R
+                        bgra[dstOff + 3] = 255;  // A
+                    }
+                }
+                Log($"[Well TryReadRegionAsync] Returning {bgra.Length} BGRA bytes");
+                return bgra;
+            }
+
             Bitmap bts = await BioImage.GetTile(BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height);
             return bts.Bytes;
         }
@@ -327,7 +434,7 @@ namespace BioLib
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message + " " + e.StackTrace);  
+                Log($"[ReadRegionAsync] EXCEPTION: {e.GetType().Name}: {e.Message}");
                 return null;
             }
         }

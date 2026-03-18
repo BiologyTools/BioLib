@@ -8,6 +8,9 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.PixelFormats;
 using AForge;
+using ZarrNET.Core.OmeZarr.Nodes;
+using ZarrNET.Core.OmeZarr.Metadata;
+using ZarrNET.Core.Nodes;
 
 namespace BioLib
 {
@@ -40,6 +43,72 @@ namespace BioLib
         public static string DetectVendor(string source)
         {
             return SlideImage.DetectVendor(source);
+        }
+
+        /// <summary>
+        /// Replaces the BruTile schema using the field pyramid dimensions from
+        /// <c>ZarrWellLevels</c>. Called after construction when the BioImage is
+        /// a well-plate so the tile coordinate space matches the active field,
+        /// not the whole-plate resolution list.
+        /// </summary>
+
+        private static void Log(string msg)
+        {
+            try { System.IO.File.AppendAllText(@"C:\\Users\\Public\\biolog.txt", msg + "\n"); }
+            catch { }
+        }
+        public void RebuildSchemaForWell(BioImage b)
+        {
+            if (b.ZarrWellLevels == null || b.ZarrWellLevels.Count == 0)
+            {
+                Log($"[RebuildSchemaForWell] ZarrWellLevels empty — schema not rebuilt");
+                return;
+            }
+            int fi = Math.Clamp(b.Level, 0, b.ZarrWellLevels.Count - 1);
+            var fieldLevels = b.ZarrWellLevels[fi];
+            if (fieldLevels == null || fieldLevels.Count == 0)
+            {
+                Log($"[RebuildSchemaForWell] fieldLevels null/empty for fi={fi}");
+                return;
+            }
+
+            int w0 = 1, h0 = 1;
+            GetFieldDims(fieldLevels[0], out w0, out h0);
+            Log($"[RebuildSchemaForWell] field fi={fi}, level0 w={w0} h={h0}, levels={fieldLevels.Count}");
+
+            var newSchema = new BruTile.TileSchema
+            {
+                YAxis    = BruTile.YAxis.OSM,
+                Format   = "jpg",
+                Extent   = new BruTile.Extent(0, -h0, w0, 0),
+                OriginX  = 0,
+                OriginY  = 0,
+            };
+
+            for (int lev = 0; lev < fieldLevels.Count; lev++)
+            {
+                GetFieldDims(fieldLevels[lev], out int wL, out int hL);
+                double downsample = w0 > 0 ? (double)w0 / Math.Max(1, wL) : Math.Pow(2, lev);
+                newSchema.Resolutions[lev] = new BruTile.Resolution(lev, downsample, 256, 256);
+                Log($"[RebuildSchemaForWell]   level {lev}: w={wL} h={hL} unitsPerPixel={downsample}");
+            }
+
+            Schema = newSchema;
+        }
+
+        private static void GetFieldDims(ResolutionLevelNode node, out int w, out int h)
+        {
+            w = 1; h = 1;
+            var axes  = node.EffectiveAxes;
+            var shape = node.Shape;
+            for (int i = 0; i < axes.Length; i++)
+            {
+                switch (axes[i].Name.ToLowerInvariant())
+                {
+                    case "x": w = (int)shape[i]; break;
+                    case "y": h = (int)shape[i]; break;
+                }
+            }
         }
 
         
