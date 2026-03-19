@@ -348,6 +348,27 @@ namespace BioLib
                 int srcStride   = resultW * (is16 ? 2 : 1);
                 int dstStride   = (int)width * 4;
 
+                // For 16-bit data use a per-tile min/max linear stretch so that
+                // fluorescence images (which have signal in e.g. 0-4000 out of 65535)
+                // render with full contrast rather than appearing nearly black when
+                // the top-byte shift `v >> 8` is used.
+                ushort tileMin = ushort.MaxValue, tileMax = 0;
+                if (is16)
+                {
+                    int rows = Math.Min(resultH, (int)height);
+                    int cols = Math.Min(resultW, (int)width);
+                    for (int row = 0; row < rows; row++)
+                        for (int col = 0; col < cols; col++)
+                        {
+                            int off = row * srcStride + col * 2;
+                            ushort v = (ushort)(result.Data[off] | (result.Data[off + 1] << 8));
+                            if (v < tileMin) tileMin = v;
+                            if (v > tileMax) tileMax = v;
+                        }
+                    // Avoid divide-by-zero on flat tiles; fall back to top-byte shift.
+                    if (tileMax <= tileMin) { tileMin = 0; tileMax = 65535; }
+                }
+
                 for (int row = 0; row < Math.Min(resultH, (int)height); row++)
                 {
                     for (int col = 0; col < Math.Min(resultW, (int)width); col++)
@@ -358,7 +379,7 @@ namespace BioLib
                         if (is16)
                         {
                             ushort v = (ushort)(result.Data[srcOff] | (result.Data[srcOff + 1] << 8));
-                            gray = (byte)(v >> 8);
+                            gray = (byte)(((v - tileMin) * 255) / (tileMax - tileMin));
                         }
                         else
                         {

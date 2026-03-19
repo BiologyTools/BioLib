@@ -64,7 +64,7 @@ namespace BioLib
                 Log($"[RebuildSchemaForWell] ZarrWellLevels empty — schema not rebuilt");
                 return;
             }
-            int fi = Math.Clamp(b.Level, 0, b.ZarrWellLevels.Count - 1);
+            int fi = b.WellIndex;
             var fieldLevels = b.ZarrWellLevels[fi];
             if (fieldLevels == null || fieldLevels.Count == 0)
             {

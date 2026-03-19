@@ -200,26 +200,25 @@ namespace BioLib
         private static IDictionary<string, Func<string, bool, ISlideSource>> keyValuePairs = new Dictionary<string, Func<string, bool, ISlideSource>>();
         public static ISlideSource Create(BioImage source, SlideImage im, bool enableCache = true)
         {
+
             var ext = Path.GetExtension(source.file).ToUpper();
             try
             {
                 if (keyValuePairs.TryGetValue(ext, out var factory) && factory != null)
                     return factory.Invoke(source.file, enableCache);
+
+                if (!string.IsNullOrEmpty(SlideBase.DetectVendor(source.file)))
+                {
+                    return new SlideBase(source, im, enableCache);
+                }
             }
             catch (Exception e)
             {
                 Console.WriteLine(e.Message);
             }
-            // Always fall back to SlideBase for any format including zarr/well.
-            return new SlideBase(source, im, enableCache);
+            return null;
         }
         #endregion
-
-        private static void Log(string msg)
-        {
-            try { System.IO.File.AppendAllText(@"C:\\Users\\Public\\biolog.txt", msg + "\n"); }
-            catch { }
-        }
         public double MinUnitsPerPixel { get; protected set; }
         public static Extent destExtent;
         public static Extent sourceExtent;
@@ -351,13 +350,8 @@ namespace BioLib
         {
             if (cache == null)
                 cache = new TileCache(this);
-
-            // Use the schema's own resolution table — not BioImage.Resolutions (plate levels) —
-            // so the level index stays within the rebuilt field schema for well images.
-            var curLevel = OpenSlideGTK.TileUtil.GetLevel(Schema.Resolutions, sliceInfo.Resolution);
+            var curLevel = Image.BioImage.LevelFromResolution(sliceInfo.Resolution);
             var curUnitsPerPixel = Schema.Resolutions[curLevel].UnitsPerPixel;
-
-            Log($"[GetSlice] resolution={sliceInfo.Resolution:F3} curLevel={curLevel} curUPP={curUnitsPerPixel:F3} schemaLevels={Schema.Resolutions.Count} schemaExtent={Schema.Extent.MinX:F0},{Schema.Extent.MinY:F0},{Schema.Extent.MaxX:F0},{Schema.Extent.MaxY:F0}");
 
             var tileInfos = Schema.GetTileInfos(sliceInfo.Extent, curLevel);
             if (tileInfos.Count() == 0)
@@ -610,7 +604,33 @@ namespace BioLib
             GC.SuppressFinalize(this);
         }
 
-        public async Task<byte[]> GetTileAsync(TileInformation tileInfo, ZCT coord)
+   
+        /// <summary>
+        /// Pads a raw BGRA edge-tile buffer (curW x curH x 4 bytes) into a full
+        /// tileWidth x tileHeight x 4 byte buffer, zero-filling pixels outside
+        /// the image boundary. Interior tiles are returned as-is.
+        /// </summary>
+        private static byte[] PadToBgra(byte[] src, int curW, int curH, int tileWidth, int tileHeight)
+        {
+            int expectedSize = tileWidth * tileHeight * 4;
+            if (src == null || src.Length == 0)
+                return new byte[expectedSize];
+            if (src.Length == expectedSize)
+                return src;
+            int srcStride = curW * 4;
+            int safeH = curH;
+            if (src.Length < curW * curH * 4)
+            {
+                int safePixels = src.Length / 4;
+                safeH = safePixels / Math.Max(1, curW);
+            }
+            byte[] padded = new byte[expectedSize];
+            for (int row = 0; row < safeH; row++)
+                Buffer.BlockCopy(src, row * srcStride, padded, row * tileWidth * 4, srcStride);
+            return padded;
+        }
+
+     public async Task<byte[]> GetTileAsync(TileInformation tileInfo, ZCT coord)
         {
             if (tileInfo == null)
                 return null;
@@ -626,6 +646,7 @@ namespace BioLib
             var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
             var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
             var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, tileInfo.Coordinate);
+            bgraData = PadToBgra(bgraData, curTileWidth, curTileHeight, tileWidth, tileHeight);
             cache.AddTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord), bgraData);
             return bgraData;
         }
@@ -636,9 +657,6 @@ namespace BioLib
                 return null;
             if (cache == null)
                 cache = new TileCache(this);
-
-            Log($"[GetTileAsync] level={tileInfo.Index.Level} extent={tileInfo.Extent.MinX:F0},{tileInfo.Extent.MinY:F0},{tileInfo.Extent.MaxX:F0},{tileInfo.Extent.MaxY:F0} schemaExtent={Schema.Extent.MinX:F0},{Schema.Extent.MinY:F0},{Schema.Extent.MaxX:F0},{Schema.Extent.MaxY:F0}");
-
             if(cache.HasTile(new TileInformation(tileInfo.Index,tileInfo.Extent,coord)))
             {
                 return await cache.GetTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord));
@@ -651,12 +669,8 @@ namespace BioLib
             var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
             var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
 
-            Log($"[GetTileAsync] -> ReadRegionAsync level={tileInfo.Index.Level} px=({curLevelOffsetXPixel:F0},{curLevelOffsetYPixel:F0}) size=({curTileWidth},{curTileHeight})");
-
             var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, coord);
-
-            Log($"[GetTileAsync] -> bgraData={(bgraData == null ? "NULL" : bgraData.Length + " bytes")}");
-
+            bgraData = PadToBgra(bgraData, curTileWidth, curTileHeight, tileWidth, tileHeight);
             cache.AddTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord), bgraData);
             return bgraData;
         }
