@@ -5018,11 +5018,6 @@ namespace BioLib
         /// PlateTool and other callers already use via <see cref="Level"/> to switch wells.
         /// For non-plate images the getter returns 0 and the setter is a no-op.
         /// </summary>
-        /// <summary>Cached 16-bit display range computed from the first zarr tile fetched.
-        /// Shared across all tiles so they normalize consistently (no per-tile seams).</summary>
-        public ushort ZarrDisplayMin { get; set; } = 0;
-        public ushort ZarrDisplayMax { get; set; } = 0;  // 0 means "not yet computed"
-
         public int WellIndex
         {
             get
@@ -5036,9 +5031,6 @@ namespace BioLib
                 if (ZarrWellLevels.Count == 0)
                     return;
                 level = Math.Clamp(value, 0, ZarrWellLevels.Count - 1);
-                // Reset display range cache so the new field recomputes it from its first tile.
-                ZarrDisplayMin = 0;
-                ZarrDisplayMax = 0;
             }
         }
 
@@ -7819,21 +7811,8 @@ namespace BioLib
             if (fieldLevels == null || fieldLevels.Count == 0)
                 return null;
 
-            // Pick the smallest pyramid level whose spatial dimensions are still
-            // at least 256px on the longer side — just big enough for a sharp thumbnail.
-            int thumbLevel = fieldLevels.Count - 1; // start at coarsest
-            for (int li = fieldLevels.Count - 1; li >= 0; li--)
-            {
-                var s    = fieldLevels[li].Shape;
-                int ranks = s.Length;
-                int lw   = (int)s[ranks - 1];
-                int lh   = (int)s[ranks - 2];
-                if (Math.Max(lw, lh) >= 256)
-                {
-                    thumbLevel = li;
-                    break;
-                }
-            }
+            // Use the coarsest (last) pyramid level for a cheap thumbnail.
+            int thumbLevel = fieldLevels.Count - 1;
             var levelNode  = fieldLevels[thumbLevel];
             var shape      = levelNode.Shape;
 
@@ -7901,27 +7880,6 @@ namespace BioLib
 
             var coord = new ZCT(safeZ, safeC, safeT);
             var bm = new Bitmap("", planeW, planeH, fmt, pixels, coord, 0);
-
-            // For 16-bit data, stretch the actual pixel range to full 0-65535 so
-            // GetImageRGBA() produces a properly exposed image instead of black/white.
-            if (fmt == PixelFormat.Format16bppGrayScale && pixels.Length >= 2)
-            {
-                ushort pMin = ushort.MaxValue, pMax = 0;
-                for (int i = 0; i + 1 < pixels.Length; i += 2)
-                {
-                    ushort v = (ushort)(pixels[i] | (pixels[i + 1] << 8));
-                    if (v < pMin) pMin = v;
-                    if (v > pMax) pMax = v;
-                }
-                if (pMax > pMin)
-                {
-                    var range = new IntRange(pMin, pMax);
-                    BioImage.filter16.InRed   = range;
-                    BioImage.filter16.InGreen = range;
-                    BioImage.filter16.InBlue  = range;
-                    bm = BioImage.filter16.Apply(bm);
-                }
-            }
             return bm.GetImageRGBA();
         }
 
@@ -8100,27 +8058,6 @@ namespace BioLib
                     tileData,
                     b.Coordinate,
                     index);
-
-                // For 16-bit data, stretch the actual pixel range to full 0-65535 so
-                // GetImageRGBA() produces a properly exposed image instead of black/white.
-                if (fmt == AForge.PixelFormat.Format16bppGrayScale && tileData.Length >= 2)
-                {
-                    ushort pMin = ushort.MaxValue, pMax = 0;
-                    for (int i = 0; i + 1 < tileData.Length; i += 2)
-                    {
-                        ushort v = (ushort)(tileData[i] | (tileData[i + 1] << 8));
-                        if (v < pMin) pMin = v;
-                        if (v > pMax) pMax = v;
-                    }
-                    if (pMax > pMin)
-                    {
-                        var range = new IntRange(pMin, pMax);
-                        BioImage.filter16.InRed   = range;
-                        BioImage.filter16.InGreen = range;
-                        BioImage.filter16.InBlue  = range;
-                        bm = BioImage.filter16.Apply(bm);
-                    }
-                }
 
                 return bm.GetImageRGBA();
             }
