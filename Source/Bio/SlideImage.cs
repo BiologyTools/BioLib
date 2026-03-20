@@ -383,7 +383,7 @@ namespace BioLib
                     if (BioImage.ZarrDisplayMax > BioImage.ZarrDisplayMin)
                     {
                         normMin = BioImage.ZarrDisplayMin;
-                        normMax = BioImage.ZarrDisplayMax;
+                        normMax = (ushort)BioImage.ZarrDisplayMax;
                     }
                 }
 

@@ -652,12 +652,6 @@ namespace BioLib
                             {
                                 b.Resolutions.Add(new Resolution(wo, ho, px, pxxo, pyyo, pzzo, 0, 0, 0));
                             }
-
-                            if (store.requiresPixelsPyramid())
-                            {
-                                b.Type = BioImage.ImageType.pyramidal;
-                            }
-
                             i++;
                         }
                     }

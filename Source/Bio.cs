@@ -1958,10 +1958,19 @@ namespace BioLib
             stack,
             pyramidal,
             well,
-            zarr
         }
         private string id;
-        public ImageType Type { get; set; }
+        public ImageType Type
+        {
+            get
+            {
+                if (Resolutions.Count > 1 && Plate == null)
+                    return ImageType.pyramidal;
+                if (Resolutions.Count > 1 && Plate != null)
+                    return ImageType.pyramidal;
+                return ImageType.stack;
+            }
+        }
         public List<Channel> Channels = new List<Channel>();
         public List<Resolution> Resolutions = new List<Resolution>();
         public List<AForge.Bitmap> Buffers = new List<AForge.Bitmap>();
@@ -2006,12 +2015,10 @@ namespace BioLib
                 // basename that would resolve to a missing local file.
                 if (file != null && (file.StartsWith("https://") || file.StartsWith("http://") || file.StartsWith("s3://")))
                 {
-                    this.Type = ImageType.zarr;
                     return file;
                 }
                 if (filename != null && filename.Contains(".zarr"))
                 {
-                    this.Type = ImageType.zarr;
                     return filename;
                 }
                 if (filename == null || filename == "")
@@ -2067,7 +2074,7 @@ namespace BioLib
                     if (value >= OpenSlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel)
                         return;
                 }
-                else
+                else if (SlideBase?.Schema?.Resolutions != null && SlideBase.Schema.Resolutions.Count > 0)
                 {
                     if (value >= SlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel)
                         return;
@@ -2122,7 +2129,6 @@ namespace BioLib
             bi.Resolution = b.Resolution;
             bi.imagesPerSeries = b.imagesPerSeries;
             bi.imRead = b.imRead;
-            bi.Type = b.Type;
             bi.tifRead = b.tifRead;
             if (b.OpenSlideBase != null)
             {
@@ -2211,7 +2217,6 @@ namespace BioLib
             bi.imagesPerSeries = b.imagesPerSeries;
             bi.imRead = b.imRead;
             bi.tifRead = b.tifRead;
-            bi.Type = b.Type;
             bi.PyramidalOrigin = b.PyramidalOrigin;
             bi.PyramidalSize = b.PyramidalSize;
             if (b.OpenSlideBase != null)
@@ -2754,7 +2759,7 @@ namespace BioLib
         {
             get
             {
-                if (Type == ImageType.pyramidal || (Resolutions.Count > 1) || Type == ImageType.zarr)
+                if (Type == ImageType.pyramidal || (Resolutions.Count > 1))
                     return true;
                 else
                     return false;
@@ -5034,6 +5039,9 @@ namespace BioLib
             }
         }
 
+        public int ZarrDisplayMax { get; internal set; }
+        public ushort ZarrDisplayMin { get; internal set; }
+
         public List<PlaneResult> planes = new List<PlaneResult>();
         /// The OpenFile function opens a BioImage file, reads its metadata, and loads the image
         /// data into a BioImage object.
@@ -5093,8 +5101,6 @@ namespace BioLib
             }
             b.series = series;
             b.file = file;
-            if (tiled)
-                b.Type = ImageType.pyramidal;
             string fn = Path.GetFileNameWithoutExtension(file);
             string dir = Path.GetDirectoryName(file);
             if (File.Exists(fn + ".csv"))
@@ -6743,7 +6749,7 @@ namespace BioLib
             {
                 item.Stats = Statistics.FromBytes(item);
             }
-            bm.Type = ImageType.stack;
+            
             bm.Volume = new VolumeD(new Point3D(bm.StageSizeX, bm.StageSizeY, bm.StageSizeZ), new Point3D(bm.PhysicalSizeX * bm.SizeX, bm.PhysicalSizeY * bm.SizeY, bm.PhysicalSizeZ * bm.SizeZ));
             AutoThreshold(bm, false);
             if (bm.bitsPerPixel > 8)
@@ -7001,7 +7007,6 @@ namespace BioLib
                 tileSizeY = 1080;
             progFile = file;
             BioImage b = new BioImage(file);
-            b.Type = ImageType.stack;
             b.Loading = true;
             if (b.meta == null)
                 b.meta = service.createOMEXMLMetadata();
@@ -7158,7 +7163,6 @@ namespace BioLib
                 int wells = b.meta.getWellCount(0);
                 if (wells > 0)
                 {
-                    b.Type = ImageType.well;
                     b.Plate = new WellPlate(b);
                     tile = false;
                 }
@@ -7183,7 +7187,6 @@ namespace BioLib
             {
                 if (ress[0].SizeX > ress[1].SizeX)
                 {
-                    b.Type = ImageType.pyramidal;
                     tile = true;
                     //We need to determine number of pyramids in this image and which belong to the series we are opening.
                     int? sr = null;
@@ -7800,12 +7803,45 @@ namespace BioLib
                     await BuildZarrWellPlate(this, plateNode, Filename).ConfigureAwait(false);
             }
 
-            // Validate field index.
-            if (ZarrWellLevels.Count == 0 ||
-                fieldIndex < 0 ||
-                fieldIndex >= ZarrWellLevels.Count ||
-                ZarrWellLevels[fieldIndex] == null)
+            // Validate field index bounds.
+            if (ZarrWellLevels.Count == 0 || fieldIndex < 0 || fieldIndex >= ZarrWellLevels.Count)
                 return null;
+
+            // Lazy-load: if this field's levels haven't been loaded yet, load them now
+            // using the same pattern as GetTile so every well field can be displayed.
+            if (ZarrWellLevels[fieldIndex] == null && Plate != null)
+            {
+                string fieldUrl = null;
+                foreach (var well in Plate.Wells)
+                {
+                    foreach (var sample in well.Samples)
+                    {
+                        if (sample.Index == fieldIndex)
+                        {
+                            fieldUrl = Filename.TrimEnd('/') + "/"
+                                     + well.ID.Trim('/') + "/"
+                                     + sample.ID;
+                            break;
+                        }
+                    }
+                    if (fieldUrl != null) break;
+                }
+
+                if (fieldUrl != null)
+                {
+                    try
+                    {
+                        var fieldReader = await OmeZarrReader.OpenAsync(fieldUrl).ConfigureAwait(false);
+                        var fieldMs     = await fieldReader.AsMultiscaleImageAsync().ConfigureAwait(false);
+                        var fLevels     = (await fieldMs.OpenAllResolutionLevelsAsync().ConfigureAwait(false)).ToList();
+                        ZarrWellLevels[fieldIndex] = fLevels;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"GetWellFieldBitmap: failed to lazy-load well field {fieldIndex} from {fieldUrl}: {ex.Message}");
+                    }
+                }
+            }
 
             var fieldLevels = ZarrWellLevels[fieldIndex];
             if (fieldLevels == null || fieldLevels.Count == 0)
@@ -7886,7 +7922,7 @@ namespace BioLib
         public async Task<Bitmap> GetTile(int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
         {
             BioImage b = this;
-            if (b.Filename.Contains(".zarr") || b.Type == ImageType.zarr)
+            if (b.Filename.Contains(".zarr"))
             {
                 if (zarrReader == null)
                     zarrReader = await OmeZarrReader.OpenAsync(b.Filename);
