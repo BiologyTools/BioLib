@@ -64,12 +64,19 @@ namespace BioLib
                 Log($"[RebuildSchemaForWell] ZarrWellLevels empty — schema not rebuilt");
                 return;
             }
-            int fi = b.WellIndex;
+            int fi = Math.Clamp(b.Level, 0, b.ZarrWellLevels.Count - 1);
             var fieldLevels = b.ZarrWellLevels[fi];
             if (fieldLevels == null || fieldLevels.Count == 0)
             {
-                Log($"[RebuildSchemaForWell] fieldLevels null/empty for fi={fi}");
-                return;
+                // Requested field not yet loaded — fall back to first non-null field
+                // so the schema matches what TryReadRegionAsync will actually serve.
+                fieldLevels = b.ZarrWellLevels.FirstOrDefault(l => l != null && l.Count > 0);
+                if (fieldLevels == null)
+                {
+                    Log($"[RebuildSchemaForWell] no loaded fieldLevels, schema not rebuilt");
+                    return;
+                }
+                Log($"[RebuildSchemaForWell] fi={fi} null, fell back to first loaded field");
             }
 
             int w0 = 1, h0 = 1;
