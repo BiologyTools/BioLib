@@ -333,7 +333,7 @@ namespace BioLib
                         this.Schema.Extent,
                         level
                     );
-                    TileInformation tf = new TileInformation(tile.Index, tile.Extent, coord);
+                    TileInformation tf = new TileInformation(tile.Index, tile.Extent, coordinate);
                     if (cache == null)
                         cache = new TileCache(this);
                     if(!cache.HasTile(tf))

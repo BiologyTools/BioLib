@@ -7978,8 +7978,14 @@ namespace BioLib
 
             var coord = new ZCT(safeZ, safeC, safeT);
             var bm = new Bitmap("", planeW, planeH, fmt, pixels, coord, 0);
-            int chIdx = Math.Clamp(c, 0, Channels.Count - 1);
-            return RangedRGBA(bm, Channels[chIdx].RangeR.Min, Channels[chIdx].RangeR.Max);
+            int rMin1 = 0, rMax1 = 0;
+            if (Channels.Count > 0)
+            {
+                int chIdx = Math.Clamp(c, 0, Channels.Count - 1);
+                rMin1 = Channels[chIdx].RangeR.Min;
+                rMax1 = Channels[chIdx].RangeR.Max;
+            }
+            return RangedRGBA(bm, rMin1, rMax1);
         }
 
         public async Task<Bitmap> GetTile(int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
@@ -8158,8 +8164,14 @@ namespace BioLib
                     b.Coordinate,
                     index);
 
-                int chIdx = Math.Clamp(b.Coordinate.C, 0, b.Channels.Count - 1);
-                return RangedRGBA(bm, b.Channels[chIdx].RangeR.Min, b.Channels[chIdx].RangeR.Max);
+                int rMin2 = 0, rMax2 = 0;
+                if (b.Channels.Count > 0)
+                {
+                    int chIdx = Math.Clamp(b.Coordinate.C, 0, b.Channels.Count - 1);
+                    rMin2 = b.Channels[chIdx].RangeR.Min;
+                    rMax2 = b.Channels[chIdx].RangeR.Max;
+                }
+                return RangedRGBA(bm, rMin2, rMax2);
             }
             if (b.Tag != null)
             {
@@ -8261,8 +8273,14 @@ namespace BioLib
             {
                 byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
                 var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved);
-                int chIdx = Math.Clamp(index % Math.Max(1, b.Channels.Count), 0, b.Channels.Count - 1);
-                return RangedRGBA(raw, b.Channels[chIdx].RangeR.Min, b.Channels[chIdx].RangeR.Max);
+                int rMin3 = 0, rMax3 = 0;
+                if (b.Channels.Count > 0)
+                {
+                    int chIdx = Math.Clamp(index % Math.Max(1, b.Channels.Count), 0, b.Channels.Count - 1);
+                    rMin3 = b.Channels[chIdx].RangeR.Min;
+                    rMax3 = b.Channels[chIdx].RangeR.Max;
+                }
+                return RangedRGBA(raw, rMin3, rMax3);
             }
             catch (Exception e)
             {
