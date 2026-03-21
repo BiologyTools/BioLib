@@ -40,7 +40,10 @@ namespace BioLib
         {
             foreach (LinkedListNode<(Info key, TValue value)> item in cacheMap.Values)
             {
-                if (ke.Coordinate == item.Value.key.Coordinate && ke.Index == item.Value.key.Index)
+                if (ke.Coordinate.Z == item.Value.key.Coordinate.Z &&
+                    ke.Coordinate.C == item.Value.key.Coordinate.C &&
+                    ke.Coordinate.T == item.Value.key.Coordinate.T &&
+                    ke.Index == item.Value.key.Index)
                 {
                     lruList.Remove(item);
                     lruList.AddLast(item);
@@ -77,7 +80,10 @@ namespace BioLib
             foreach (LinkedListNode<(Info key, TValue value)> item in cacheMap.Values)
             {
                 Info k = item.Value.key;
-                if (k.Coordinate == key.Coordinate && k.Index == key.Index)
+                if (k.Coordinate.Z == key.Coordinate.Z &&
+                    k.Coordinate.C == key.Coordinate.C &&
+                    k.Coordinate.T == key.Coordinate.T &&
+                    k.Index == key.Index)
                 {
                     lruList.Remove(item);
                 }
@@ -641,10 +647,32 @@ namespace BioLib
             var r = Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
             var tileWidth = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
             var tileHeight = Schema.Resolutions[tileInfo.Index.Level].TileHeight;
-            var curLevelOffsetXPixel = tileInfo.Extent.MinX / Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
-            var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
-            var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
-            var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
+            var curLevelOffsetXPixel = tileInfo.Extent.MinX / r;
+            var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / r;
+
+            // Use actual level pixel dimensions from BioImage — Schema.Extent is in
+            // raw level-0 pixels but UnitsPerPixel is in microns, so Extent.Width / r
+            // gives the wrong level-N pixel count.
+            int lev0 = tileInfo.Index.Level;
+            var levelPixelW = (long)(lev0 < Image.BioImage.Resolutions.Count
+                ? Image.BioImage.Resolutions[lev0].SizeX
+                : Math.Round(Schema.Extent.Width / r));
+            var levelPixelH = (long)(lev0 < Image.BioImage.Resolutions.Count
+                ? Image.BioImage.Resolutions[lev0].SizeY
+                : Math.Round(Schema.Extent.Height / r));
+
+            // Clamp tile size so we never read past the image boundary.
+            var curTileWidth  = (int)Math.Max(0, Math.Min(tileWidth,  levelPixelW - (long)curLevelOffsetXPixel));
+            var curTileHeight = (int)Math.Max(0, Math.Min(tileHeight, levelPixelH - (long)curLevelOffsetYPixel));
+
+            // Guard: tile origin is at or beyond the image — return black.
+            if (curTileWidth <= 0 || curTileHeight <= 0)
+            {
+                byte[] empty = new byte[tileWidth * tileHeight * 4];
+                cache.AddTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord), empty);
+                return empty;
+            }
+
             var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, tileInfo.Coordinate);
             bgraData = PadToBgra(bgraData, curTileWidth, curTileHeight, tileWidth, tileHeight);
             cache.AddTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord), bgraData);
@@ -664,10 +692,31 @@ namespace BioLib
             var r = Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
             var tileWidth = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
             var tileHeight = Schema.Resolutions[tileInfo.Index.Level].TileHeight;
-            var curLevelOffsetXPixel = tileInfo.Extent.MinX / Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
-            var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
-            var curTileWidth = (int)(tileInfo.Extent.MaxX > Schema.Extent.Width ? tileWidth - (tileInfo.Extent.MaxX - Schema.Extent.Width) / r : tileWidth);
-            var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r : tileHeight);
+            var curLevelOffsetXPixel = tileInfo.Extent.MinX / r;
+            var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / r;
+
+            // Use actual level pixel dimensions from BioImage — Schema.Extent is in
+            // raw level-0 pixels but UnitsPerPixel is in microns, so Extent.Width / r
+            // gives the wrong level-N pixel count.
+            int levIdx = tileInfo.Index.Level;
+            var levelPixelW = (long)(levIdx < Image.BioImage.Resolutions.Count
+                ? Image.BioImage.Resolutions[levIdx].SizeX
+                : Math.Round(Schema.Extent.Width / r));
+            var levelPixelH = (long)(levIdx < Image.BioImage.Resolutions.Count
+                ? Image.BioImage.Resolutions[levIdx].SizeY
+                : Math.Round(Schema.Extent.Height / r));
+
+            // Clamp tile size so we never read past the image boundary.
+            var curTileWidth  = (int)Math.Max(0, Math.Min(tileWidth,  levelPixelW - (long)curLevelOffsetXPixel));
+            var curTileHeight = (int)Math.Max(0, Math.Min(tileHeight, levelPixelH - (long)curLevelOffsetYPixel));
+
+            // Guard: tile origin is at or beyond the image — return black.
+            if (curTileWidth <= 0 || curTileHeight <= 0)
+            {
+                byte[] empty = new byte[tileWidth * tileHeight * 4];
+                cache.AddTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord), empty);
+                return empty;
+            }
 
             var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, coord);
             bgraData = PadToBgra(bgraData, curTileWidth, curTileHeight, tileWidth, tileHeight);

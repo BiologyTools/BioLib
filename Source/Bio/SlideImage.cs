@@ -300,6 +300,13 @@ namespace BioLib
         }
         public async Task<byte[]> TryReadRegionAsync(int level, long x, long y, long width, long height, ZCT zct)
         {
+            // Final defence: never forward zero/negative dimensions to the zarr reader.
+            // Callers should have caught this already, but if a negative curTileWidth or
+            // curTileHeight slips through it causes the reader to clamp to chunk 0 and
+            // return pixel data from a different plane, producing the boundary-noise strip.
+            if (width <= 0 || height <= 0 || x < 0 || y < 0)
+                return null;
+
             Log($"[TryReadRegionAsync] Type={BioImage.Type} WellLevels={BioImage.ZarrWellLevels?.Count}");
             // Use ZarrWellLevels whenever available — this handles well-plate images
             // regardless of how Type is set at call time.
@@ -325,8 +332,33 @@ namespace BioLib
                 var levelNode = fieldLevels[lev];
                 Log($"[Well TryReadRegionAsync] Using zarr lev={lev}, shape={string.Join(",", levelNode.Shape)}");
 
+                // Clamp requested region to the actual level dimensions so we never
+                // ask ReadTileAsync for pixels that lie beyond the image boundary.
+                // Zarr returns a full fixed-size chunk regardless, and pixels beyond
+                // the image edge contain data from a different plane / chunk-zero,
+                // producing the bright-noise strip at the right and bottom edges.
+                int levelNodeW = 0, levelNodeH = 0;
+                var axes  = levelNode.EffectiveAxes;
+                var shape = levelNode.Shape;
+                for (int i = 0; i < axes.Length; i++)
+                {
+                    switch (axes[i].Name.ToLowerInvariant())
+                    {
+                        case "x": levelNodeW = (int)shape[i]; break;
+                        case "y": levelNodeH = (int)shape[i]; break;
+                    }
+                }
+                // Clamp the read region so it stays within the image.
+                long clampedW = (levelNodeW > 0) ? Math.Min(width,  levelNodeW - x) : width;
+                long clampedH = (levelNodeH > 0) ? Math.Min(height, levelNodeH - y) : height;
+                if (clampedW <= 0 || clampedH <= 0)
+                {
+                    Log($"[Well TryReadRegionAsync] request fully OOB (x={x} y={y} levelW={levelNodeW} levelH={levelNodeH}), returning null");
+                    return null;
+                }
+
                 var result = await levelNode.ReadTileAsync(
-                    (int)x, (int)y, (int)width, (int)height,
+                    (int)x, (int)y, (int)clampedW, (int)clampedH,
                     z: zct.Z, c: zct.C, t: zct.T).ConfigureAwait(false);
 
                 if (result == null)
@@ -337,7 +369,7 @@ namespace BioLib
                 Log($"[Well TryReadRegionAsync] Got {result.Data.Length} bytes, dtype={result.DataType}");
 
                 // Determine actual returned size from result shape/axes.
-                int resultW = (int)width, resultH = (int)height;
+                int resultW = (int)clampedW, resultH = (int)clampedH;
                 for (int i = 0; i < result.Axes.Length; i++)
                 {
                     switch (result.Axes[i].Name.ToLowerInvariant())
@@ -349,11 +381,17 @@ namespace BioLib
 
                 // Convert raw pixel data to BGRA (4 bytes/pixel) which is what
                 // the tile renderer expects.
-                int pixelCount  = (int)width * (int)height;
+                // IMPORTANT: allocate and copy only clampedW × clampedH pixels.
+                // resultW/resultH from the zarr reader may equal the full chunk size
+                // (256×256) even for boundary tiles — those extra pixels lie outside
+                // the image and contain data from another plane, causing the noise strip.
+                int copyW = Math.Min(resultW, (int)clampedW);
+                int copyH = Math.Min(resultH, (int)clampedH);
+                int pixelCount  = copyW * copyH;
                 byte[] bgra     = new byte[pixelCount * 4];
                 bool is16       = result.DataType == "uint16";
                 int srcStride   = resultW * (is16 ? 2 : 1);
-                int dstStride   = (int)width * 4;
+                int dstStride   = copyW * 4;
 
                 // For 16-bit: use a shared display range so all tiles normalize
                 // consistently and produce no visible seams.
@@ -365,8 +403,8 @@ namespace BioLib
                     {
                         // First tile — scan to establish the shared range.
                         ushort scanMin = ushort.MaxValue, scanMax = 0;
-                        for (int row = 0; row < Math.Min(resultH, (int)height); row++)
-                            for (int col = 0; col < Math.Min(resultW, (int)width); col++)
+                        for (int row = 0; row < copyH; row++)
+                            for (int col = 0; col < copyW; col++)
                             {
                                 int off = row * srcStride + col * 2;
                                 if (off + 1 >= result.Data.Length) continue;
@@ -387,9 +425,9 @@ namespace BioLib
                     }
                 }
 
-                for (int row = 0; row < Math.Min(resultH, (int)height); row++)
+                for (int row = 0; row < copyH; row++)
                 {
-                    for (int col = 0; col < Math.Min(resultW, (int)width); col++)
+                    for (int col = 0; col < copyW; col++)
                     {
                         int srcOff = row * srcStride + col * (is16 ? 2 : 1);
                         int dstOff = row * dstStride + col * 4;

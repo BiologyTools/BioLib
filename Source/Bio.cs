@@ -5039,8 +5039,8 @@ namespace BioLib
             }
         }
 
-        public int ZarrDisplayMax { get; internal set; }
-        public ushort ZarrDisplayMin { get; internal set; }
+        public int ZarrDisplayMax { get; set; }
+        public ushort ZarrDisplayMin { get; set; }
 
         public List<PlaneResult> planes = new List<PlaneResult>();
         /// The OpenFile function opens a BioImage file, reads its metadata, and loads the image
@@ -8079,20 +8079,9 @@ namespace BioLib
                 // the current zoom, producing wrong edge-tile extents and stripe artefacts.
                 int pyramidLevel = Math.Clamp(level, 0, activeLevels.Count - 1);
 
-                // Bug fix: ReadTileAsync parameter order is (x, y, sizeX, sizeY, z, c, t).
-                // Previously T was passed as z and Z as t, which reads the wrong slice on
-                // images with more than one z or t index.
-                var planef = await activeLevels[pyramidLevel].ReadTileAsync(
-                    tilex, tiley, tileSizeX, tileSizeY,
-                    z: b.Coordinate.Z,
-                    c: b.Coordinate.C,
-                    t: b.Coordinate.T);
-
-                // Bug fix: derive level dimensions from the active zarr level node shape
-                // rather than b.Resolutions. For HCS plates b.Resolutions is populated
-                // from the first field opened at load time, so its SizeX/SizeY values are
-                // wrong for any other field — causing actualW/actualH to be miscalculated
-                // and producing the vertical stripe corruption visible at all zoom levels.
+                // Determine level dimensions BEFORE calling ReadTileAsync so we can
+                // guard against out-of-bounds tile requests.  GetAxisSize only reads
+                // the zarr node shape (metadata), not pixel data, so this is cheap.
                 int levelW = GetAxisSize(activeLevels[pyramidLevel], "x");
                 int levelH = GetAxisSize(activeLevels[pyramidLevel], "y");
 
@@ -8106,6 +8095,30 @@ namespace BioLib
 
                 int actualW = Math.Max(0, Math.Min(tileSizeX, levelW - tilex));
                 int actualH = Math.Max(0, Math.Min(tileSizeY, levelH - tiley));
+
+                // Guard: tile origin is entirely outside the image — return a zeroed tile
+                // immediately WITHOUT calling ReadTileAsync.  Out-of-bounds coordinates
+                // cause the zarr reader to clamp/wrap to chunk 0 and return pixel data from
+                // a different plane, producing the bright-noise strip at the image boundary.
+                if (actualW <= 0 || actualH <= 0)
+                {
+                    PixelFormat fmtEmpty = b.Resolutions.Count > 0
+                        ? b.Resolutions[Math.Clamp(pyramidLevel, 0, b.Resolutions.Count - 1)].PixelFormat
+                        : AForge.PixelFormat.Format16bppGrayScale;
+                    int elemEmpty = (fmtEmpty == AForge.PixelFormat.Format16bppGrayScale ||
+                                     fmtEmpty == AForge.PixelFormat.Format48bppRgb) ? 2 : 1;
+                    return new Bitmap("", tileSizeX, tileSizeY, fmtEmpty,
+                        new byte[tileSizeY * tileSizeX * elemEmpty], b.Coordinate, index);
+                }
+
+                // Bug fix: ReadTileAsync parameter order is (x, y, sizeX, sizeY, z, c, t).
+                // Previously T was passed as z and Z as t, which reads the wrong slice on
+                // images with more than one z or t index.
+                var planef = await activeLevels[pyramidLevel].ReadTileAsync(
+                    tilex, tiley, tileSizeX, tileSizeY,
+                    z: b.Coordinate.Z,
+                    c: b.Coordinate.C,
+                    t: b.Coordinate.T);
 
                 PixelFormat fmt;
                 int elementSize;

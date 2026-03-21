@@ -170,17 +170,26 @@ namespace BioLib
                 var curLevelOffsetXPixel = tileInfo.Extent.MinX / r;
                 var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / r;
 
-                // Clamp request to actual image pixels at this level (edge tiles are smaller)
-                var curTileWidth  = (int)(tileInfo.Extent.MaxX  > Schema.Extent.Width
-                    ? tileWidth  - (tileInfo.Extent.MaxX  - Schema.Extent.Width)  / r
-                    : tileWidth);
-                var curTileHeight = (int)(-tileInfo.Extent.MinY > Schema.Extent.Height
-                    ? tileHeight - (-tileInfo.Extent.MinY - Schema.Extent.Height) / r
-                    : tileHeight);
+                // Use actual level pixel dimensions from BioImage — Schema.Extent is in
+                // raw level-0 pixels but UnitsPerPixel is in microns, so Extent / r
+                // gives the wrong level-N pixel count.
+                int lev = tileInfo.Index.Level;
+                var levelPixelW = (long)(lev < SlideImage.BioImage.Resolutions.Count
+                    ? SlideImage.BioImage.Resolutions[lev].SizeX
+                    : Math.Round(Schema.Extent.Width / r));
+                var levelPixelH = (long)(lev < SlideImage.BioImage.Resolutions.Count
+                    ? SlideImage.BioImage.Resolutions[lev].SizeY
+                    : Math.Round(Schema.Extent.Height / r));
 
-                // Guard against degenerate extents
-                curTileWidth  = Math.Max(1, curTileWidth);
-                curTileHeight = Math.Max(1, curTileHeight);
+                // Clamp tile read size so we never request pixels past the image boundary.
+                var curTileWidth  = (int)Math.Max(0, Math.Min(tileWidth,  levelPixelW - (long)curLevelOffsetXPixel));
+                var curTileHeight = (int)Math.Max(0, Math.Min(tileHeight, levelPixelH - (long)curLevelOffsetYPixel));
+
+                // Guard against fully OOB tiles
+                if (curTileWidth <= 0 || curTileHeight <= 0)
+                {
+                    return new byte[tileWidth * tileHeight * 4]; // black padded tile
+                }
 
                 if (SlideImage == null)
                 {
