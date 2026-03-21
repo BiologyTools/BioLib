@@ -7787,6 +7787,68 @@ namespace BioLib
         /// <param name="z">Z-plane index (0-based).</param>
         /// <param name="c">Channel index (0-based).</param>
         /// <param name="t">Time-point index (0-based).</param>
+        /// <summary>
+        /// Converts a 16-bit grayscale bitmap to 8-bit BGRA using the supplied display
+        /// range, so pixels between [min, max] are mapped to [0, 255].
+        /// If min >= max (uninitialised channel range, as happens for pyramidal images
+        /// whose buffers are never loaded), the range is derived from the tile's own
+        /// pixel data so the display is always meaningful.
+        /// Falls back to plain GetImageRGBA() for non-16-bit formats.
+        /// </summary>
+        private static unsafe Bitmap RangedRGBA(Bitmap bm, int min, int max)
+        {
+            if (bm.PixelFormat != PixelFormat.Format16bppGrayScale)
+                return bm.GetImageRGBA(bm.LittleEndian);
+
+            int w = bm.Width, h = bm.Height;
+            // The Bitmap.LittleEndian flag follows the Bio-Formats convention where
+            // LittleEndian=true means the data came from a little-endian source and
+            // is already in native byte order on x86 — NO swap needed.
+            // LittleEndian=false means big-endian source — bytes must be swapped.
+            bool swap = !bm.LittleEndian;
+
+            // If the channel range is uninitialised or inverted (common for pyramidal
+            // images that have no loaded Buffers), scan the tile to find the real range.
+            if (min >= max)
+            {
+                min = ushort.MaxValue;
+                max = 0;
+                fixed (byte* srcBytes = bm.Bytes)
+                {
+                    ushort* src16 = (ushort*)srcBytes;
+                    for (int i = 0; i < w * h; i++)
+                    {
+                        ushort v = src16[i];
+                        if (swap) v = (ushort)((v << 8) | (v >> 8));
+                        if (v < min) min = v;
+                        if (v > max) max = v;
+                    }
+                }
+                if (min >= max) max = min + 1;
+            }
+
+            float scale = 255f / (max - min);
+            Bitmap dst = new Bitmap(w, h, PixelFormat.Format32bppArgb);
+
+            fixed (byte* srcBytes = bm.Bytes)
+            fixed (byte* dstBytes = dst.Bytes)
+            {
+                ushort* src16 = (ushort*)srcBytes;
+                for (int i = 0; i < w * h; i++)
+                {
+                    ushort v = src16[i];
+                    if (swap) v = (ushort)((v << 8) | (v >> 8));
+                    byte g = (byte)System.Math.Clamp((v - min) * scale, 0f, 255f);
+                    int d = i * 4;
+                    dstBytes[d + 0] = g;   // B
+                    dstBytes[d + 1] = g;   // G
+                    dstBytes[d + 2] = g;   // R
+                    dstBytes[d + 3] = 255; // A
+                }
+            }
+            return dst;
+        }
+
         public async Task<Bitmap> GetWellFieldBitmap(int fieldIndex, int z = 0, int c = 0, int t = 0)
         {
             // Ensure the zarr reader and plate structure are initialised.
@@ -7916,7 +7978,8 @@ namespace BioLib
 
             var coord = new ZCT(safeZ, safeC, safeT);
             var bm = new Bitmap("", planeW, planeH, fmt, pixels, coord, 0);
-            return bm.GetImageRGBA();
+            int chIdx = Math.Clamp(c, 0, Channels.Count - 1);
+            return RangedRGBA(bm, Channels[chIdx].RangeR.Min, Channels[chIdx].RangeR.Max);
         }
 
         public async Task<Bitmap> GetTile(int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
@@ -8095,7 +8158,8 @@ namespace BioLib
                     b.Coordinate,
                     index);
 
-                return bm.GetImageRGBA();
+                int chIdx = Math.Clamp(b.Coordinate.C, 0, b.Channels.Count - 1);
+                return RangedRGBA(bm, b.Channels[chIdx].RangeR.Min, b.Channels[chIdx].RangeR.Max);
             }
             if (b.Tag != null)
             {
@@ -8196,7 +8260,9 @@ namespace BioLib
             try
             {
                 byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
-                return new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved).GetImageRGBA(littleEndian);
+                var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved);
+                int chIdx = Math.Clamp(index % Math.Max(1, b.Channels.Count), 0, b.Channels.Count - 1);
+                return RangedRGBA(raw, b.Channels[chIdx].RangeR.Min, b.Channels[chIdx].RangeR.Max);
             }
             catch (Exception e)
             {
@@ -8994,41 +9060,84 @@ namespace BioLib
                 sourceBitmap.UnlockBits(bitmapData);
             }
         }
-        public static SKImage Convert16bppBitmapToSKImage(Bitmap sourceBitmap)
+        /// <summary>
+        /// Converts a 16-bit (gray or 48bpp RGB) bitmap to an SKImage, mapping the
+        /// supplied per-channel min/max values to the 0-255 display range.
+        /// This is the correct path for microscopy data which rarely uses the full
+        /// 0-65535 range (e.g. 12-bit cameras top out at 4095).
+        /// </summary>
+        public static SKImage Convert16bppBitmapToSKImage(Bitmap sourceBitmap,
+            int rMin = 0, int rMax = ushort.MaxValue,
+            int gMin = 0, int gMax = ushort.MaxValue,
+            int bMin = 0, int bMax = ushort.MaxValue)
         {
-            Bitmap bm = sourceBitmap.GetImageRGBA(sourceBitmap.LittleEndian);
-            int width = bm.Width;
-            int height = bm.Height;
+            int width  = sourceBitmap.Width;
+            int height = sourceBitmap.Height;
+            bool isGray = sourceBitmap.PixelFormat == PixelFormat.Format16bppGrayScale;
+
+            // Clamp max != min to avoid divide-by-zero.
+            if (rMax <= rMin) rMax = rMin + 1;
+            if (gMax <= gMin) gMax = gMin + 1;
+            if (bMax <= bMin) bMax = bMin + 1;
+
+            float rScale = 255f / (rMax - rMin);
+            float gScale = 255f / (gMax - gMin);
+            float bScale = 255f / (bMax - bMin);
 
             SKBitmap skBitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque);
 
-            BitmapData bitmapData = sourceBitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, bm.PixelFormat);
-
             unsafe
             {
-                byte* sourcePtr = (byte*)bm.Data.ToPointer();
-                byte* destPtr = (byte*)skBitmap.GetPixels().ToPointer();
-
-                for (int y = 0; y < height; y++)
+                fixed (byte* srcBytes = sourceBitmap.Bytes)
                 {
-                    for (int x = 0; x < width; x++)
-                    {
-                        destPtr[0] = sourcePtr[0]; // Blue
-                        destPtr[1] = sourcePtr[1]; // Green
-                        destPtr[2] = sourcePtr[2]; // Red
-                        destPtr[3] = 255;          // Alpha (fully opaque)
+                    byte* dst = (byte*)skBitmap.GetPixels().ToPointer();
+                    bool swap = sourceBitmap.LittleEndian;
 
-                        sourcePtr += 3;
-                        destPtr += 4;
+                    if (isGray)
+                    {
+                        ushort* src16 = (ushort*)srcBytes;
+                        for (int i = 0; i < width * height; i++)
+                        {
+                            ushort v = src16[i];
+                            if (swap) v = (ushort)((v << 8) | (v >> 8));
+                            byte g = (byte)System.Math.Clamp((v - rMin) * rScale, 0f, 255f);
+                            int d = i * 4;
+                            dst[d + 0] = g; // B
+                            dst[d + 1] = g; // G
+                            dst[d + 2] = g; // R
+                            dst[d + 3] = 255;
+                        }
+                    }
+                    else // Format48bppRgb: 3 × ushort per pixel
+                    {
+                        ushort* src16 = (ushort*)srcBytes;
+                        for (int i = 0; i < width * height; i++)
+                        {
+                            ushort r = src16[i * 3 + 0];
+                            ushort g = src16[i * 3 + 1];
+                            ushort b = src16[i * 3 + 2];
+                            if (swap)
+                            {
+                                r = (ushort)((r << 8) | (r >> 8));
+                                g = (ushort)((g << 8) | (g >> 8));
+                                b = (ushort)((b << 8) | (b >> 8));
+                            }
+                            int d = i * 4;
+                            dst[d + 0] = (byte)System.Math.Clamp((b - bMin) * bScale, 0f, 255f);
+                            dst[d + 1] = (byte)System.Math.Clamp((g - gMin) * gScale, 0f, 255f);
+                            dst[d + 2] = (byte)System.Math.Clamp((r - rMin) * rScale, 0f, 255f);
+                            dst[d + 3] = 255;
+                        }
                     }
                 }
             }
 
-            sourceBitmap.UnlockBits(bitmapData);
-
             return SKImage.FromBitmap(skBitmap);
         }
-        public static SKImage BitmapToSKImage(AForge.Bitmap bitm)
+        public static SKImage BitmapToSKImage(AForge.Bitmap bitm,
+            int rMin = 0, int rMax = ushort.MaxValue,
+            int gMin = 0, int gMax = ushort.MaxValue,
+            int bMin = 0, int bMax = ushort.MaxValue)
         {
             if (bitm.PixelFormat == PixelFormat.Format24bppRgb)
                 return Convert24bppBitmapToSKImage(bitm);
@@ -9036,12 +9145,11 @@ namespace BioLib
                 return Convert32bppBitmapToSKImage(bitm);
             if (bitm.PixelFormat == PixelFormat.Float)
                 return Convert32bppBitmapToSKImage(bitm.GetImageRGBA(bitm.LittleEndian));
-            if (bitm.PixelFormat == PixelFormat.Format16bppGrayScale)
-                return Convert16bppBitmapToSKImage(bitm.GetImageRGBA(bitm.LittleEndian));
-            if (bitm.PixelFormat == PixelFormat.Format48bppRgb)
-                return Convert16bppBitmapToSKImage(bitm.GetImageRGBA(bitm.LittleEndian));
             if (bitm.PixelFormat == PixelFormat.Format8bppIndexed)
                 return Convert8bppBitmapToSKImage(bitm);
+            if (bitm.PixelFormat == PixelFormat.Format16bppGrayScale ||
+                bitm.PixelFormat == PixelFormat.Format48bppRgb)
+                return Convert16bppBitmapToSKImage(bitm, rMin, rMax, gMin, gMax, bMin, bMax);
             else
                 throw new NotSupportedException("PixelFormat " + bitm.PixelFormat + " is not supported for SKImage.");
         }
