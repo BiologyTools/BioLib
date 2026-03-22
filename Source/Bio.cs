@@ -2397,8 +2397,7 @@ namespace BioLib
         {
             get
             {
-                // Clamp X to the upper image boundary only — negative X is allowed
-                // so the viewport can pan left of the image origin.
+                // Clamp X to upper boundary only — negative X allowed for panning left of origin.
                 if (pyramidalOrigin.X >= Resolutions[Level].SizeX)
                     pyramidalOrigin.X = Resolutions[Level].SizeX - 1;
 
@@ -2417,14 +2416,13 @@ namespace BioLib
             {
                 if (UseOSMNegativeY)
                 {
-                    // In OSM/BruTile mode Y can be negative; X is only clamped at the upper bound.
+                    // In OSM/BruTile mode Y can be negative; X only clamped at upper bound.
                     pyramidalOrigin.X = Math.Min(value.X, Resolutions[Level].SizeX - 1);
                     pyramidalOrigin.Y = value.Y;
                 }
                 else
                 {
                     // Allow negative X (panning left of image origin).
-                    // Only clamp at the upper boundary.
                     if (value.X < Resolutions[Level].SizeX)
                         pyramidalOrigin.X = value.X;
                     else
@@ -5036,8 +5034,22 @@ namespace BioLib
             }
         }
 
-        public int ZarrDisplayMax { get; set; }
-        public ushort ZarrDisplayMin { get; set; }
+        // Per-channel display range for 16-bit Zarr tiles.
+        // Index by channel (C coordinate). Using arrays avoids seams when
+        // different channels have different intensity ranges.
+        private int[] _zarrDisplayMax = new int[64];
+        private ushort[] _zarrDisplayMin = new ushort[64];
+
+        public int ZarrDisplayMax
+        {
+            get => _zarrDisplayMax[Math.Clamp(Coordinate.C, 0, _zarrDisplayMax.Length - 1)];
+            set => _zarrDisplayMax[Math.Clamp(Coordinate.C, 0, _zarrDisplayMax.Length - 1)] = value;
+        }
+        public ushort ZarrDisplayMin
+        {
+            get => _zarrDisplayMin[Math.Clamp(Coordinate.C, 0, _zarrDisplayMin.Length - 1)];
+            set => _zarrDisplayMin[Math.Clamp(Coordinate.C, 0, _zarrDisplayMin.Length - 1)] = value;
+        }
 
         public List<PlaneResult> planes = new List<PlaneResult>();
         /// The OpenFile function opens a BioImage file, reads its metadata, and loads the image
