@@ -2397,11 +2397,10 @@ namespace BioLib
         {
             get
             {
-                // Clamp X within the image width boundaries
+                // Clamp X to the upper image boundary only — negative X is allowed
+                // so the viewport can pan left of the image origin.
                 if (pyramidalOrigin.X >= Resolutions[Level].SizeX)
                     pyramidalOrigin.X = Resolutions[Level].SizeX - 1;
-                if (pyramidalOrigin.X < 0)
-                    pyramidalOrigin.X = 0;
 
                 // Clamp Y only if we are NOT using OSM Negative Y logic
                 if (!UseOSMNegativeY)
@@ -2418,20 +2417,18 @@ namespace BioLib
             {
                 if (UseOSMNegativeY)
                 {
-                    // In OSM/BruTile mode, we allow Y to be negative and don't clamp the top
-                    // Just pass the values through, perhaps still clamping X width if desired
-                    pyramidalOrigin.X = Math.Max(0, Math.Min(value.X, Resolutions[Level].SizeX - 1));
+                    // In OSM/BruTile mode Y can be negative; X is only clamped at the upper bound.
+                    pyramidalOrigin.X = Math.Min(value.X, Resolutions[Level].SizeX - 1);
                     pyramidalOrigin.Y = value.Y;
                 }
                 else
                 {
-                    // Standard Y-positive clamping logic
-                    if (value.X >= 0 && value.X < Resolutions[Level].SizeX)
+                    // Allow negative X (panning left of image origin).
+                    // Only clamp at the upper boundary.
+                    if (value.X < Resolutions[Level].SizeX)
                         pyramidalOrigin.X = value.X;
-                    else if (value.X >= Resolutions[Level].SizeX)
-                        pyramidalOrigin.X = Resolutions[Level].SizeX - 1;
                     else
-                        pyramidalOrigin.X = 0;
+                        pyramidalOrigin.X = Resolutions[Level].SizeX - 1;
 
                     if (value.Y >= 0 && value.Y < Resolutions[Level].SizeY)
                         pyramidalOrigin.Y = value.Y;

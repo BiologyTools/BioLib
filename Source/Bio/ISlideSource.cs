@@ -347,7 +347,10 @@ namespace BioLib
                     TileInfo t = new TileInfo();
                     t.Extent = tile.Extent;
                     t.Index = tile.Index;
-                    stitch.AddTile(new Stitch.GpuTile(t,data));
+                    // Guard: only add to stitch if not already present to prevent
+                    // unbounded growth of gpuTiles list with duplicate byte[] entries.
+                    if (!stitch.HasTile(t))
+                        stitch.AddTile(new Stitch.GpuTile(t, data));
                 }
             }
             return;
