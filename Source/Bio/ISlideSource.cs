@@ -123,19 +123,16 @@ namespace BioLib
         }
         public void DisposeTile(TileInformation info)
         {
-            for (int i = 0; i < cache.Count; i++)
-            {
-                var inf = new LruCache<TileInformation, byte[]>.Info();
-                cache.RemoveTile(inf);
-            }
+            var inf = new LruCache<TileInformation, byte[]>.Info();
+            inf.Coordinate = info.Coordinate;
+            inf.Index = info.Index;
+            cache.RemoveTile(inf);
         }
         public void DisposeTile(TileInfo info)
         {
-            for (int i = 0; i < cache.Count; i++)
-            {
-                var inf = new LruCache<TileInformation, byte[]>.Info();
-                cache.RemoveTile(inf);
-            }
+            // TileInfo does not carry a ZCT coordinate; clear the whole cache
+            // rather than silently doing nothing.
+            cache = new LruCache<TileInformation, byte[]>(capacity);
         }
         public async Task<byte[]> GetTile(TileInformation info)
         {
@@ -347,10 +344,7 @@ namespace BioLib
                     TileInfo t = new TileInfo();
                     t.Extent = tile.Extent;
                     t.Index = tile.Index;
-                    // Guard: only add to stitch if not already present to prevent
-                    // unbounded growth of gpuTiles list with duplicate byte[] entries.
-                    if (!stitch.HasTile(t))
-                        stitch.AddTile(new Stitch.GpuTile(t, data));
+                    stitch.AddTile(new Stitch.GpuTile(t,data));
                 }
             }
             return;
