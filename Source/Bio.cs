@@ -2069,14 +2069,19 @@ namespace BioLib
             {
                 if (value <= 0)
                     return;
+                // Reject values strictly beyond the coarsest pyramid level.
+                // The coarsest level itself is valid (it exists and is renderable),
+                // so use > not >=.  The old >= guard prevented GoToImage and
+                // Initialize from setting the resolution to the coarsest level,
+                // leaving the image as a tiny thumbnail.
                 if (OpenSlideBase != null)
                 {
-                    if (value >= OpenSlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel)
+                    if (value > OpenSlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel)
                         return;
                 }
                 else if (SlideBase?.Schema?.Resolutions != null && SlideBase.Schema.Resolutions.Count > 0)
                 {
-                    if (value >= SlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel)
+                    if (value > SlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel)
                         return;
                 }
                 resolution = value;
@@ -2397,44 +2402,12 @@ namespace BioLib
         {
             get
             {
-                // Clamp X to upper boundary only — negative X allowed for panning left of origin.
-                if (pyramidalOrigin.X >= Resolutions[Level].SizeX)
-                    pyramidalOrigin.X = Resolutions[Level].SizeX - 1;
-
-                // Clamp Y only if we are NOT using OSM Negative Y logic
-                if (!UseOSMNegativeY)
-                {
-                    if (pyramidalOrigin.Y >= Resolutions[Level].SizeY)
-                        pyramidalOrigin.Y = Resolutions[Level].SizeY - 1;
-                    if (pyramidalOrigin.Y < 0)
-                        pyramidalOrigin.Y = 0;
-                }
-
                 return pyramidalOrigin;
             }
             set
             {
-                if (UseOSMNegativeY)
-                {
-                    // In OSM/BruTile mode Y can be negative; X only clamped at upper bound.
-                    pyramidalOrigin.X = Math.Min(value.X, Resolutions[Level].SizeX - 1);
-                    pyramidalOrigin.Y = value.Y;
-                }
-                else
-                {
-                    // Allow negative X (panning left of image origin).
-                    if (value.X < Resolutions[Level].SizeX)
-                        pyramidalOrigin.X = value.X;
-                    else
-                        pyramidalOrigin.X = Resolutions[Level].SizeX - 1;
-
-                    if (value.Y >= 0 && value.Y < Resolutions[Level].SizeY)
-                        pyramidalOrigin.Y = value.Y;
-                    else if (value.Y >= Resolutions[Level].SizeY)
-                        pyramidalOrigin.Y = Resolutions[Level].SizeY - 1;
-                    else
-                        pyramidalOrigin.Y = 0;
-                }
+                pyramidalOrigin.X = value.X;
+                pyramidalOrigin.Y = value.Y;
             }
         }
         public int series
@@ -5034,22 +5007,8 @@ namespace BioLib
             }
         }
 
-        // Per-channel display range for 16-bit Zarr tiles.
-        // Index by channel (C coordinate). Using arrays avoids seams when
-        // different channels have different intensity ranges.
-        private int[] _zarrDisplayMax = new int[64];
-        private ushort[] _zarrDisplayMin = new ushort[64];
-
-        public int ZarrDisplayMax
-        {
-            get => _zarrDisplayMax[Math.Clamp(Coordinate.C, 0, _zarrDisplayMax.Length - 1)];
-            set => _zarrDisplayMax[Math.Clamp(Coordinate.C, 0, _zarrDisplayMax.Length - 1)] = value;
-        }
-        public ushort ZarrDisplayMin
-        {
-            get => _zarrDisplayMin[Math.Clamp(Coordinate.C, 0, _zarrDisplayMin.Length - 1)];
-            set => _zarrDisplayMin[Math.Clamp(Coordinate.C, 0, _zarrDisplayMin.Length - 1)] = value;
-        }
+        public int ZarrDisplayMax { get; set; }
+        public ushort ZarrDisplayMin { get; set; }
 
         public List<PlaneResult> planes = new List<PlaneResult>();
         /// The OpenFile function opens a BioImage file, reads its metadata, and loads the image
@@ -7806,8 +7765,18 @@ namespace BioLib
         /// </summary>
         private static unsafe Bitmap RangedRGBA(Bitmap bm, int min, int max)
         {
+            return RangedRGBA(bm, min, max, out _, out _);
+        }
+
+        private static unsafe Bitmap RangedRGBA(Bitmap bm, int min, int max,
+            out int outMin, out int outMax)
+        {
             if (bm.PixelFormat != PixelFormat.Format16bppGrayScale)
+            {
+                outMin = min;
+                outMax = max;
                 return bm.GetImageRGBA(bm.LittleEndian);
+            }
 
             int w = bm.Width, h = bm.Height;
             // The Bitmap.LittleEndian flag follows the Bio-Formats convention where
@@ -7816,25 +7785,16 @@ namespace BioLib
             // LittleEndian=false means big-endian source — bytes must be swapped.
             bool swap = !bm.LittleEndian;
 
-            // If the channel range is uninitialised or inverted (common for pyramidal
-            // images that have no loaded Buffers), scan the tile to find the real range.
+            // Ensure a valid range — fall back to full 16-bit range rather than
+            // scanning per-tile (which would produce inconsistent brightness across tiles).
             if (min >= max)
             {
-                min = ushort.MaxValue;
-                max = 0;
-                fixed (byte* srcBytes = bm.Bytes)
-                {
-                    ushort* src16 = (ushort*)srcBytes;
-                    for (int i = 0; i < w * h; i++)
-                    {
-                        ushort v = src16[i];
-                        if (swap) v = (ushort)((v << 8) | (v >> 8));
-                        if (v < min) min = v;
-                        if (v > max) max = v;
-                    }
-                }
-                if (min >= max) max = min + 1;
+                min = 0;
+                max = ushort.MaxValue;
             }
+
+            outMin = min;
+            outMax = max;
 
             float scale = 255f / (max - min);
             Bitmap dst = new Bitmap(w, h, PixelFormat.Format32bppArgb);
@@ -8186,12 +8146,27 @@ namespace BioLib
                     b.Coordinate,
                     index);
 
+                // Use the channel's display range if set; otherwise fall back to the
+                // full bit-depth range so every tile is normalised identically and
+                // no seams appear between tiles.
                 int rMin2 = 0, rMax2 = 0;
                 if (b.Channels.Count > 0)
                 {
                     int chIdx = Math.Clamp(b.Coordinate.C, 0, b.Channels.Count - 1);
                     rMin2 = b.Channels[chIdx].RangeR.Min;
                     rMax2 = b.Channels[chIdx].RangeR.Max;
+                }
+                if (rMin2 >= rMax2)
+                {
+                    rMin2 = 0;
+                    rMax2 = fmt == AForge.PixelFormat.Format16bppGrayScale ? ushort.MaxValue : byte.MaxValue;
+                }
+                if (fmt == AForge.PixelFormat.Format16bppGrayScale &&
+                    b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    b.ZarrDisplayMax > b.ZarrDisplayMin)
+                {
+                    rMin2 = b.ZarrDisplayMin;
+                    rMax2 = b.ZarrDisplayMax;
                 }
                 return RangedRGBA(bm, rMin2, rMax2);
             }
@@ -8295,12 +8270,25 @@ namespace BioLib
             {
                 byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
                 var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved);
+                if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale && b.ZarrDisplayMax <= b.ZarrDisplayMin)
+                {
+                    if (TrySeedZarrDisplayRange(bytesr, littleEndian, sx, sy, out ushort displayMin, out ushort displayMax))
+                    {
+                        b.ZarrDisplayMin = displayMin;
+                        b.ZarrDisplayMax = displayMax;
+                    }
+                }
                 int rMin3 = 0, rMax3 = 0;
                 if (b.Channels.Count > 0)
                 {
-                    int chIdx = Math.Clamp(index % Math.Max(1, b.Channels.Count), 0, b.Channels.Count - 1);
-                    rMin3 = b.Channels[chIdx].RangeR.Min;
-                    rMax3 = b.Channels[chIdx].RangeR.Max;
+                    int chIdx3 = Math.Clamp(index % Math.Max(1, b.Channels.Count), 0, b.Channels.Count - 1);
+                    rMin3 = b.Channels[chIdx3].RangeR.Min;
+                    rMax3 = b.Channels[chIdx3].RangeR.Max;
+                }
+                if (rMin3 >= rMax3)
+                {
+                    rMin3 = 0;
+                    rMax3 = PixelFormat == AForge.PixelFormat.Format16bppGrayScale ? ushort.MaxValue : byte.MaxValue;
                 }
                 return RangedRGBA(raw, rMin3, rMax3);
             }
@@ -8309,6 +8297,77 @@ namespace BioLib
                 Console.WriteLine(e.Message);
                 return null;
             }
+        }
+
+        private static bool TrySeedZarrDisplayRange(byte[] bytes, bool littleEndian, int width, int height, out ushort displayMin, out ushort displayMax)
+        {
+            displayMin = 0;
+            displayMax = 0;
+
+            if (bytes == null || bytes.Length < 2 || width <= 0 || height <= 0)
+                return false;
+
+            int valueCount = Math.Min(width * height, bytes.Length / 2);
+            if (valueCount <= 0)
+                return false;
+
+            int sampleStep = Math.Max(1, valueCount / 500000);
+            int[] histogram = new int[ushort.MaxValue + 1];
+            int sampleCount = 0;
+            ushort rawMin = ushort.MaxValue;
+            ushort rawMax = 0;
+
+            for (int valueIndex = 0; valueIndex < valueCount; valueIndex += sampleStep)
+            {
+                int offset = valueIndex * 2;
+                if (offset + 1 >= bytes.Length)
+                    break;
+
+                ushort value = littleEndian
+                    ? (ushort)(bytes[offset] | (bytes[offset + 1] << 8))
+                    : (ushort)((bytes[offset] << 8) | bytes[offset + 1]);
+                histogram[value]++;
+                sampleCount++;
+                if (value < rawMin) rawMin = value;
+                if (value > rawMax) rawMax = value;
+            }
+
+            if (sampleCount == 0 || rawMax <= rawMin)
+                return false;
+
+            int lowTarget = (int)(sampleCount * 0.005);
+            int highTarget = (int)(sampleCount * 0.995);
+
+            int cumulative = 0;
+            ushort low = rawMin;
+            for (int i = rawMin; i <= rawMax; i++)
+            {
+                cumulative += histogram[i];
+                if (cumulative > lowTarget)
+                {
+                    low = (ushort)i;
+                    break;
+                }
+            }
+
+            cumulative = 0;
+            ushort high = rawMax;
+            for (int i = rawMax; i >= rawMin; i--)
+            {
+                cumulative += histogram[i];
+                if (cumulative > (sampleCount - highTarget))
+                {
+                    high = (ushort)i;
+                    break;
+                }
+            }
+
+            if (high <= low)
+                return false;
+
+            displayMin = low;
+            displayMax = high;
+            return true;
         }
         private bool IsEmpty(byte[] bts)
         {
