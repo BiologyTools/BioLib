@@ -119,7 +119,7 @@ namespace BioLib
         private LruCache<TileInformation, byte[]> cache;
         private int capacity;
         SlideSourceBase source = null;
-        public TileCache(SlideSourceBase source, int capacity = 200)
+        public TileCache(SlideSourceBase source, int capacity = 64)
         {
             this.source = source;
             this.capacity = capacity;
@@ -305,6 +305,12 @@ namespace BioLib
         {
             if (tiles == null)
                 return;
+
+            // Keep only the tiles needed for the current viewport. The GPU
+            // texture cache owns the long-lived copy; retaining every previous
+            // GpuTile here would keep old byte[] buffers rooted while panning.
+            stitch.gpuTiles.Clear();
+
             // --------------------------------------------------------------------
             // 1. Calculate viewport center (base-resolution coordinates)
             // --------------------------------------------------------------------

@@ -253,7 +253,19 @@ namespace BioLib
         {
             try
             {
-                return BioImage.GetTile(BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height).Result.Bytes; ;
+                var tile = BioImage.GetTile(
+                    BioImage.GetFrameIndex(zct.Z, zct.C, zct.T),
+                    level,
+                    (int)x,
+                    (int)y,
+                    (int)width,
+                    (int)height).Result;
+                if (tile == null)
+                    return null;
+
+                var bytes = tile.Bytes;
+                tile.Dispose();
+                return bytes;
             }
             catch (Exception e)
             {
@@ -276,7 +288,21 @@ namespace BioLib
         /// <returns></returns>
         public bool TryReadRegion(int level, long x, long y, long width, long height, out byte[] data, ZCT zct)
         {
-            data = BioImage.GetTile(BioImage.GetFrameIndex(zct.Z,zct.C,zct.T), level, (int)x, (int)y, (int)width, (int)height).Result.Bytes;
+            var tile = BioImage.GetTile(
+                BioImage.GetFrameIndex(zct.Z, zct.C, zct.T),
+                level,
+                (int)x,
+                (int)y,
+                (int)width,
+                (int)height).Result;
+            if (tile == null)
+            {
+                data = null;
+                return false;
+            }
+
+            data = tile.Bytes;
+            tile.Dispose();
             if (data == null)
                 return false;
             else

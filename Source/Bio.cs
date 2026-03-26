@@ -7788,7 +7788,9 @@ namespace BioLib
             {
                 outMin = min;
                 outMax = max;
-                return bm.GetImageRGBA(bm.LittleEndian);
+                var rgba = bm.GetImageRGBA(bm.LittleEndian);
+                bm.Dispose();
+                return rgba;
             }
 
             int w = bm.Width, h = bm.Height;
@@ -7828,6 +7830,7 @@ namespace BioLib
                     dstBytes[d + 3] = 255; // A
                 }
             }
+            bm.Dispose();
             return dst;
         }
 
@@ -8231,79 +8234,64 @@ namespace BioLib
                 }
             }
 
-            string curfile = b.imRead.getCurrentFile();
-            if (curfile == null)
-            {
-                b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
-                b.imRead.close();
-                b.imRead.setMetadataStore(b.meta);
-                b.imRead.setId(b.file);
-                curfile = b.file;
-            }
-            else
-            {
-                string fi = b.file.Replace("\\", "/");
-                string cf = curfile.Replace("\\", "/");
-                if (cf != fi)
-                {
-                    b.imRead.close();
-                    b.meta = (IMetadata)((OMEXMLService)factory.getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
-                    b.imRead.setMetadataStore(b.meta);
-                    b.imRead.setId(b.file);
-                }
-            }
-            if (b.imRead.getSeries() != level)
-                b.imRead.setSeries(level);
-            int SizeX = b.imRead.getSizeX();
-            int SizeY = b.imRead.getSizeY();
-            bool flat = b.imRead.hasFlattenedResolutions();
-            bool littleEndian = b.imRead.isLittleEndian();
-            bool interleaved = b.imRead.isInterleaved();
-            PixelFormat PixelFormat = b.Resolutions[level].PixelFormat;
-            if (tilex < 0)
-                tilex = 0;
-            if (tiley < 0)
-                tiley = 0;
-            if (tilex >= SizeX)
-                tilex = SizeX;
-            if (tiley >= SizeY)
-                tiley = SizeY;
-            int sx = tileSizeX;
-            if (tilex + tileSizeX > SizeX)
-                sx -= (tilex + tileSizeX) - (SizeX);
-            int sy = tileSizeY;
-            if (tiley + tileSizeY > SizeY)
-                sy -= (tiley + tileSizeY) - (SizeY);
-            //For some reason calling openBytes with 1x1px area causes an exception. 
-            if (sx <= 1)
-                return null;
-            if (sy <= 1)
-                return null;
             try
             {
-                byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
-                var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved);
-                if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale && b.ZarrDisplayMax <= b.ZarrDisplayMin)
+                lock (b.imRead)
                 {
-                    if (TrySeedZarrDisplayRange(bytesr, littleEndian, sx, sy, out ushort displayMin, out ushort displayMax))
+                    if (b.imRead == null)
+                        return null;
+
+                    if (b.imRead.getSeries() != level)
+                        b.imRead.setSeries(level);
+                    int SizeX = b.imRead.getSizeX();
+                    int SizeY = b.imRead.getSizeY();
+                    bool flat = b.imRead.hasFlattenedResolutions();
+                    bool littleEndian = b.imRead.isLittleEndian();
+                    bool interleaved = b.imRead.isInterleaved();
+                    PixelFormat PixelFormat = b.Resolutions[level].PixelFormat;
+                    if (tilex < 0)
+                        tilex = 0;
+                    if (tiley < 0)
+                        tiley = 0;
+                    if (tilex >= SizeX)
+                        tilex = SizeX;
+                    if (tiley >= SizeY)
+                        tiley = SizeY;
+                    int sx = tileSizeX;
+                    if (tilex + tileSizeX > SizeX)
+                        sx -= (tilex + tileSizeX) - (SizeX);
+                    int sy = tileSizeY;
+                    if (tiley + tileSizeY > SizeY)
+                        sy -= (tiley + tileSizeY) - (SizeY);
+                    //For some reason calling openBytes with 1x1px area causes an exception. 
+                    if (sx <= 1)
+                        return null;
+                    if (sy <= 1)
+                        return null;
+                    byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
+                    var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved);
+                    if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale && b.ZarrDisplayMax <= b.ZarrDisplayMin)
                     {
-                        b.ZarrDisplayMin = displayMin;
-                        b.ZarrDisplayMax = displayMax;
+                        if (TrySeedZarrDisplayRange(bytesr, littleEndian, sx, sy, out ushort displayMin, out ushort displayMax))
+                        {
+                            b.ZarrDisplayMin = displayMin;
+                            b.ZarrDisplayMax = displayMax;
+                        }
                     }
+                    int rMin3 = 0, rMax3 = 0;
+                    if (b.Channels.Count > 0)
+                    {
+                        int chIdx3 = Math.Clamp(index % Math.Max(1, b.Channels.Count), 0, b.Channels.Count - 1);
+                        rMin3 = b.Channels[chIdx3].RangeR.Min;
+                        rMax3 = b.Channels[chIdx3].RangeR.Max;
+                    }
+                    if (rMin3 >= rMax3)
+                    {
+                        rMin3 = 0;
+                        rMax3 = PixelFormat == AForge.PixelFormat.Format16bppGrayScale ? ushort.MaxValue : byte.MaxValue;
+                    }
+                    return RangedRGBA(raw, rMin3, rMax3);
                 }
-                int rMin3 = 0, rMax3 = 0;
-                if (b.Channels.Count > 0)
-                {
-                    int chIdx3 = Math.Clamp(index % Math.Max(1, b.Channels.Count), 0, b.Channels.Count - 1);
-                    rMin3 = b.Channels[chIdx3].RangeR.Min;
-                    rMax3 = b.Channels[chIdx3].RangeR.Max;
-                }
-                if (rMin3 >= rMax3)
-                {
-                    rMin3 = 0;
-                    rMax3 = PixelFormat == AForge.PixelFormat.Format16bppGrayScale ? ushort.MaxValue : byte.MaxValue;
-                }
-                return RangedRGBA(raw, rMin3, rMax3);
             }
             catch (Exception e)
             {
@@ -10356,6 +10344,15 @@ namespace BioLib
         /// list, and then forces the garbage collector to run
         public void Dispose()
         {
+            try
+            {
+                imRead?.close();
+            }
+            catch
+            {
+            }
+            imRead = null;
+
             for (int i = 0; i < Buffers.Count; i++)
             {
                 Buffers[i].Dispose();
@@ -10380,8 +10377,21 @@ namespace BioLib
         public static int GetSeriesCount(string file)
         {
             ImageReader r = new ImageReader();
-            r.setId(file);
-            return r.getSeriesCount();
+            try
+            {
+                r.setId(file);
+                return r.getSeriesCount();
+            }
+            finally
+            {
+                try
+                {
+                    r.close();
+                }
+                catch
+                {
+                }
+            }
         }
 
         /// This function divides each pixel in the image by a constant value
