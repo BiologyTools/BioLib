@@ -698,7 +698,6 @@ namespace BioLib
                         new Point3D(b.SizeX * b.PhysicalSizeX, b.SizeY * b.PhysicalSizeY, zs * b.PhysicalSizeZ));
                     b.Annotations.AddRange(OMERO.GetROIs(b.PhysicalSizeX,b.PhysicalSizeY,pid));
                     b.UpdateCoords(zs, cs, ts);
-                    b.bitsPerPixel = 32;
                     b.series = o.getSeries();
                     b.imagesPerSeries = b.Buffers.Count;
                     b.rgbChannels = new int[b.Channels.Count];

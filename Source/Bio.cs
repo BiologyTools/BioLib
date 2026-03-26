@@ -2038,7 +2038,35 @@ namespace BioLib
                 return Buffers[0].RGBChannelsCount;
             }
         }
-        public int bitsPerPixel;
+        public int bitsPerPixel
+        {
+            get
+            {
+                if (Channels != null && Channels.Count > 0)
+                    return Channels[0].BitsPerPixel;
+
+                if (Resolutions == null || Resolutions.Count <= Level)
+                    return 8; // safe fallback
+
+                PixelFormat p = Resolutions[Level].PixelFormat;
+
+                switch (p)
+                {
+                    case PixelFormat.Format8bppIndexed:
+                    case PixelFormat.Format24bppRgb:   // 8 bits per channel
+                    case PixelFormat.Format32bppArgb:  // 8 bits per channel
+                        return 8;
+
+                    case PixelFormat.Format16bppGrayScale:
+                    case PixelFormat.Format48bppRgb:   // 16 bits per channel
+                    case PixelFormat.Format64bppArgb:  // 16 bits per channel
+                        return 16;
+
+                    default:
+                        return 8; // conservative default
+                }
+            }
+        }
         public int imagesPerSeries = 0;
         public int seriesCount = 1;
         public double frameInterval = 0;
@@ -2121,7 +2149,6 @@ namespace BioLib
             bi.littleEndian = b.littleEndian;
             bi.isGroup = b.isGroup;
             bi.imageInfo = b.imageInfo;
-            bi.bitsPerPixel = b.bitsPerPixel;
             bi.file = b.file;
             bi.filename = b.filename;
             foreach (var item in b.Resolutions)
@@ -2210,7 +2237,6 @@ namespace BioLib
             bi.littleEndian = b.littleEndian;
             bi.isGroup = b.isGroup;
             bi.imageInfo = b.imageInfo;
-            bi.bitsPerPixel = b.bitsPerPixel;
             bi.Coordinate = b.Coordinate;
             bi.file = b.file;
             bi.Filename = b.Filename;
@@ -2843,7 +2869,6 @@ namespace BioLib
             }
             AutoThreshold(this, true);
             StackThreshold(false);
-            bitsPerPixel = 8;
         }
         /// Converts the image to 16 bit.
         public void To16Bit()
@@ -2852,7 +2877,6 @@ namespace BioLib
                 To24Bit();
             if (Buffers[0].PixelFormat == PixelFormat.Format16bppGrayScale)
                 return;
-            bitsPerPixel = 16;
             if (Buffers[0].PixelFormat == PixelFormat.Format48bppRgb)
             {
                 List<Bitmap> bfs = new List<Bitmap>();
@@ -2894,7 +2918,6 @@ namespace BioLib
                     }
                     Channels[c].BitsPerPixel = 16;
                 }
-                bitsPerPixel = 16;
             }
             else if (Buffers[0].PixelFormat == PixelFormat.Format24bppRgb)
             {
@@ -2924,7 +2947,6 @@ namespace BioLib
         {
             if (Buffers[0].PixelFormat == PixelFormat.Format24bppRgb)
                 return;
-            bitsPerPixel = 8;
             if (Buffers[0].PixelFormat == PixelFormat.Format32bppArgb || Buffers[0].PixelFormat == PixelFormat.Format32bppRgb)
             {
                 for (int i = 0; i < Buffers.Count; i++)
@@ -3080,7 +3102,6 @@ namespace BioLib
                 Buffers = buffers;
                 UpdateCoords(SizeZ, 1, SizeT);
             }
-            bitsPerPixel = 16;
             AutoThreshold(this, true);
             StackThreshold(true);
         }
@@ -3639,7 +3660,6 @@ namespace BioLib
             int cOrig = b2.SizeC;
             res.sizeC = b2.SizeC + b.SizeC;
             res.sizeT = b2.SizeT;
-            res.bitsPerPixel = b2.bitsPerPixel;
             res.imageInfo = b2.imageInfo;
             res.littleEndian = b2.littleEndian;
             res.seriesCount = b2.seriesCount;
@@ -5082,7 +5102,6 @@ namespace BioLib
                 b.tifRead = image;
                 int SizeX = image.GetField(TiffTag.IMAGEWIDTH)[0].ToInt();
                 int SizeY = image.GetField(TiffTag.IMAGELENGTH)[0].ToInt();
-                b.bitsPerPixel = image.GetField(TiffTag.BITSPERSAMPLE)[0].ToInt();
                 b.littleEndian = image.IsBigEndian();
                 int RGBChannelCount = image.GetField(TiffTag.SAMPLESPERPIXEL)[0].ToInt();
                 string desc = "";
@@ -5294,7 +5313,6 @@ namespace BioLib
                 b.littleEndian = BitConverter.IsLittleEndian;
                 PixelFormat px = GetPixelFormat(pf.NChannels, pf.BitsPerSample);
                 b.Resolutions.Add(new Resolution(pf.Width, pf.Height, px, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 0, 0, 0));
-                b.bitsPerPixel = pf.BitsPerSample;
                 b.Buffers.Add(new Bitmap(pf.Width, pf.Height, pf.Width * pf.NChannels, px, pf.Pixels));
                 b.Buffers.Last().ID = Bitmap.CreateID(file, 0);
                 b.Buffers.Last().Stats = Statistics.FromBytes(b.Buffers.Last());
@@ -6701,7 +6719,6 @@ namespace BioLib
             bm.sizeT = 1;
             bm.Coords = new int[bm.SizeZ, bm.SizeC, bm.SizeT];
             bm.UpdateCoords();
-            bm.bitsPerPixel = 8;
             if (dataType == NumPy.NpyDataType.Float32)
                 bm.Resolutions.Add(new Resolution(bm.SizeX, bm.SizeY, PixelFormat.Float, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 96 * (1 / 2.54) / 1000, 0, 0, 0));
             else
@@ -7027,10 +7044,6 @@ namespace BioLib
             b.imagesPerSeries = reader.getImageCount();
             b.imRead = reader;
             List<Resolution> ress = new List<Resolution>();
-            if (PixelFormat == PixelFormat.Format8bppIndexed || PixelFormat == PixelFormat.Format24bppRgb || PixelFormat == PixelFormat.Format32bppArgb)
-                b.bitsPerPixel = 8;
-            else
-                b.bitsPerPixel = 16;
             b.series = serie;
             string order = reader.getDimensionOrder();
             if (vips && tile)
@@ -8409,7 +8422,6 @@ namespace BioLib
                     }
                     Channels[ch].BitsPerPixel = 16;
                 }
-                bitsPerPixel = 16;
             }
             else
             {
@@ -8422,7 +8434,6 @@ namespace BioLib
                     }
                     Channels[ch].BitsPerPixel = 8;
                 }
-                bitsPerPixel = 8;
             }
             Recorder.AddLine("BioLib.Images.GetImage(\"" + id + "\").StackThreshold(" + bit16.ToString().ToLower() + ");", true);
         }

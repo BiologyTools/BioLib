@@ -408,7 +408,6 @@ namespace BioLib
             bm.Volume = vol;
             bm.littleEndian = BitConverter.IsLittleEndian;
             bm.seriesCount = 1;
-            bm.bitsPerPixel = b;
             BioImage.AutoThreshold(bm, true);
             if (rgb > 8)
                 bm.StackThreshold(true);

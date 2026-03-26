@@ -451,7 +451,7 @@ namespace BioLib
                 return bgra;
             }
 
-            Bitmap bts = await BioImage.GetTile(BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height);
+            using Bitmap bts = await BioImage.GetTile(BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height);
             return bts.Bytes;
         }
         ///<summary>
@@ -518,3 +518,4 @@ namespace BioLib
         #endregion
     }
 }
+

@@ -20,6 +20,22 @@ namespace BioLib
         {
             public ZCT Coordinate { get; set; }
             public TileIndex Index { get; set; }
+
+            public override bool Equals(object? obj)
+            {
+                if (obj is not Info other)
+                    return false;
+
+                return Coordinate.Z == other.Coordinate.Z
+                    && Coordinate.C == other.Coordinate.C
+                    && Coordinate.T == other.Coordinate.T
+                    && Equals(Index, other.Index);
+            }
+
+            public override int GetHashCode()
+            {
+                return HashCode.Combine(Coordinate.Z, Coordinate.C, Coordinate.T, Index);
+            }
         }
         private readonly int capacity = 200;
         private Dictionary<Info, LinkedListNode<(Info key, TValue value)>> cacheMap = new Dictionary<Info, LinkedListNode<(Info key, TValue value)>>();
@@ -77,24 +93,25 @@ namespace BioLib
 
         public void RemoveTile(Info key)
         {
-            foreach (LinkedListNode<(Info key, TValue value)> item in cacheMap.Values)
+            var toRemove = cacheMap
+                .Where(kvp => kvp.Key.Coordinate.Z == key.Coordinate.Z
+                           && kvp.Key.Coordinate.C == key.Coordinate.C
+                           && kvp.Key.Coordinate.T == key.Coordinate.T
+                           && Equals(kvp.Key.Index, key.Index))
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var k in toRemove)
             {
-                Info k = item.Value.key;
-                if (k.Coordinate.Z == key.Coordinate.Z &&
-                    k.Coordinate.C == key.Coordinate.C &&
-                    k.Coordinate.T == key.Coordinate.T &&
-                    k.Index == key.Index)
-                {
-                    lruList.Remove(item);
-                }
+                if (cacheMap.TryGetValue(k, out var node))
+                    lruList.Remove(node);
+                cacheMap.Remove(k);
             }
         }
         public void Dispose()
         {
-            foreach (LinkedListNode<(Info key, TValue value)> item in cacheMap.Values)
-            {
-                lruList.Remove(item);
-            }
+            cacheMap.Clear();
+            lruList.Clear();
         }
     }
     public class TileCache
@@ -951,3 +968,5 @@ namespace BioLib
         }
     }
 }
+
+
