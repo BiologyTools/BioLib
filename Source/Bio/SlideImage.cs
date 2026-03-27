@@ -438,10 +438,14 @@ namespace BioLib
                                 if (v < scanMin) scanMin = v;
                                 if (v > scanMax) scanMax = v;
                             }
-                        if (scanMax > scanMin)
+                        if (scanMax > 0)
                         {
-                            BioImage.ZarrDisplayMin = scanMin;
-                            BioImage.ZarrDisplayMax = scanMax;
+                            uint ceiling = 1;
+                            while (ceiling - 1 < scanMax && ceiling < (1u << 16))
+                                ceiling <<= 1;
+
+                            BioImage.ZarrDisplayMin = 0;
+                            BioImage.ZarrDisplayMax = (ushort)Math.Min(ushort.MaxValue, ceiling - 1);
                         }
                     }
                     if (BioImage.ZarrDisplayMax > BioImage.ZarrDisplayMin)

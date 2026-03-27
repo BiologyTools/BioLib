@@ -7966,13 +7966,28 @@ namespace BioLib
             Buffer.BlockCopy(plane.Data, 0, pixels, 0, copyBytes);
 
             var coord = new ZCT(safeZ, safeC, safeT);
-            var bm = new Bitmap("", planeW, planeH, fmt, pixels, coord, 0);
+            var bm = new Bitmap("", planeW, planeH, fmt, pixels, coord, 0, null, true, false);
             int rMin1 = 0, rMax1 = 0;
             if (Channels.Count > 0)
             {
                 int chIdx = Math.Clamp(c, 0, Channels.Count - 1);
                 rMin1 = Channels[chIdx].RangeR.Min;
                 rMax1 = Channels[chIdx].RangeR.Max;
+            }
+            if (fmt == PixelFormat.Format16bppGrayScale && ZarrDisplayMax <= ZarrDisplayMin)
+            {
+                if (TrySeedZarrDisplayRange(pixels, true, planeW, planeH, out ushort displayMin, out ushort displayMax))
+                {
+                    ZarrDisplayMin = displayMin;
+                    ZarrDisplayMax = displayMax;
+                }
+            }
+            if (fmt == PixelFormat.Format16bppGrayScale &&
+                Filename != null && Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                ZarrDisplayMax > ZarrDisplayMin)
+            {
+                rMin1 = ZarrDisplayMin;
+                rMax1 = ZarrDisplayMax;
             }
             return RangedRGBA(bm, rMin1, rMax1);
         }
@@ -8164,7 +8179,19 @@ namespace BioLib
                     fmt,
                     tileData,
                     b.Coordinate,
-                    index);
+                    index,
+                    null,
+                    true,
+                    false);
+
+                if (fmt == AForge.PixelFormat.Format16bppGrayScale && b.ZarrDisplayMax <= b.ZarrDisplayMin)
+                {
+                    if (TrySeedZarrDisplayRange(tileData, true, tileSizeX, tileSizeY, out ushort displayMin, out ushort displayMax))
+                    {
+                        b.ZarrDisplayMin = displayMin;
+                        b.ZarrDisplayMax = displayMax;
+                    }
+                }
 
                 // Use the channel's display range if set; otherwise fall back to the
                 // full bit-depth range so every tile is normalised identically and
@@ -8294,6 +8321,13 @@ namespace BioLib
                         rMin3 = 0;
                         rMax3 = PixelFormat == AForge.PixelFormat.Format16bppGrayScale ? ushort.MaxValue : byte.MaxValue;
                     }
+                    if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale &&
+                        b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                        b.ZarrDisplayMax > b.ZarrDisplayMin)
+                    {
+                        rMin3 = b.ZarrDisplayMin;
+                        rMax3 = b.ZarrDisplayMax;
+                    }
                     return RangedRGBA(raw, rMin3, rMax3);
                 }
             }
@@ -8303,6 +8337,18 @@ namespace BioLib
                 Console.WriteLine(e.Message);
                 return null;
             }
+        }
+
+        private static ushort SnapUsedBitCeiling(ushort value)
+        {
+            if (value == 0)
+                return 0;
+
+            uint ceiling = 1;
+            while (ceiling - 1 < value && ceiling < (1u << 16))
+                ceiling <<= 1;
+
+            return (ushort)Math.Min(ushort.MaxValue, ceiling - 1);
         }
 
         private static bool TrySeedZarrDisplayRange(byte[] bytes, bool littleEndian, int width, int height, out ushort displayMin, out ushort displayMax)
@@ -8317,13 +8363,9 @@ namespace BioLib
             if (valueCount <= 0)
                 return false;
 
-            int sampleStep = Math.Max(1, valueCount / 500000);
-            int[] histogram = new int[ushort.MaxValue + 1];
-            int sampleCount = 0;
-            ushort rawMin = ushort.MaxValue;
             ushort rawMax = 0;
 
-            for (int valueIndex = 0; valueIndex < valueCount; valueIndex += sampleStep)
+            for (int valueIndex = 0; valueIndex < valueCount; valueIndex++)
             {
                 int offset = valueIndex * 2;
                 if (offset + 1 >= bytes.Length)
@@ -8332,47 +8374,14 @@ namespace BioLib
                 ushort value = littleEndian
                     ? (ushort)(bytes[offset] | (bytes[offset + 1] << 8))
                     : (ushort)((bytes[offset] << 8) | bytes[offset + 1]);
-                histogram[value]++;
-                sampleCount++;
-                if (value < rawMin) rawMin = value;
                 if (value > rawMax) rawMax = value;
             }
 
-            if (sampleCount == 0 || rawMax <= rawMin)
+            if (rawMax == 0)
                 return false;
 
-            int lowTarget = (int)(sampleCount * 0.005);
-            int highTarget = (int)(sampleCount * 0.995);
-
-            int cumulative = 0;
-            ushort low = rawMin;
-            for (int i = rawMin; i <= rawMax; i++)
-            {
-                cumulative += histogram[i];
-                if (cumulative > lowTarget)
-                {
-                    low = (ushort)i;
-                    break;
-                }
-            }
-
-            cumulative = 0;
-            ushort high = rawMax;
-            for (int i = rawMax; i >= rawMin; i--)
-            {
-                cumulative += histogram[i];
-                if (cumulative > (sampleCount - highTarget))
-                {
-                    high = (ushort)i;
-                    break;
-                }
-            }
-
-            if (high <= low)
-                return false;
-
-            displayMin = low;
-            displayMax = high;
+            displayMin = 0;
+            displayMax = SnapUsedBitCeiling(rawMax);
             return true;
         }
         private bool IsEmpty(byte[] bts)
