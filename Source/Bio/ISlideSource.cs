@@ -3,6 +3,7 @@ using BruTile;
 using BruTile.Cache;
 using Gdk;
 using OpenSlideGTK;
+using org.checkerframework.common.returnsreceiver.qual;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System;
@@ -127,6 +128,8 @@ namespace BioLib
         }
         public bool HasTile(TileInformation info)
         {
+            if (cache == null)
+                cache = new LruCache<TileInformation, byte[]>(capacity);
             LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
             inf.Coordinate = info.Coordinate;
             inf.Index = info.Index;
@@ -153,6 +156,8 @@ namespace BioLib
         }
         public async Task<byte[]> GetTile(TileInformation info)
         {
+            if (cache == null)
+                cache = new LruCache<TileInformation, byte[]>(capacity);
             LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
             inf.Coordinate = info.Coordinate;
             inf.Index = info.Index;
@@ -177,7 +182,7 @@ namespace BioLib
             cache.Add(inf, tile);
         }
 
-        private async Task<byte[]> LoadTile(TileInformation tileId)
+                private async Task<byte[]> LoadTile(TileInformation tileId)
         {
             try
             {
@@ -185,12 +190,13 @@ namespace BioLib
             }
             catch (Exception e)
             {
+                try { System.IO.File.AppendAllText(@"C:\Users\Public\biolog.txt", "[TileCache.LoadTile] EXCEPTION: " + e.GetType().Name + ": " + e.Message + Environment.NewLine + e.StackTrace + Environment.NewLine + "  index=" + tileId.Index + " extent=(" + tileId.Extent.MinX + "," + tileId.Extent.MinY + "," + tileId.Extent.MaxX + "," + tileId.Extent.MaxY + ") coord=" + tileId.Coordinate.Z + "," + tileId.Coordinate.C + "," + tileId.Coordinate.T + Environment.NewLine); } catch { }
                 return null;
             }
         }
         public void Dispose()
         {
-            cache.Dispose();
+            cache?.Dispose();
         }
 
         public void Clear()
@@ -229,6 +235,7 @@ namespace BioLib
 
                 if (!string.IsNullOrEmpty(SlideBase.DetectVendor(source.file)))
                 {
+                  
                     return new SlideBase(source, im, enableCache);
                 }
             }
@@ -660,6 +667,8 @@ namespace BioLib
         {
             if (tileInfo == null)
                 return null;
+            if (cache == null)
+                cache = new TileCache(this);
             if (cache.HasTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord)))
             {
                 return await cache.GetTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord));
@@ -670,15 +679,16 @@ namespace BioLib
             var curLevelOffsetXPixel = tileInfo.Extent.MinX / r;
             var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / r;
 
-            // Use actual level pixel dimensions from BioImage — Schema.Extent is in
-            // raw level-0 pixels but UnitsPerPixel is in microns, so Extent.Width / r
-            // gives the wrong level-N pixel count.
+            // Use actual level pixel dimensions from BioImage when available.
+            // Some Zarr-backed images can be initialized before BioImage.Resolutions
+            // is fully populated, so fall back to the schema extent in that case.
             int lev0 = tileInfo.Index.Level;
-            var levelPixelW = (long)(lev0 < Image.BioImage.Resolutions.Count
-                ? Image.BioImage.Resolutions[lev0].SizeX
+            var bioResolutions = Image?.BioImage?.Resolutions;
+            var levelPixelW = (long)(bioResolutions != null && lev0 < bioResolutions.Count
+                ? bioResolutions[lev0].SizeX
                 : Math.Round(Schema.Extent.Width / r));
-            var levelPixelH = (long)(lev0 < Image.BioImage.Resolutions.Count
-                ? Image.BioImage.Resolutions[lev0].SizeY
+            var levelPixelH = (long)(bioResolutions != null && lev0 < bioResolutions.Count
+                ? bioResolutions[lev0].SizeY
                 : Math.Round(Schema.Extent.Height / r));
 
             // Clamp tile size so we never read past the image boundary.
@@ -715,15 +725,16 @@ namespace BioLib
             var curLevelOffsetXPixel = tileInfo.Extent.MinX / r;
             var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / r;
 
-            // Use actual level pixel dimensions from BioImage — Schema.Extent is in
-            // raw level-0 pixels but UnitsPerPixel is in microns, so Extent.Width / r
-            // gives the wrong level-N pixel count.
+            // Use actual level pixel dimensions from BioImage when available.
+            // Some Zarr-backed images can be initialized before BioImage.Resolutions
+            // is fully populated, so fall back to the schema extent in that case.
             int levIdx = tileInfo.Index.Level;
-            var levelPixelW = (long)(levIdx < Image.BioImage.Resolutions.Count
-                ? Image.BioImage.Resolutions[levIdx].SizeX
+            var bioResolutions = Image?.BioImage?.Resolutions;
+            var levelPixelW = (long)(bioResolutions != null && levIdx < bioResolutions.Count
+                ? bioResolutions[levIdx].SizeX
                 : Math.Round(Schema.Extent.Width / r));
-            var levelPixelH = (long)(levIdx < Image.BioImage.Resolutions.Count
-                ? Image.BioImage.Resolutions[levIdx].SizeY
+            var levelPixelH = (long)(bioResolutions != null && levIdx < bioResolutions.Count
+                ? bioResolutions[levIdx].SizeY
                 : Math.Round(Schema.Extent.Height / r));
 
             // Clamp tile size so we never read past the image boundary.

@@ -336,7 +336,7 @@ namespace BioLib
             Log($"[TryReadRegionAsync] Type={BioImage.Type} WellLevels={BioImage.ZarrWellLevels?.Count}");
             // Use ZarrWellLevels whenever available — this handles well-plate images
             // regardless of how Type is set at call time.
-            if (BioImage.ZarrWellLevels?.Count > 0)
+            if (BioImage.Type == BioImage.ImageType.well && BioImage.ZarrWellLevels?.Count > 0)
             {
                 Log($"[Well TryReadRegionAsync] level={level} x={x} y={y} w={width} h={height} zct={zct.Z},{zct.C},{zct.T} bioLevel={BioImage.WellIndex} wellLevelCount={BioImage.ZarrWellLevels.Count}");
                 int fi          = Math.Clamp(BioImage.WellIndex, 0, BioImage.ZarrWellLevels.Count - 1);

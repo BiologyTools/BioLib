@@ -5015,7 +5015,7 @@ namespace BioLib
         {
             get
             {
-                if (ZarrWellLevels.Count > 0)
+                if (Type == ImageType.well && ZarrWellLevels.Count > 0)
                     return Math.Clamp(level, 0, ZarrWellLevels.Count - 1);
                 return 0;
             }
@@ -7009,10 +7009,11 @@ namespace BioLib
                     reader.setId(f);
                 }
                 catch (Exception e)
-                {
-                    Console.WriteLine(e.Message);
-                    return null;
-                }
+            {
+                try { System.IO.File.AppendAllText(@"C:\Users\Public\biolog.txt", "[GetTile Zarr] EXCEPTION: " + e.GetType().Name + ": " + e.Message + Environment.NewLine + e.StackTrace + Environment.NewLine); } catch { }
+                Console.WriteLine(e.Message);
+                return null;
+            }
             }
 
             //status = "Reading OME Metadata.";
@@ -7593,12 +7594,15 @@ namespace BioLib
                         Console.WriteLine("Opening file with OpenSlide.");
                         b.openSlideImage = OpenSlideImage.Open(file);
                         b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file, true);
+                        b.openslideBase.Image = b.openSlideImage;
                     }
                     else
                     {
                         Status = "Opening file with BioFormats.";
                         Console.WriteLine("Opening file with BioFormats.");
-                        b.slideBase = (SlideBase)SlideBase.Create(b, SlideImage.Open(b));
+                        SlideImage sm = SlideImage.Open(b);
+                        b.slideBase = (SlideBase)SlideBase.Create(b, sm);
+                        b.slideBase.Image = sm;
                     }
                 }
                 catch (Exception e)
@@ -7995,7 +7999,7 @@ namespace BioLib
                 // For HCS plates, ZarrWellLevels[b.Level] holds the levels for the
                 // currently selected well-field (set by PlateTool via b.Level).
                 List<ResolutionLevelNode> activeLevels;
-                if (ZarrWellLevels.Count > 0)
+                if (Type == ImageType.well && ZarrWellLevels.Count > 0)
                 {
                     int fieldIndex = Math.Clamp(b.Level, 0, ZarrWellLevels.Count - 1);
 
@@ -8295,6 +8299,7 @@ namespace BioLib
             }
             catch (Exception e)
             {
+                try { System.IO.File.AppendAllText(@"C:\Users\Public\biolog.txt", "[GetTile Zarr] EXCEPTION: " + e.GetType().Name + ": " + e.Message + Environment.NewLine + e.StackTrace + Environment.NewLine); } catch { }
                 Console.WriteLine(e.Message);
                 return null;
             }
