@@ -1867,6 +1867,8 @@ namespace BioLib
 
     public class BioImage : IDisposable
     {
+        private static int s_debugZarrRawTileLogs = 0;
+
         public class WellPlate
         {
             public class Well
@@ -6333,6 +6335,7 @@ namespace BioLib
         public static void SaveZarr(BioImage b, string outputFile)
         {
             Zarr.SaveZarr(b, outputFile);
+            Zarr.SaveROIs(b, outputFile);
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, outputFile);
         }
 
@@ -7993,6 +7996,9 @@ namespace BioLib
         }
 
         public async Task<Bitmap> GetTile(int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY)
+            => await GetTile(index, level, tilex, tiley, tileSizeX, tileSizeY, null).ConfigureAwait(false);
+
+        public async Task<Bitmap> GetTile(int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY, AForge.ZCT? coordinateOverride, bool returnRaw = false)
         {
             BioImage b = this;
             if (b.Filename.Contains(".zarr"))
@@ -8104,15 +8110,23 @@ namespace BioLib
                 // immediately WITHOUT calling ReadTileAsync.  Out-of-bounds coordinates
                 // cause the zarr reader to clamp/wrap to chunk 0 and return pixel data from
                 // a different plane, producing the bright-noise strip at the image boundary.
+                ZCT tileCoord = coordinateOverride ?? b.Coordinate;
+                if (coordinateOverride == null &&
+                    index >= 0 && index < b.Buffers.Count && b.Buffers[index] != null)
+                {
+                    tileCoord = b.Buffers[index].Coordinate;
+                }
+
                 if (actualW <= 0 || actualH <= 0)
                 {
+
                     PixelFormat fmtEmpty = b.Resolutions.Count > 0
                         ? b.Resolutions[Math.Clamp(pyramidLevel, 0, b.Resolutions.Count - 1)].PixelFormat
                         : AForge.PixelFormat.Format16bppGrayScale;
                     int elemEmpty = (fmtEmpty == AForge.PixelFormat.Format16bppGrayScale ||
                                      fmtEmpty == AForge.PixelFormat.Format48bppRgb) ? 2 : 1;
                     return new Bitmap("", tileSizeX, tileSizeY, fmtEmpty,
-                        new byte[tileSizeY * tileSizeX * elemEmpty], b.Coordinate, index);
+                        new byte[tileSizeY * tileSizeX * elemEmpty], tileCoord, index);
                 }
 
                 // Bug fix: ReadTileAsync parameter order is (x, y, sizeX, sizeY, z, c, t).
@@ -8120,9 +8134,9 @@ namespace BioLib
                 // images with more than one z or t index.
                 var planef = await activeLevels[pyramidLevel].ReadTileAsync(
                     tilex, tiley, tileSizeX, tileSizeY,
-                    z: b.Coordinate.Z,
-                    c: b.Coordinate.C,
-                    t: b.Coordinate.T);
+                    z: tileCoord.Z,
+                    c: tileCoord.C,
+                    t: tileCoord.T);
 
                 PixelFormat fmt;
                 int elementSize;
@@ -8178,11 +8192,14 @@ namespace BioLib
                     tileSizeY,
                     fmt,
                     tileData,
-                    b.Coordinate,
+                    tileCoord,
                     index,
                     null,
                     true,
                     false);
+
+                if (returnRaw)
+                    return bm;
 
                 if (fmt == AForge.PixelFormat.Format16bppGrayScale && b.ZarrDisplayMax <= b.ZarrDisplayMin)
                 {
@@ -8256,11 +8273,15 @@ namespace BioLib
                 {
                     bts = b.openSlideImage.ReadRegion(level - 1, tilex, tiley, b.Resolutions[level - 1].SizeX, b.Resolutions[level - 1].SizeY);
                     Bitmap bm = new Bitmap("", b.Resolutions[level - 1].SizeX, b.Resolutions[level - 1].SizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0);
+                    if (returnRaw)
+                        return bm;
                     return bm;
                 }
                 else
                 {
                     Bitmap bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0);
+                    if (returnRaw)
+                        return bm;
                     return bm;
                 }
             }
@@ -8300,7 +8321,7 @@ namespace BioLib
                     if (sy <= 1)
                         return null;
                     byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
-                    var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved);
+                var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, true);
                     if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale && b.ZarrDisplayMax <= b.ZarrDisplayMin)
                     {
                         if (TrySeedZarrDisplayRange(bytesr, littleEndian, sx, sy, out ushort displayMin, out ushort displayMax))
@@ -8337,6 +8358,184 @@ namespace BioLib
                 Console.WriteLine(e.Message);
                 return null;
             }
+        }
+
+        public async Task<byte[]> GetTileBytesRaw(int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY, AForge.ZCT? coordinateOverride = null)
+        {
+            if (Filename != null && Filename.Contains(".zarr"))
+            {
+                if (zarrReader == null)
+                    zarrReader = await OmeZarrReader.OpenAsync(Filename);
+
+                if (multiscale == null)
+                {
+                    var (ms, plateNode) = await ResolveMultiscaleAsync(zarrReader, Filename).ConfigureAwait(false);
+                    multiscale = ms;
+                    imagef = ms;
+                    zarrPlate = plateNode;
+
+                    if (plateNode != null && Plate == null)
+                        await BuildZarrWellPlate(this, plateNode, Filename).ConfigureAwait(false);
+                }
+
+                List<ResolutionLevelNode> activeLevels;
+                if (Type == ImageType.well && ZarrWellLevels.Count > 0)
+                {
+                    int fieldIndex = Math.Clamp(Level, 0, ZarrWellLevels.Count - 1);
+                    activeLevels = ZarrWellLevels[fieldIndex]
+                        ?? ZarrWellLevels.FirstOrDefault(l => l != null)
+                        ?? (levels ??= (await multiscale.OpenAllResolutionLevelsAsync()).ToList());
+                }
+                else
+                {
+                    if (levels == null)
+                        levels = (await multiscale.OpenAllResolutionLevelsAsync()).ToList();
+                    activeLevels = levels;
+                }
+
+                int pyramidLevel = Math.Clamp(level, 0, activeLevels.Count - 1);
+                int levelW = GetAxisSize(activeLevels[pyramidLevel], "x");
+                int levelH = GetAxisSize(activeLevels[pyramidLevel], "y");
+                if (levelW == 0 || levelH == 0)
+                {
+                    int resLevel = Math.Clamp(pyramidLevel, 0, Resolutions.Count - 1);
+                    levelW = Resolutions[resLevel].SizeX;
+                    levelH = Resolutions[resLevel].SizeY;
+                }
+
+                int actualW = Math.Max(0, Math.Min(tileSizeX, levelW - tilex));
+                int actualH = Math.Max(0, Math.Min(tileSizeY, levelH - tiley));
+                if (actualW <= 0 || actualH <= 0)
+                    return new byte[tileSizeX * tileSizeY * (Resolutions[Math.Clamp(pyramidLevel, 0, Resolutions.Count - 1)].PixelFormat == AForge.PixelFormat.Format16bppGrayScale ? 2 : 1)];
+
+                ZCT tileCoord = coordinateOverride ?? Coordinate;
+                if (coordinateOverride == null && index >= 0 && index < Buffers.Count && Buffers[index] != null)
+                    tileCoord = Buffers[index].Coordinate;
+
+                var planef = await activeLevels[pyramidLevel].ReadTileAsync(
+                    tilex, tiley, tileSizeX, tileSizeY,
+                    z: tileCoord.Z,
+                    c: tileCoord.C,
+                    t: tileCoord.T).ConfigureAwait(false);
+
+                if (s_debugZarrRawTileLogs < 12)
+                {
+                    try
+                    {
+                        System.IO.File.AppendAllText(
+                            @"C:\Users\Public\biolog.txt",
+                            "[GetTileBytesRaw Zarr] " +
+                            $"file={Filename} level={level} pyramid={pyramidLevel} " +
+                            $"x={tilex} y={tiley} w={tileSizeX} h={tileSizeY} " +
+                            $"coord={tileCoord.Z},{tileCoord.C},{tileCoord.T} " +
+                            $"dtype={planef.DataType} len={planef.Data?.Length ?? 0}" +
+                            Environment.NewLine);
+                    }
+                    catch
+                    {
+                    }
+                    s_debugZarrRawTileLogs++;
+                }
+
+                return planef.Data;
+            }
+
+            if (imRead != null)
+            {
+                lock (imRead)
+                {
+                    if (imRead.getSeries() != level)
+                        imRead.setSeries(level);
+
+                    int sizeX = imRead.getSizeX();
+                    int sizeY = imRead.getSizeY();
+                    if (tilex < 0) tilex = 0;
+                    if (tiley < 0) tiley = 0;
+                    if (tilex >= sizeX) tilex = sizeX;
+                    if (tiley >= sizeY) tiley = sizeY;
+
+                    int sx = tileSizeX;
+                    if (tilex + tileSizeX > sizeX)
+                        sx -= (tilex + tileSizeX) - sizeX;
+                    int sy = tileSizeY;
+                    if (tiley + tileSizeY > sizeY)
+                        sy -= (tiley + tileSizeY) - sizeY;
+
+                    if (sx <= 0 || sy <= 0)
+                        return Array.Empty<byte>();
+
+                    return imRead.openBytes(index, tilex, tiley, sx, sy);
+                }
+            }
+
+            using Bitmap tile = await GetTile(index, level, tilex, tiley, tileSizeX, tileSizeY, coordinateOverride, true).ConfigureAwait(false);
+            return tile?.Bytes;
+        }
+
+        private static void SwapBytePairsInPlace(byte[] data)
+        {
+            if (data == null)
+                return;
+
+            for (int i = 0; i + 1 < data.Length; i += 2)
+            {
+                byte b0 = data[i];
+                data[i] = data[i + 1];
+                data[i + 1] = b0;
+            }
+        }
+
+        private byte[]? TryGetRawTileFromBuffer(int index, int tilex, int tiley, int sx, int sy)
+        {
+            if (index < 0 || index >= Buffers.Count)
+                return null;
+
+            Bitmap buffer = Buffers[index];
+            if (buffer == null || buffer.Bytes == null || buffer.Bytes.Length == 0)
+                return null;
+
+            int bytesPerPixel = GetBytesPerPixel(buffer.PixelFormat);
+            if (bytesPerPixel <= 0)
+                return null;
+
+            if (tilex < 0 || tiley < 0 || sx <= 0 || sy <= 0)
+                return null;
+            if (tilex + sx > buffer.SizeX || tiley + sy > buffer.SizeY)
+                return null;
+
+            int rowBytes = sx * bytesPerPixel;
+            int srcStride = buffer.Stride > 0 ? buffer.Stride : buffer.SizeX * bytesPerPixel;
+            int dstBytes = rowBytes * sy;
+            var output = new byte[dstBytes];
+
+            for (int row = 0; row < sy; row++)
+            {
+                int srcOffset = (tiley + row) * srcStride + tilex * bytesPerPixel;
+                int dstOffset = row * rowBytes;
+                Buffer.BlockCopy(buffer.Bytes, srcOffset, output, dstOffset, rowBytes);
+            }
+
+            if (!buffer.LittleEndian && (buffer.PixelFormat == PixelFormat.Format16bppGrayScale || buffer.PixelFormat == PixelFormat.Format48bppRgb))
+                SwapBytePairsInPlace(output);
+
+            return output;
+        }
+
+        private static int GetBytesPerPixel(PixelFormat format)
+        {
+            return format switch
+            {
+                PixelFormat.Format8bppIndexed => 1,
+                PixelFormat.Format16bppGrayScale => 2,
+                PixelFormat.Format24bppRgb => 3,
+                PixelFormat.Format32bppArgb => 4,
+                PixelFormat.Format32bppPArgb => 4,
+                PixelFormat.Format32bppRgb => 4,
+                PixelFormat.Format48bppRgb => 6,
+                PixelFormat.Format64bppArgb => 8,
+                PixelFormat.Format64bppPArgb => 8,
+                _ => 1
+            };
         }
 
         private static ushort SnapUsedBitCeiling(ushort value)

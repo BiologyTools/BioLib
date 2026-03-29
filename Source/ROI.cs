@@ -476,14 +476,30 @@ namespace BioLib
                 // Get the minimum and maximum values of the mask for normalization
                 var (min, max) = GetMinAndMax(croppedMask);
                 min = 0;
-                // Handle case where all values are equal (avoid division by zero)
-                if (Math.Abs(max - min) < float.Epsilon)
-                    return Array.Empty<byte>();
-
                 // Prepare the byte array for the normalized output
                 int cropWidth = cropResult.cropWidth;
                 int cropHeight = cropResult.cropHeight;
                 byte[] bytes = new byte[cropWidth * cropHeight];
+
+                // If the crop is a binary mask (all positive values identical),
+                // preserve the mask instead of collapsing it to an empty output.
+                if (Math.Abs(max - min) < float.Epsilon)
+                {
+                    for (int y = 0; y < cropHeight; y++)
+                    {
+                        for (int x = 0; x < cropWidth; x++)
+                        {
+                            int index = y * cropWidth + x;
+                            if (croppedMask[index] > 0)
+                                bytes[index] = 255;
+                        }
+                    }
+                    X = cropResult.startX;
+                    Y = cropResult.startY;
+                    width = cropWidth;
+                    height = cropHeight;
+                    return bytes;
+                }
 
                 // Normalize float values and convert to byte
                 for (int y = 0; y < cropHeight; y++)

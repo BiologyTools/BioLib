@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ZarrNET;
@@ -31,6 +32,80 @@ namespace BioLib
     /// </summary>
     public static class Zarr
     {
+        private static int s_debugTileLogs = 0;
+
+        private static void Log(string msg)
+        {
+            try
+            {
+                File.AppendAllText(@"C:\Users\Public\biolog.txt", msg + Environment.NewLine);
+            }
+            catch
+            {
+            }
+        }
+
+        private static string SampleBytes(byte[] data, int count = 16)
+        {
+            if (data == null || data.Length == 0)
+                return "<empty>";
+
+            int n = Math.Min(count, data.Length);
+            var parts = new List<string>(n);
+            for (int i = 0; i < n; i++)
+                parts.Add(data[i].ToString(CultureInfo.InvariantCulture));
+            return string.Join(",", parts);
+        }
+
+        private static string SampleU16(byte[] data, int count = 8)
+        {
+            if (data == null || data.Length < 2)
+                return "<empty>";
+
+            int available = data.Length / 2;
+            int n = Math.Min(count, available);
+            var parts = new List<string>(n);
+            for (int i = 0; i < n; i++)
+            {
+                ushort v = BitConverter.ToUInt16(data, i * 2);
+                parts.Add(v.ToString(CultureInfo.InvariantCulture));
+            }
+            return string.Join(",", parts);
+        }
+
+        private static string MinMaxU16(byte[] data)
+        {
+            if (data == null || data.Length < 2)
+                return "<empty>";
+
+            int available = data.Length / 2;
+            ushort min = ushort.MaxValue;
+            ushort max = ushort.MinValue;
+            for (int i = 0; i < available; i++)
+            {
+                ushort v = BitConverter.ToUInt16(data, i * 2);
+                if (v < min) min = v;
+                if (v > max) max = v;
+            }
+            return $"{min}-{max}";
+        }
+
+        private static string MinMaxU8(byte[] data)
+        {
+            if (data == null || data.Length == 0)
+                return "<empty>";
+
+            byte min = byte.MaxValue;
+            byte max = byte.MinValue;
+            for (int i = 0; i < data.Length; i++)
+            {
+                byte v = data[i];
+                if (v < min) min = v;
+                if (v > max) max = v;
+            }
+            return $"{min}-{max}";
+        }
+
         // =====================================================================
         // Public entry point
         // =====================================================================
@@ -53,66 +128,27 @@ namespace BioLib
                     $"BioImage has invalid dimensions: X={b.SizeX} Y={b.SizeY} Z={b.SizeZ} C={b.SizeC} T={b.SizeT}. " +
                     "Ensure the image is fully loaded before saving as Zarr.");
 
-            // Derive bits-per-sample and RGB channel count directly from the
-            // buffer PixelFormat — the same pattern used throughout the codebase
-            // (Fiji.cs, QuPath.cs).  This is more reliable than b.RGBChannelCount
-            // or b.bitsPerPixel, which can disagree with the actual buffer layout.
-            //
-            // Format32bppArgb / Format32bppRgb:
-            //   In-memory layout is BGRA (B at byte 0, A at byte 3).
-            //   We write only the 3 colour channels remapped to R,G,B order
-            //   and discard alpha.  srcChannelCount=4 so stride arithmetic is
-            //   correct; outChannelCount=3 is what we write to the Zarr array.
-            var pixelFormat    = b.Buffers[0].PixelFormat;
-            int bitsPerSample;
-            int srcChannelCount;   // channels packed in the raw buffer
-            int outChannelCount;   // channels written to Zarr
-            bool isBGRA = false;
-
-            switch (pixelFormat)
-            {
-                case PixelFormat.Format8bppIndexed:
-                    bitsPerSample   = 8;
-                    srcChannelCount = 1;
-                    outChannelCount = 1;
-                    break;
-                case PixelFormat.Format16bppGrayScale:
-                    bitsPerSample   = 16;
-                    srcChannelCount = 1;
-                    outChannelCount = 1;
-                    break;
-                case PixelFormat.Format24bppRgb:
-                    bitsPerSample   = 8;
-                    srcChannelCount = 3;
-                    outChannelCount = 3;
-                    break;
-                case PixelFormat.Format32bppArgb:
-                case PixelFormat.Format32bppRgb:
-                    // Raw buffer is BGRA (4 bytes/pixel).
-                    // We extract 3 channels remapped to R,G,B order and drop A.
-                    bitsPerSample   = 8;
-                    srcChannelCount = 4;
-                    outChannelCount = 3;
-                    isBGRA          = true;
-                    break;
-                case PixelFormat.Format48bppRgb:
-                    bitsPerSample   = 16;
-                    srcChannelCount = 3;
-                    outChannelCount = 3;
-                    break;
-                default:
-                    srcChannelCount = 1;
-                    outChannelCount = 1;
-                    bitsPerSample   = Math.Max(b.bitsPerPixel, 8);
-                    break;
-            }
+            // Derive the saved scalar bit depth from BioImage metadata instead of
+            // the current display buffer.  The display buffer may be 8-bit even
+            // when the source image is 16-bit, which would incorrectly write the
+            // Zarr as uint8 and make it appear nearly black on reopen.
+            int bitsPerSample = DetermineSourceBitsPerSample(b);
+            var sourcePixelFormat = DetermineSourcePixelFormat(b);
+            bool sourceIsInterleavedRgb = IsInterleavedRgbFormat(sourcePixelFormat);
+            int sourceChannelCount = sourceIsInterleavedRgb ? BioImage.GetBands(sourcePixelFormat) : 1;
+            bool sourceIsBGRA = IsBGRAFormat(sourcePixelFormat);
 
             var bytesPerSample = bitsPerSample / 8;
             var zarrDataType   = MapDataType(bitsPerSample);
-            var totalChannels  = b.SizeC * outChannelCount;
+            var totalChannels  = b.SizeC;
 
             int tileW = 512;
             int tileH = 512;
+
+            s_debugTileLogs = 0;
+            Log($"[SaveZarr] file={b.Filename} out={outputDir} size={b.SizeX}x{b.SizeY} zct={b.SizeZ}/{b.SizeC}/{b.SizeT} " +
+                $"bits={bitsPerSample} bytesPerSample={bytesPerSample} srcPixFmt={sourcePixelFormat} " +
+                $"rgb={sourceIsInterleavedRgb} bands={sourceChannelCount}");
 
             // ------------------------------------------------------------------
             // 2. Build per-level descriptors from b.Resolutions
@@ -121,12 +157,13 @@ namespace BioLib
             // ------------------------------------------------------------------
 
             var levelDescriptors = new List<ResolutionLevelDescriptor>();
-            for (int lvl = 0; lvl < b.Resolutions.Count; lvl++)
-            {
-                var res        = b.Resolutions[lvl];
-                double dsample = b.GetLevelDownsample(lvl);   // 1.0 for level 0
-                levelDescriptors.Add(new ResolutionLevelDescriptor(res.SizeX, res.SizeY, dsample));
-            }
+                for (int lvl = 0; lvl < b.Resolutions.Count; lvl++)
+                {
+                    var res        = b.Resolutions[lvl];
+                    double dsample = b.GetLevelDownsample(lvl);   // 1.0 for level 0
+                    levelDescriptors.Add(new ResolutionLevelDescriptor(res.SizeX, res.SizeY, dsample));
+                    Log($"[SaveZarr] level={lvl} size={res.SizeX}x{res.SizeY} downsample={dsample}");
+                }
 
             // Fallback: if there is somehow no Resolutions list, use the image dims.
             if (levelDescriptors.Count == 0)
@@ -171,30 +208,25 @@ namespace BioLib
                         {
                             for (int c = 0; c < b.SizeC; c++)
                             {
-                                if (outChannelCount == 1)
+                                if (sourceIsInterleavedRgb)
                                 {
                                     WritePlaneInTiles(
                                         writer, b, lvlDesc,
                                         t, c, z,
                                         bytesPerSample, tileW, tileH,
-                                        levelIndex: levelIndex);
+                                        levelIndex: levelIndex,
+                                        rgbChannelIndex: c,
+                                        srcChannelCount: sourceChannelCount,
+                                        isBGRA: sourceIsBGRA,
+                                        logicalC: 0).GetAwaiter().GetResult();
                                 }
                                 else
                                 {
-                                    for (int rgb = 0; rgb < outChannelCount; rgb++)
-                                    {
-                                        int globalC = c * outChannelCount + rgb;
-
-                                        WritePlaneInTiles(
-                                            writer, b, lvlDesc,
-                                            t, globalC, z,
-                                            bytesPerSample, tileW, tileH,
-                                            levelIndex: levelIndex,
-                                            rgbChannelIndex: rgb,
-                                            srcChannelCount: srcChannelCount,
-                                            isBGRA: isBGRA,
-                                            logicalC: c);
-                                    }
+                                    WritePlaneInTiles(
+                                        writer, b, lvlDesc,
+                                        t, c, z,
+                                        bytesPerSample, tileW, tileH,
+                                        levelIndex: levelIndex).GetAwaiter().GetResult();
                                 }
                             }
                         }
@@ -204,6 +236,15 @@ namespace BioLib
             catch (Exception e)
             {
                 Console.WriteLine(e.ToString());
+            }
+
+            try
+            {
+                PostSaveReadback(outputDir).GetAwaiter().GetResult();
+            }
+            catch (Exception e)
+            {
+                Log($"[PostSaveReadback] EXCEPTION: {e.GetType().Name}: {e.Message}");
             }
 
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b);
@@ -218,7 +259,7 @@ namespace BioLib
         /// chunks at the given resolution level, fetching each tile via
         /// BioImage.GetTile and writing it as a sub-region into the Zarr array.
         /// </summary>
-        private async static void WritePlaneInTiles(
+        private static async Task WritePlaneInTiles(
             OmeZarrWriter              writer,
             BioImage                   b,
             ResolutionLevelDescriptor  lvlDesc,
@@ -245,11 +286,10 @@ namespace BioLib
                     int interleavedBytes   = pixelCount * srcChannelCount * bytesPerSample;
                     int singleChannelBytes = pixelCount * bytesPerSample;
 
-                    // Fetch tile from BioLib at the requested pyramid level.
-                    var tileBitmap = await b.GetTile(
-                        b.Coords[z, srcC, t], levelIndex, tileX, tileY, actualW, actualH);
-
-                    byte[] pixelBytes = tileBitmap.Bytes;
+                    // Fetch raw tile bytes from BioLib at the requested pyramid level.
+                    byte[] pixelBytes = await b.GetTileBytesRaw(
+                        b.GetFrameIndex(z, srcC, t), levelIndex, tileX, tileY, actualW, actualH,
+                        new AForge.ZCT(z, srcC, t)).ConfigureAwait(false);
 
                     if (needsDeinterleave)
                     {
@@ -283,12 +323,27 @@ namespace BioLib
                         }
                     }
 
-                    writer.WriteRegionAsync(
+                    if (s_debugTileLogs < 12)
+                    {
+                        string valueSummary = bytesPerSample == 2
+                            ? $"u16mm={MinMaxU16(pixelBytes)} u16sample={SampleU16(pixelBytes)}"
+                            : $"u8mm={MinMaxU8(pixelBytes)}";
+                        Log($"[WritePlaneInTiles] lvl={levelIndex} t={t} c={c} z={z} srcC={srcC} x={tileX} y={tileY} " +
+                            $"w={actualW} h={actualH} rawLen={pixelBytes.Length} expSingle={singleChannelBytes} " +
+                            $"expInterleaved={interleavedBytes} needsDeinterleave={needsDeinterleave} " +
+                            $"srcBands={srcChannelCount} bytesPerSample={bytesPerSample} sample={SampleBytes(pixelBytes)} {valueSummary}");
+                        s_debugTileLogs++;
+                    }
+
+                    await writer.WriteRegionAsync(
                         t, c, z,
                         tileY, tileX,
                         actualH, actualW,
                         pixelBytes,
-                        levelIndex: levelIndex).Wait();
+                        levelIndex: levelIndex).ConfigureAwait(false);
+
+                    if (s_debugTileLogs <= 12)
+                        Log($"[WritePlaneInTiles] wrote lvl={levelIndex} t={t} c={c} z={z} x={tileX} y={tileY} len={pixelBytes.Length}");
                 }
             }
         }
@@ -318,6 +373,25 @@ namespace BioLib
             return output;
         }
 
+        private static async Task PostSaveReadback(string outputDir)
+        {
+            var reader = await OmeZarrReader.OpenAsync(outputDir).ConfigureAwait(false);
+            var ms     = await reader.AsMultiscaleImageAsync().ConfigureAwait(false);
+            var lvl0   = await ms.OpenResolutionLevelAsync(0, 0).ConfigureAwait(false);
+            var shape  = lvl0.Shape;
+
+            int tileW = (int)Math.Min(512, shape.Length >= 5 ? shape[4] : 512);
+            int tileH = (int)Math.Min(512, shape.Length >= 5 ? shape[3] : 512);
+            var tile  = await lvl0.ReadTileAsync(0, 0, tileW, tileH, t: 0, c: 0, z: 0).ConfigureAwait(false);
+
+            string sample = tile.DataType == "uint16"
+                ? $"raw={SampleBytes(tile.Data)} u16mm={MinMaxU16(tile.Data)} u16sample={SampleU16(tile.Data)}"
+                : $"u8mm={MinMaxU8(tile.Data)}";
+
+            Log($"[PostSaveReadback] out={outputDir} level=0 x=0 y=0 w={tileW} h={tileH} " +
+                $"type={tile.DataType} len={tile.Data.Length} shape={string.Join("x", tile.Shape)} {sample}");
+        }
+
         // =====================================================================
         // Shared helpers
         // =====================================================================
@@ -334,6 +408,58 @@ namespace BioLib
                 32 => "float32",
                 _  => "uint16"
             };
+        }
+
+        private static int DetermineSourceBitsPerSample(BioImage b)
+        {
+            if (b.Resolutions.Count > 0)
+            {
+                return b.Resolutions[0].PixelFormat switch
+                {
+                    AForge.PixelFormat.Format8bppIndexed => 8,
+                    AForge.PixelFormat.Format24bppRgb => 8,
+                    AForge.PixelFormat.Format32bppArgb => 8,
+                    AForge.PixelFormat.Format32bppRgb => 8,
+                    AForge.PixelFormat.Format16bppGrayScale => 16,
+                    AForge.PixelFormat.Format48bppRgb => 16,
+                    AForge.PixelFormat.Format64bppArgb => 16,
+                    AForge.PixelFormat.Format64bppPArgb => 16,
+                    _ => Math.Max(8, b.bitsPerPixel)
+                };
+            }
+
+            return Math.Max(8, b.bitsPerPixel);
+        }
+
+        private static AForge.PixelFormat DetermineSourcePixelFormat(BioImage image)
+        {
+            if (image.Resolutions.Count > 0)
+                return image.Resolutions[0].PixelFormat;
+
+            if (image.Buffers.Count > 0)
+                return image.Buffers[0].PixelFormat;
+
+            return AForge.PixelFormat.Format16bppGrayScale;
+        }
+
+        private static bool IsInterleavedRgbFormat(AForge.PixelFormat format)
+        {
+            return format == AForge.PixelFormat.Format24bppRgb ||
+                   format == AForge.PixelFormat.Format32bppArgb ||
+                   format == AForge.PixelFormat.Format32bppPArgb ||
+                   format == AForge.PixelFormat.Format32bppRgb ||
+                   format == AForge.PixelFormat.Format48bppRgb ||
+                   format == AForge.PixelFormat.Format64bppArgb ||
+                   format == AForge.PixelFormat.Format64bppPArgb;
+        }
+
+        private static bool IsBGRAFormat(AForge.PixelFormat format)
+        {
+            return format == AForge.PixelFormat.Format32bppArgb ||
+                   format == AForge.PixelFormat.Format32bppPArgb ||
+                   format == AForge.PixelFormat.Format32bppRgb ||
+                   format == AForge.PixelFormat.Format64bppArgb ||
+                   format == AForge.PixelFormat.Format64bppPArgb;
         }
 
         /// <summary>
@@ -535,17 +661,40 @@ namespace BioLib
             if (!Directory.Exists(labelsDir))
                 return result;
 
+            try
+            {
+                File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                    "[BioLib.LoadLabelsAsROIs] zarrDir=" + zarrDir +
+                    " labelsDirExists=True\n");
+            }
+            catch { }
+
             // Each sub-directory of labels/ is one label image.
             foreach (string labelPath in Directory.GetDirectories(labelsDir))
             {
                 string labelName = Path.GetFileName(labelPath);
                 try
                 {
+                    try
+                    {
+                        File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                            "[BioLib.LoadLabelsAsROIs] labelPath=" + labelPath +
+                            " labelName=" + labelName + "\n");
+                    }
+                    catch { }
                     result.AddRange(ReadOneLabelStore(b, labelPath, labelName));
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[Zarr.LoadLabelsAsROIs] Skipping label '{labelName}': {ex.Message}");
+                    try
+                    {
+                        File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                            "[BioLib.LoadLabelsAsROIs] EXCEPTION labelName=" + labelName +
+                            " type=" + ex.GetType().Name +
+                            " message=" + ex.Message + "\n");
+                    }
+                    catch { }
                 }
             }
 
@@ -561,25 +710,66 @@ namespace BioLib
         {
             var result = new List<ROI>();
 
+            try
+            {
+                File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                    "[BioLib.ReadOneLabelStore] enter labelPath=" + labelPath +
+                    " labelName=" + labelName + "\n");
+            }
+            catch { }
+
             // Open the label store with the same ZarrNET reader used for the
             // parent image so we get the same axis/shape metadata.
             var reader = OmeZarrReader.OpenAsync(labelPath).Result;
-            var ms     = reader.AsMultiscaleImageAsync().Result;
+            var root   = reader.OpenRoot();
+            var ms     = root as ZarrNET.Core.Nodes.MultiscaleNode;
+            if (ms == null)
+                throw new InvalidOperationException($"Label store '{labelPath}' is not a multiscale label image.");
             var levels = ms.OpenAllResolutionLevelsAsync().Result.ToList();
+
+            try
+            {
+                File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                    "[BioLib.ReadOneLabelStore] labelPath=" + labelPath +
+                    " levels=" + levels.Count + "\n");
+            }
+            catch { }
 
             if (levels.Count == 0)
                 return result;
 
             // Always use the finest (full-resolution) level.
             var level = levels[0];
-            var axes  = level.EffectiveAxes;
-            var shape = level.Shape;
+            var axes      = level.EffectiveAxes;
+            var rawShape  = level.Shape;
+            var shape     = rawShape;
+            bool hasLeadingSingletonT = shape.Length == axes.Length + 1 && shape[0] == 1;
+            if (hasLeadingSingletonT)
+            {
+                // Local BioGTK label exports include a leading singleton t
+                // dimension while the label axes describe only c/z/y/x.
+                // Collapse it so older saved datasets remain readable.
+                shape = shape.Skip(1).ToArray();
+            }
 
             int sizeX = GetAxisSizeStatic(axes, shape, "x");
             int sizeY = GetAxisSizeStatic(axes, shape, "y");
             int sizeZ = GetAxisSizeStatic(axes, shape, "z", 1);
             int sizeC = GetAxisSizeStatic(axes, shape, "c", 1);
             int sizeT = GetAxisSizeStatic(axes, shape, "t", 1);
+
+            try
+            {
+                File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                    "[BioLib.ReadOneLabelStore] axes=" + string.Join("", axes.Select(a => a.Name)) +
+                    " shape=" + string.Join("x", shape) +
+                    " sizeZ=" + sizeZ +
+                    " sizeC=" + sizeC +
+                    " sizeT=" + sizeT +
+                    " sizeX=" + sizeX +
+                    " sizeY=" + sizeY + "\n");
+            }
+            catch { }
 
             if (sizeX == 0 || sizeY == 0)
                 return result;
@@ -597,12 +787,26 @@ namespace BioLib
                     {
                         // Build start/end arrays covering the full XY plane for
                         // this (t, c, z) coordinate.
-                        long[] start = BuildStart(axes, shape, t, c, z);
-                        long[] end   = BuildEnd(axes, shape, t, c, z, sizeX, sizeY);
+                        long[] start = hasLeadingSingletonT
+                            ? new long[] { t, c, z, 0, 0 }
+                            : BuildStart(axes, shape, t, c, z);
+                        long[] end = hasLeadingSingletonT
+                            ? new long[] { t + 1, c + 1, z + 1, sizeY, sizeX }
+                            : BuildEnd(axes, shape, t, c, z, sizeX, sizeY);
 
                         var region     = new PixelRegion(start, end);
                         var regionData = level.ReadPixelRegionAsync(region).Result;
                         byte[] raw     = regionData.Data;
+
+                        try
+                        {
+                            File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                                "[BioLib.ReadOneLabelStore] plane t=" + t +
+                                " c=" + c +
+                                " z=" + z +
+                                " raw=" + (raw?.Length ?? 0) + "\n");
+                        }
+                        catch { }
 
                         // Determine bytes-per-sample from raw buffer length.
                         int totalPixels   = sizeX * sizeY;
@@ -610,6 +814,12 @@ namespace BioLib
 
                         // Collect unique non-zero label IDs and their pixel masks.
                         var labelMasks = SplitLabelPlane(raw, sizeX, sizeY, bytesPerPixel);
+                        try
+                        {
+                            File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                                "[BioLib.ReadOneLabelStore] plane labels=" + labelMasks.Count + "\n");
+                        }
+                        catch { }
 
                         var zct = new AForge.ZCT(z, c, t);
 
