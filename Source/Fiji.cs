@@ -111,12 +111,7 @@ namespace BioLib
         {
             get
             {
-                if (ijpath != "")
-                    return ijpath;
-                if (ImageJ.ImageJPath == "")
-                    return Fiji.ImageJPath;
-                else
-                    return ImageJ.ImageJPath;
+                return ijpath;
             }
             set
             {

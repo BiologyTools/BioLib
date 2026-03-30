@@ -190,7 +190,7 @@ namespace BioLib
             }
             catch (Exception e)
             {
-                try { System.IO.File.AppendAllText(@"C:\Users\Public\biolog.txt", "[TileCache.LoadTile] EXCEPTION: " + e.GetType().Name + ": " + e.Message + Environment.NewLine + e.StackTrace + Environment.NewLine + "  index=" + tileId.Index + " extent=(" + tileId.Extent.MinX + "," + tileId.Extent.MinY + "," + tileId.Extent.MaxX + "," + tileId.Extent.MaxY + ") coord=" + tileId.Coordinate.Z + "," + tileId.Coordinate.C + "," + tileId.Coordinate.T + Environment.NewLine); } catch { }
+                try { System.IO.File.AppendAllText(@"log.txt", "[TileCache.LoadTile] EXCEPTION: " + e.GetType().Name + ": " + e.Message + Environment.NewLine + e.StackTrace + Environment.NewLine + "  index=" + tileId.Index + " extent=(" + tileId.Extent.MinX + "," + tileId.Extent.MinY + "," + tileId.Extent.MaxX + "," + tileId.Extent.MaxY + ") coord=" + tileId.Coordinate.Z + "," + tileId.Coordinate.C + "," + tileId.Coordinate.T + Environment.NewLine); } catch { }
                 return null;
             }
         }

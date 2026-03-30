@@ -7043,7 +7043,7 @@ namespace BioLib
                 }
                 catch (Exception e)
             {
-                try { System.IO.File.AppendAllText(@"C:\Users\Public\biolog.txt", "[GetTile Zarr] EXCEPTION: " + e.GetType().Name + ": " + e.Message + Environment.NewLine + e.StackTrace + Environment.NewLine); } catch { }
+                try { System.IO.File.AppendAllText("log.txt", "[GetTile Zarr] EXCEPTION: " + e.GetType().Name + ": " + e.Message + Environment.NewLine + e.StackTrace + Environment.NewLine); } catch { }
                 Console.WriteLine(e.Message);
                 return null;
             }
@@ -8384,7 +8384,7 @@ namespace BioLib
             }
             catch (Exception e)
             {
-                try { System.IO.File.AppendAllText(@"C:\Users\Public\biolog.txt", "[GetTile Zarr] EXCEPTION: " + e.GetType().Name + ": " + e.Message + Environment.NewLine + e.StackTrace + Environment.NewLine); } catch { }
+                try { System.IO.File.AppendAllText("log.txt", "[GetTile Zarr] EXCEPTION: " + e.GetType().Name + ": " + e.Message + Environment.NewLine + e.StackTrace + Environment.NewLine); } catch { }
                 Console.WriteLine(e.Message);
                 return null;
             }
@@ -8453,7 +8453,7 @@ namespace BioLib
                     try
                     {
                         System.IO.File.AppendAllText(
-                            @"C:\Users\Public\biolog.txt",
+                            "log.txt",
                             "[GetTileBytesRaw Zarr] " +
                             $"file={Filename} level={level} pyramid={pyramidLevel} " +
                             $"x={tilex} y={tiley} w={tileSizeX} h={tileSizeY} " +

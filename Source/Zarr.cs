@@ -38,7 +38,7 @@ namespace BioLib
         {
             try
             {
-                File.AppendAllText(@"C:\Users\Public\biolog.txt", msg + Environment.NewLine);
+                File.AppendAllText(@"log.txt", msg + Environment.NewLine);
             }
             catch
             {
@@ -675,7 +675,7 @@ namespace BioLib
 
             try
             {
-                File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                File.AppendAllText(@"log.txt",
                     "[BioLib.LoadLabelsAsROIs] zarrDir=" + zarrDir +
                     " labelsDirExists=True\n");
             }
@@ -689,7 +689,7 @@ namespace BioLib
                 {
                     try
                     {
-                        File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                        File.AppendAllText(@"log.txt",
                             "[BioLib.LoadLabelsAsROIs] labelPath=" + labelPath +
                             " labelName=" + labelName + "\n");
                     }
@@ -701,7 +701,7 @@ namespace BioLib
                     Console.WriteLine($"[Zarr.LoadLabelsAsROIs] Skipping label '{labelName}': {ex.Message}");
                     try
                     {
-                        File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                        File.AppendAllText(@"log.txt",
                             "[BioLib.LoadLabelsAsROIs] EXCEPTION labelName=" + labelName +
                             " type=" + ex.GetType().Name +
                             " message=" + ex.Message + "\n");
@@ -724,7 +724,7 @@ namespace BioLib
 
             try
             {
-                File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                File.AppendAllText(@"log.txt",
                     "[BioLib.ReadOneLabelStore] enter labelPath=" + labelPath +
                     " labelName=" + labelName + "\n");
             }
@@ -741,7 +741,7 @@ namespace BioLib
 
             try
             {
-                File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                File.AppendAllText(@"log.txt",
                     "[BioLib.ReadOneLabelStore] labelPath=" + labelPath +
                     " levels=" + levels.Count + "\n");
             }
@@ -772,7 +772,7 @@ namespace BioLib
 
             try
             {
-                File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                File.AppendAllText(@"log.txt",
                     "[BioLib.ReadOneLabelStore] axes=" + string.Join("", axes.Select(a => a.Name)) +
                     " shape=" + string.Join("x", shape) +
                     " sizeZ=" + sizeZ +
@@ -812,7 +812,7 @@ namespace BioLib
 
                         try
                         {
-                            File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                            File.AppendAllText(@"log.txt",
                                 "[BioLib.ReadOneLabelStore] plane t=" + t +
                                 " c=" + c +
                                 " z=" + z +
@@ -828,7 +828,7 @@ namespace BioLib
                         var labelMasks = SplitLabelPlane(raw, sizeX, sizeY, bytesPerPixel);
                         try
                         {
-                            File.AppendAllText(@"C:\Users\Public\biolog.txt",
+                            File.AppendAllText(@"log.txt",
                                 "[BioLib.ReadOneLabelStore] plane labels=" + labelMasks.Count + "\n");
                         }
                         catch { }
