@@ -622,6 +622,8 @@ namespace BioLib
         }
         public async static Task<BioImage> RunOnImage(BioImage b, string con, bool headless, bool onTab, bool useBioformats,bool resultInNewTab)
         {
+            if (b != null && b.isPyramidal)
+                return await ImageJ.RunOnPyramidalImage(b, con, b.Level, headless, onTab, useBioformats, resultInNewTab).ConfigureAwait(false);
             BioImage bm;
             if (UseFiji)
                 bm = await RunOnImageFiji(b, con, 0, headless, onTab, useBioformats, resultInNewTab);

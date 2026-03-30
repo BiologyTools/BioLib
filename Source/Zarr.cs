@@ -149,6 +149,8 @@ namespace BioLib
             Log($"[SaveZarr] file={b.Filename} out={outputDir} size={b.SizeX}x{b.SizeY} zct={b.SizeZ}/{b.SizeC}/{b.SizeT} " +
                 $"bits={bitsPerSample} bytesPerSample={bytesPerSample} srcPixFmt={sourcePixelFormat} " +
                 $"rgb={sourceIsInterleavedRgb} bands={sourceChannelCount}");
+            BioImage.Progress = 0;
+            BioImage.Status = "Preparing Zarr writer";
 
             // ------------------------------------------------------------------
             // 2. Build per-level descriptors from b.Resolutions
@@ -198,9 +200,13 @@ namespace BioLib
                 // ------------------------------------------------------------------
                 // 5. Stream tiles into each resolution level
                 // ------------------------------------------------------------------
+                long totalPlanes = Math.Max(1L, (long)levelDescriptors.Count * b.SizeT * b.SizeZ * b.SizeC);
+                long writtenPlanes = 0;
+
                 for (int levelIndex = 0; levelIndex < levelDescriptors.Count; levelIndex++)
                 {
                     var lvlDesc = levelDescriptors[levelIndex];
+                    BioImage.Status = $"Writing resolution level {levelIndex + 1}/{levelDescriptors.Count}";
 
                     for (int t = 0; t < b.SizeT; t++)
                     {
@@ -208,6 +214,7 @@ namespace BioLib
                         {
                             for (int c = 0; c < b.SizeC; c++)
                             {
+                                BioImage.Status = $"Writing level {levelIndex + 1}/{levelDescriptors.Count} plane T{t + 1}/{b.SizeT} Z{z + 1}/{b.SizeZ} C{c + 1}/{b.SizeC}";
                                 if (sourceIsInterleavedRgb)
                                 {
                                     WritePlaneInTiles(
@@ -228,6 +235,9 @@ namespace BioLib
                                         bytesPerSample, tileW, tileH,
                                         levelIndex: levelIndex).GetAwaiter().GetResult();
                                 }
+
+                                writtenPlanes++;
+                                BioImage.Progress = (float)(writtenPlanes * 100.0 / totalPlanes);
                             }
                         }
                     }
@@ -240,6 +250,7 @@ namespace BioLib
 
             try
             {
+                BioImage.Status = "Verifying saved Zarr";
                 PostSaveReadback(outputDir).GetAwaiter().GetResult();
             }
             catch (Exception e)
@@ -248,6 +259,7 @@ namespace BioLib
             }
 
             Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b);
+            BioImage.Progress = 100;
         }
 
         // =====================================================================
@@ -826,7 +838,7 @@ namespace BioLib
                         foreach (var kv in labelMasks)
                         {
                             int    labelId   = kv.Key;
-                            float[] maskData = kv.Value;
+                            byte[] maskData = kv.Value;
 
                             var mask = new Mask(maskData, sizeX, sizeY, physX, physY, 0, 0);
 
@@ -859,11 +871,11 @@ namespace BioLib
         /// float[] of length <paramref name="w"/> × <paramref name="h"/> where
         /// pixels belonging to that label are 1.0 and all others are 0.0.
         /// </summary>
-        private static Dictionary<int, float[]> SplitLabelPlane(
+        private static Dictionary<int, byte[]> SplitLabelPlane(
             byte[] raw, int w, int h, int bytesPerPixel)
         {
             int total  = w * h;
-            var result = new Dictionary<int, float[]>();
+            var result = new Dictionary<int, byte[]>();
 
             for (int i = 0; i < total; i++)
             {
@@ -871,12 +883,12 @@ namespace BioLib
                 if (labelId == 0)
                     continue;
 
-                if (!result.TryGetValue(labelId, out float[]? mask))
+                if (!result.TryGetValue(labelId, out byte[]? mask))
                 {
-                    mask = new float[total];
+                    mask = new byte[total];
                     result[labelId] = mask;
                 }
-                mask[i] = 1.0f;
+                mask[i] = 255;
             }
 
             return result;

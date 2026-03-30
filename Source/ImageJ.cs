@@ -203,6 +203,153 @@ namespace BioLib
         }
 
         /// <summary>
+        /// Flattens a pyramidal BioImage to a single resolution level so it can
+        /// be processed by the existing ImageJ import/export path.
+        /// </summary>
+        private static async Task<BioImage> FlattenPyramidalImage(BioImage b, int level)
+        {
+            if (b == null)
+                return null;
+            if (!b.isPyramidal || b.Resolutions.Count == 0)
+                return b;
+
+            level = Math.Clamp(level, 0, b.Resolutions.Count - 1);
+            Resolution res = b.Resolutions[level];
+            int width = res.SizeX > 0 ? res.SizeX : b.SizeX;
+            int height = res.SizeY > 0 ? res.SizeY : b.SizeY;
+            if (width <= 0 || height <= 0)
+                return null;
+
+            BioImage flat = BioImage.CopyInfo(b, true, true);
+            flat.Buffers.Clear();
+            flat.Resolutions.Clear();
+            flat.seriesCount = 1;
+            flat.UpdateCoords(b.SizeZ, b.SizeC, b.SizeT);
+            flat.Coordinate = new ZCT(0, 0, 0);
+            flat.Resolutions.Add(new Resolution(
+                width,
+                height,
+                res.PixelFormat,
+                res.PhysicalSizeX,
+                res.PhysicalSizeY,
+                res.PhysicalSizeZ,
+                res.StageSizeX,
+                res.StageSizeY,
+                res.StageSizeZ));
+
+            for (int t = 0; t < b.SizeT; t++)
+            {
+                for (int c = 0; c < b.SizeC; c++)
+                {
+                    for (int z = 0; z < b.SizeZ; z++)
+                    {
+                        int index = b.GetFrameIndex(z, c, t);
+                        Bitmap tile = await b.GetTile(index, level, 0, 0, width, height, new ZCT(z, c, t), true).ConfigureAwait(false);
+                        if (tile == null)
+                            return null;
+                        tile.Stats = Statistics.FromBytes(tile);
+                        flat.Buffers.Add(tile);
+                    }
+                }
+            }
+
+            flat.Volume = new VolumeD(
+                new Point3D(b.Volume.Location.X, b.Volume.Location.Y, b.Volume.Location.Z),
+                new Point3D(
+                    width * flat.Resolutions[0].PhysicalSizeX,
+                    height * flat.Resolutions[0].PhysicalSizeY,
+                    b.SizeZ * flat.Resolutions[0].PhysicalSizeZ));
+            return flat;
+        }
+
+        /// <summary>
+        /// Runs an ImageJ command on a pyramidal BioImage by flattening the
+        /// selected pyramid level to a temporary OME-TIFF first.
+        /// </summary>
+        private static async Task<BioImage> RunOnPyramidalImageInternal(BioImage b, string con, int level, bool headless, bool onTab, bool bioformats, bool resultInNewTab, bool record)
+        {
+            if (b == null)
+                return null;
+            if (!b.isPyramidal)
+            {
+                RunOnImage(b, con, headless, onTab, bioformats, resultInNewTab);
+                return b;
+            }
+
+            BioImage flat = await FlattenPyramidalImage(b, level).ConfigureAwait(false);
+            if (flat == null)
+                return null;
+
+            string tempDir = Path.GetDirectoryName(Environment.ProcessPath);
+            string tempFile = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".ome.tif");
+            BioImage.SaveOME(flat, tempFile);
+            flat.file = tempFile;
+            flat.Filename = Path.GetFileName(tempFile);
+            flat.ID = flat.Filename;
+
+            try
+            {
+                RunOnImage(flat, con, headless, onTab, false, resultInNewTab);
+                string fn = Path.GetFileNameWithoutExtension(tempFile);
+                if (fn.EndsWith(".ome"))
+                    fn = fn.Substring(0, fn.Length - 4);
+                fn += ".tif";
+                BioImage bm = Images.GetImage(fn);
+                if (record)
+                    Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, con, level, headless, onTab, bioformats, resultInNewTab);
+                return bm;
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(tempFile))
+                        File.Delete(tempFile);
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        /// <summary>
+        /// Runs an ImageJ command on a pyramidal BioImage by flattening the
+        /// selected pyramid level to a temporary OME-TIFF first.
+        /// </summary>
+        public static async Task<BioImage> RunOnPyramidalImage(BioImage b, string con, int level, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
+        {
+            return await RunOnPyramidalImageInternal(b, con, level, headless, onTab, bioformats, resultInNewTab, true).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Runs an ImageJ command on every pyramid level and returns the
+        /// results in level order.
+        /// </summary>
+        public static async Task<BioImage[]> RunOnAllPyramidLevels(BioImage b, string con, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
+        {
+            if (b == null)
+                return Array.Empty<BioImage>();
+
+            if (!b.isPyramidal || b.Resolutions.Count == 0)
+            {
+                RunOnImage(b, con, headless, onTab, bioformats, resultInNewTab);
+                Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, con, headless, onTab, bioformats, resultInNewTab);
+                return new BioImage[] { b };
+            }
+
+            List<BioImage> results = new List<BioImage>();
+            for (int level = 0; level < b.Resolutions.Count; level++)
+            {
+                BioImage result = await RunOnPyramidalImageInternal(b, con, level, headless, onTab, bioformats, resultInNewTab, false).ConfigureAwait(false);
+                if (result != null)
+                    results.Add(result);
+            }
+
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, con, headless, onTab, bioformats, resultInNewTab);
+            return results.ToArray();
+        }
+
+        /// <summary>
         /// The function "RunOnImage" takes in a BioImage object, a string, and several boolean values
         /// as parameters and executes a specific action based on those parameters.
         /// </summary>
@@ -227,6 +374,11 @@ namespace BioLib
         /// displayed in a new tab or not.</param>
         public static void RunOnImage(BioImage b, string con, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
         {
+            if (b != null && b.isPyramidal)
+            {
+                RunOnPyramidalImage(b, con, b.Level, headless, onTab, bioformats, resultInNewTab).Wait();
+                return;
+            }
             RunOnImage(b, con,0,headless,onTab,bioformats,resultInNewTab);
             Recorder.AddLine("ImageJ.RunOnImage(Images.GetImage(\"" + b.Filename + "\"),\"" + con + "\"," + 0 + "," + headless + "," + onTab + "," + bioformats + "," + resultInNewTab + ");",false);
         }

@@ -4730,6 +4730,7 @@ namespace BioLib
             string[] sts = new string[1];
             sts[0] = ID;
             SaveSeries(sts, file);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, ID);
         }
         /// It takes a list of image IDs, and saves them as a single multi-page TIFF file.
         /// 
@@ -4830,6 +4831,7 @@ namespace BioLib
                 }
             }
             image.Dispose();
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, IDs, file);
         }
         /// It opens a tiff file, reads the number of pages, reads the number of channels, and then
         /// reads each page into a BioImage object.
@@ -4862,6 +4864,7 @@ namespace BioLib
             {
                 bs[i] = OpenFileAsync(file, i, tab, add).Result;
             }
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, tab);
             return bs;
         }
         /// This function opens a file and returns a BioImage object
@@ -4889,8 +4892,7 @@ namespace BioLib
         /// @return A BioImage object.
         public static async Task<BioImage> OpenFileAsync(string file, int series, bool tab, bool addToImages)
         {
-            BioImage bm =  await OpenFile(file, series, tab, addToImages, false, 0, 0, 800, 600);
-            return bm;
+            return await OpenFile(file, series, tab, addToImages, false, 0, 0, 800, 600);
         }
         static bool IsTiffTiled(string imagePath)
         {
@@ -5527,6 +5529,8 @@ namespace BioLib
         int tileWidth,
         int tileHeight)
             {
+                Progress = 0;
+                Status = "Opening remote Zarr";
                 // -----------------------------------------------------------------
                 // Input cleanup
                 // -----------------------------------------------------------------
@@ -5541,12 +5545,16 @@ namespace BioLib
                 // if needed. Using only Path.GetFileName loses the host/path and makes
                 // OmeZarrReader.OpenAsync fail with a local-path lookup.
                 var b = new BioImage(url);
+                Progress = 10;
+                Status = "Opening Zarr reader";
 
                 // -----------------------------------------------------------------
                 // Open reader
                 // -----------------------------------------------------------------
 
                 b.zarrReader ??= await OmeZarrReader.OpenAsync(url).ConfigureAwait(false);
+                Progress = 25;
+                Status = "Resolving multiscale metadata";
 
                 if (b.imagef == null)
                 {
@@ -5554,14 +5562,23 @@ namespace BioLib
                     b.imagef     = ms;
                     b.multiscale = ms;   // keep multiscale in sync — GetTile checks this field
                     b.zarrPlate  = plateNode;
+                    Progress = 45;
+                    Status = "Loading resolution levels";
 
                     if (plateNode != null)
+                    {
+                        Status = "Building well plate";
                         await BuildZarrWellPlate(b, plateNode, url).ConfigureAwait(false);
+                        Status = "Loading resolution levels";
+                    }
                 }
 
+                Status = "Loading resolution levels";
                 b.levels = (await b.imagef
                     .OpenAllResolutionLevelsAsync().ConfigureAwait(false))
                     .ToList();
+                Progress = 65;
+                Status = "Reading tile region";
 
                 if (b.levels.Count == 0)
                     throw new Exception("OME-Zarr contains no resolution levels.");
@@ -5584,8 +5601,10 @@ namespace BioLib
                 // Load pyramid metadata from all resolution levels
                 // -----------------------------------------------------------------
 
-                foreach (var level in b.levels)
+                for (int i = 0; i < b.levels.Count; i++)
                 {
+                    Status = $"Loading pyramid metadata ({i + 1}/{b.levels.Count})";
+                    var level = b.levels[i];
                     int width = GetAxisSize(level, "x");
                     int height = GetAxisSize(level, "y");
 
@@ -5667,9 +5686,11 @@ namespace BioLib
                 // Read the tile
                 // -----------------------------------------------------------------
 
+                Status = "Reading tile pixels";
                 RegionResult tileResult = await firstLevel
                     .ReadPixelRegionAsync(region)
                     .ConfigureAwait(false);
+                Progress = 85;
 
                 // Recover actual tile dimensions from the clamped region
                 int actualTileW = GetRegionAxisSize(axes, start, end, "x");
@@ -5745,6 +5766,9 @@ namespace BioLib
                     }
                 }
 
+                Progress = 100;
+                Status = "Remote Zarr open complete";
+                Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, url, coord, originX, originY, tileWidth, tileHeight);
                 return b;
             }
 
@@ -5893,6 +5917,7 @@ namespace BioLib
             BioImage[] sts = new BioImage[1];
             sts[0] = Images.GetImage(ID);
             SaveOMESeries(sts, file, BioImage.Planes);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, ID);
         }
 
         public static void SaveOME(BioImage image, string file)
@@ -5900,6 +5925,7 @@ namespace BioLib
             BioImage[] sts = new BioImage[1];
             sts[0] = image;
             SaveOMESeries(sts, file, BioImage.Planes);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, image, file);
         }
         /// <summary>
         /// Sorts an array of ROIs by their Type property (alphabetically by default).
@@ -6508,6 +6534,7 @@ namespace BioLib
                 s++;
             }
 
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, bms, file, compression, compressionLevel);
         }
 
         /// The function "OpenOME" opens a bioimage file in the OME format and returns the first image
@@ -6749,6 +6776,7 @@ namespace BioLib
             bm.Filename = bm.ID;
             bm.file = file;
             Images.AddImage(bm);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file);
             return bm;
         }
         /// It takes a list of files, and creates a new BioImage object with the first file in the list.
@@ -6772,6 +6800,7 @@ namespace BioLib
             }
             b.UpdateCoords(sizeZ, sizeC, sizeT);
             Images.AddImage(b);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, files, sizeZ, sizeC, sizeT);
             return b;
         }
         /// It takes a folder of images and creates a stack from them
@@ -6811,6 +6840,7 @@ namespace BioLib
             else
                 b.UpdateCoords(z + 1, c + 1, t + 1);
             Images.AddImage(b);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, path, tab);
             return b;
         }
         static bool vips = true;
@@ -8821,6 +8851,7 @@ namespace BioLib
                 if (bs[i] == null)
                     return null;
             }
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, tab, addToImages);
             return bs;
         }
         /// It opens a file in a new thread.
@@ -8848,6 +8879,7 @@ namespace BioLib
         public static void Open(string file)
         {
             OpenFile(file, true).Wait();
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file);
         }
         /// It opens a file
         /// 
@@ -8855,6 +8887,7 @@ namespace BioLib
         public static void Open(string file, int z = 0, int c = 0, int t = 0)
         {
             OpenFile(file, true).Wait();
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, z, c, t);
         }
         /// It opens a file
         /// 
@@ -8865,6 +8898,7 @@ namespace BioLib
             {
                 Open(file, coord.Z, coord.C, coord.T);
             }
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, files, coord);
         }
         /// It takes a list of files, opens them, and then combines them into a single BioImage object
         /// 
@@ -10474,6 +10508,7 @@ namespace BioLib
         public static void AutoThreshold()
         {
             AutoThreshold(bstats, update);
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false);
         }
         /// It creates a new thread that calls the AutoThreshold function
         /// 
