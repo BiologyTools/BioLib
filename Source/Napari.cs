@@ -85,6 +85,7 @@ namespace BioLib
                 }
             }
 
+            Recorder.Record($"Napari.ParsePointsFile(\"{filePath}\");");
             return rois;
         }
 
@@ -127,6 +128,7 @@ namespace BioLib
                     rois.Add(roi);
             }
 
+            Recorder.Record($"Napari.ParseShapesFile(\"{filePath}\");");
             return rois;
         }
 
@@ -151,6 +153,7 @@ namespace BioLib
                 allRois.AddRange(shapeRois);
             }
 
+            Recorder.Record($"Napari.ParseNapariFiles(\"{pointsPath}\", \"{shapesPath}\");");
             return allRois;
         }
 
@@ -249,6 +252,8 @@ namespace BioLib
             {
                 WriteShapesFile(shapesPath, rois);
             }
+
+            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, pointsPath, shapesPath, rois.Count);
         }
 
         #endregion

@@ -1,4 +1,6 @@
-﻿using AForge;
+extern alias FijiNet;
+
+using AForge;
 using Gdk;
 using loci.formats.@in;
 using ome.api;
@@ -33,7 +35,7 @@ namespace BioLib
         public static string host, username;
         public static string password = "";
         public static int port;
-        public static client client;
+        public static omero.client client;
         public static ServiceFactoryPrx session;
         public static Gateway gateway;
         public static ExperimenterData experimenter;
@@ -500,6 +502,7 @@ namespace BioLib
                 // Save ROI data
                 int roiCount = ROI.AddROIsToOMERO(newImage.getId(), userId, b);
                 Console.WriteLine($"Uploaded {roiCount} ROIs.");
+                Recorder.Record($"OMERO.Upload({b}, {id});");
 
             }
             finally
@@ -1053,3 +1056,4 @@ namespace BioLib
         }
     }
 }
+

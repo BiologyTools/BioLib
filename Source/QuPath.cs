@@ -224,6 +224,7 @@ namespace BioLib
             }
             j += "]}";
             File.WriteAllText(file, j);
+            Recorder.Record($"QuPath.SaveROI(\"{file}\", {b});");
         }
 
         public static ROI[] ReadROI(string filePath, BioImage b)
@@ -261,6 +262,7 @@ namespace BioLib
                 }
                 rois.Add(r);
             }
+            Recorder.Record($"QuPath.ReadROI(\"{filePath}\", {b});");
             return rois.ToArray();
         }
 
@@ -268,7 +270,9 @@ namespace BioLib
         {
             try
             {
-                return JsonConvert.DeserializeObject<QuPath.Project>(File.ReadAllText("D:\\QuPath\\project.qpproj"));
+                Project project = JsonConvert.DeserializeObject<QuPath.Project>(File.ReadAllText("D:\\QuPath\\project.qpproj"));
+                Recorder.Record($"QuPath.OpenProject(\"{file}\");");
+                return project;
             }
             catch (Exception e)
             {
@@ -319,6 +323,7 @@ namespace BioLib
                 };
                 string json = JsonConvert.SerializeObject(pr, settings);
                 File.WriteAllText(file, json);
+                Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, bms.Count);
             }
         }
 

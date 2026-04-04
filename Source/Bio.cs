@@ -1,3 +1,4 @@
+extern alias FijiNet;
 
 using AForge;
 using AForge.Imaging;
@@ -2176,7 +2177,7 @@ namespace BioLib
             bi.PyramidalOrigin = b.PyramidalOrigin;
             bi.PyramidalSize = b.PyramidalSize;
             bi.Plate = b.Plate;
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, rois);
+            Recorder.Record($"BioImage.Copy({b}, {rois.ToString().ToLowerInvariant()});");
             return bi;
         }
         /// Copy a BioImage object.
@@ -3115,6 +3116,7 @@ namespace BioLib
             }
             AutoThreshold(this, true);
             StackThreshold(false);
+            Recorder.Record($"{this}.ToShort();");
         }
         public void ToFloat()
         {
@@ -3125,6 +3127,7 @@ namespace BioLib
             }
             AutoThreshold(this, true);
             StackThreshold(false);
+            Recorder.Record($"{this}.ToFloat();");
         }
         public int? MacroResolution { get; set; }
         public int? LabelResolution { get; set; }
@@ -4730,7 +4733,7 @@ namespace BioLib
             string[] sts = new string[1];
             sts[0] = ID;
             SaveSeries(sts, file);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, ID);
+            Recorder.Record($"BioImage.SaveFile(\"{file}\", \"{ID}\");");
         }
         /// It takes a list of image IDs, and saves them as a single multi-page TIFF file.
         /// 
@@ -4831,7 +4834,7 @@ namespace BioLib
                 }
             }
             image.Dispose();
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, IDs, file);
+            Recorder.Record($"BioImage.SaveSeries(new string[] {{ {string.Join(", ", IDs.Select(id => $"\"{id}\""))} }}, \"{file}\");");
         }
         /// It opens a tiff file, reads the number of pages, reads the number of channels, and then
         /// reads each page into a BioImage object.
@@ -4864,7 +4867,7 @@ namespace BioLib
             {
                 bs[i] = OpenFileAsync(file, i, tab, add).Result;
             }
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, tab);
+            Recorder.Record($"BioImage.OpenSeries(\"{file}\", {tab.ToString().ToLower()});");
             return bs;
         }
         /// This function opens a file and returns a BioImage object
@@ -5354,7 +5357,7 @@ namespace BioLib
             st.Stop();
             b.loadTimeMS = st.ElapsedMilliseconds;
             Console.WriteLine("BioImage loaded " + b.ToString());
-            BioLib.Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, series, tab, addToImages, tile, tileX, tileY, tileSizeX, tileSizeY);
+            Recorder.Record($"BioImage.OpenFile(\"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", {series}, {tab.ToString().ToLowerInvariant()}, {addToImages.ToString().ToLowerInvariant()}, {tile.ToString().ToLowerInvariant()}, {tileX}, {tileY}, {tileSizeX}, {tileSizeY});");
             return b;
         }
 
@@ -5768,7 +5771,7 @@ namespace BioLib
 
                 Progress = 100;
                 Status = "Remote Zarr open complete";
-                Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, url, coord, originX, originY, tileWidth, tileHeight);
+                Recorder.Record($"BioImage.OpenURL(\"{url}\", {coord}, {originX}, {originY}, {tileWidth}, {tileHeight});");
                 return b;
             }
 
@@ -5917,7 +5920,7 @@ namespace BioLib
             BioImage[] sts = new BioImage[1];
             sts[0] = Images.GetImage(ID);
             SaveOMESeries(sts, file, BioImage.Planes);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, ID);
+            Recorder.Record($"BioImage.SaveOME(\"{file}\", \"{ID}\");");
         }
 
         public static void SaveOME(BioImage image, string file)
@@ -5925,7 +5928,7 @@ namespace BioLib
             BioImage[] sts = new BioImage[1];
             sts[0] = image;
             SaveOMESeries(sts, file, BioImage.Planes);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, image, file);
+            Recorder.Record($"BioImage.SaveOME({image}, \"{file}\");");
         }
         /// <summary>
         /// Sorts an array of ROIs by their Type property (alphabetically by default).
@@ -6355,14 +6358,14 @@ namespace BioLib
                 }
             }
 
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, files, f, planes);
+            Recorder.Record($"BioImage.SaveOMESeries(new string[] {{ {string.Join(", ", files.Select(file => $"\"{file}\""))} }}, \"{f}\", BioImage.Planes);");
         }
         public static Random rng = new Random();
         public static void SaveZarr(BioImage b, string outputFile)
         {
             Zarr.SaveZarr(b, outputFile);
             Zarr.SaveROIs(b, outputFile);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, outputFile);
+            Recorder.Record($"BioImage.SaveZarr({b}, \"{outputFile}\");");
         }
 
         /// <summary>
@@ -6534,7 +6537,7 @@ namespace BioLib
                 s++;
             }
 
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, bms, file, compression, compressionLevel);
+            Recorder.Record($"BioImage.SaveOMEPyramidal(new BioImage[] {{ {string.Join(", ", bms.Select(bm => bm.ToString()))} }}, \"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", Enums.ForeignTiffCompression.{compression}, {compressionLevel});");
         }
 
         /// The function "OpenOME" opens a bioimage file in the OME format and returns the first image
@@ -6776,7 +6779,7 @@ namespace BioLib
             bm.Filename = bm.ID;
             bm.file = file;
             Images.AddImage(bm);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file);
+            Recorder.Record($"BioImage.OpenXML(\"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\");");
             return bm;
         }
         /// It takes a list of files, and creates a new BioImage object with the first file in the list.
@@ -6800,7 +6803,7 @@ namespace BioLib
             }
             b.UpdateCoords(sizeZ, sizeC, sizeT);
             Images.AddImage(b);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, files, sizeZ, sizeC, sizeT);
+            Recorder.Record($"BioImage.FilesToStack(new string[] {{ {string.Join(", ", files.Select(file => $"\"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\""))} }}, {sizeZ}, {sizeC}, {sizeT});");
             return b;
         }
         /// It takes a folder of images and creates a stack from them
@@ -6840,7 +6843,7 @@ namespace BioLib
             else
                 b.UpdateCoords(z + 1, c + 1, t + 1);
             Images.AddImage(b);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, path, tab);
+            Recorder.Record($"BioImage.FolderToStack(\"{path.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", {tab.ToString().ToLowerInvariant()});");
             return b;
         }
         static bool vips = true;
@@ -7746,7 +7749,7 @@ namespace BioLib
                 Console.WriteLine(e.Message);
             }
             b.Loading = false;
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, serie, tab, addToImages, tile, tilex, tiley, tileSizeX, tileSizeY);
+            Recorder.Record($"BioImage.OpenOME(\"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", {serie}, {tab.ToString().ToLowerInvariant()}, {addToImages.ToString().ToLowerInvariant()}, {tile.ToString().ToLowerInvariant()}, {tilex}, {tiley}, {tileSizeX}, {tileSizeY});");
             return b;
         }
 
@@ -8851,7 +8854,7 @@ namespace BioLib
                 if (bs[i] == null)
                     return null;
             }
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, tab, addToImages);
+            Recorder.Record($"BioImage.OpenOMESeries(\"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", {tab.ToString().ToLowerInvariant()}, {addToImages.ToString().ToLowerInvariant()});");
             return bs;
         }
         /// It opens a file in a new thread.
@@ -8879,7 +8882,6 @@ namespace BioLib
         public static void Open(string file)
         {
             OpenFile(file, true).Wait();
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file);
         }
         /// It opens a file
         /// 
@@ -8887,7 +8889,6 @@ namespace BioLib
         public static void Open(string file, int z = 0, int c = 0, int t = 0)
         {
             OpenFile(file, true).Wait();
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, z, c, t);
         }
         /// It opens a file
         /// 
@@ -8898,7 +8899,6 @@ namespace BioLib
             {
                 Open(file, coord.Z, coord.C, coord.T);
             }
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, files, coord);
         }
         /// It takes a list of files, opens them, and then combines them into a single BioImage object
         /// 
@@ -8939,7 +8939,7 @@ namespace BioLib
             }
             b.UpdateCoords(z + 1, c + 1, t + 1);
             b.Volume = new VolumeD(bs[0].Volume.Location, new Point3D(bs[0].SizeX * bs[0].PhysicalSizeX, bs[0].SizeY * bs[0].PhysicalSizeY, (z + 1) * bs[0].PhysicalSizeZ));
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, files, tab);
+            Recorder.Record($"BioImage.ImagesToStack(new string[] {{ {string.Join(", ", files.Select(file => $"\"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\""))} }}, {tab.ToString().ToLowerInvariant()});");
             return b;
         }
         /// The function takes a BioImage object, opens the file, and returns a updated BioImage object
@@ -9595,6 +9595,7 @@ namespace BioLib
         {
             this.Filename = Path.GetFileName(name);
             this.ID = name;
+            Recorder.Record($"{this}.Rename(\"{name.Replace("\\", "\\\\").Replace("\"", "\\\"")}\");");
         }
         static string openfile;
         static bool omes, tab, add;
@@ -9634,6 +9635,7 @@ namespace BioLib
             saveid = id;
             some = ome;
             await Task.Run(SaveThread);
+            Recorder.Record($"BioImage.SaveAsync(\"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", \"{id.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", {serie}, {ome.ToString().ToLowerInvariant()});");
         }
 
         static List<string> sts = new List<string>();
@@ -9671,6 +9673,7 @@ namespace BioLib
             savefile = file;
             some = ome;
             await Task.Run(SaveSeriesThread);
+            Recorder.Record($"BioImage.SaveSeriesAsync(new BioImage[] {{ {string.Join(", ", imgs.Select(img => img.ToString()))} }}, \"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", {ome.ToString().ToLowerInvariant()});");
         }
         static Enums.ForeignTiffCompression comp;
         static int compLev = 0;
@@ -9699,6 +9702,7 @@ namespace BioLib
             comp = com;
             compLev = compLevel;
             await Task.Run(SavePyramidalThread);
+            Recorder.Record($"BioImage.SavePyramidalAsync(new BioImage[] {{ {string.Join(", ", imgs.Select(img => img.ToString()))} }}, \"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", Enums.ForeignTiffCompression.{com}, {compLevel});");
         }
         private static List<string> openOMEfile = new List<string>();
         /// It opens the OME file.
@@ -9764,7 +9768,7 @@ namespace BioLib
                 return null;
             Tiff image = Tiff.Open(file, "r");
             FieldValue[] f = image.GetField(TiffTag.IMAGEDESCRIPTION);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file);
+            Recorder.Record($"BioImage.OpenXML(\"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\");");
             return f[0].ToString();
         }
         /// It reads the OME-XML file and converts the ROIs to a list of ROI objects
@@ -10149,7 +10153,7 @@ namespace BioLib
             }
 
             imageReader.close();
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, file, series);
+            Recorder.Record($"BioImage.OpenOMEROIs(\"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", {series});");
             return Annotations;
         }
         /// It takes a list of ROI objects and returns a string of all the ROI objects in the list
@@ -10379,7 +10383,7 @@ namespace BioLib
             {
                 list.Add(StringToROI(sts[i]));
             }
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, filename);
+            Recorder.Record($"BioImage.ImportROIsCSV(\"{filename}\");");
             return list;
         }
         /// ExportROIFolder(path, filename)
@@ -10400,7 +10404,7 @@ namespace BioLib
                 ExportROIsCSV(path + "//" + ff + "-" + i.ToString() + ".csv", annotations);
                 i++;
             }
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, path, filename);
+            Recorder.Record($"BioImage.ExportROIFolder(\"{path}\", \"{filename}\");");
         }
 
         private static BioImage bstats = null;
@@ -10502,13 +10506,13 @@ namespace BioLib
             }
             statistics.MeanHistogram();
             b.statistics = statistics;
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), true, b, updateImageStats);
+            Recorder.Record($"BioImage.AutoThreshold({b}, {updateImageStats.ToString().ToLowerInvariant()});");
         }
         /// It takes the current image, and finds the best threshold value for it
         public static void AutoThreshold()
         {
             AutoThreshold(bstats, update);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false);
+            Recorder.Record("BioImage.AutoThreshold();");
         }
         /// It creates a new thread that calls the AutoThreshold function
         /// 
@@ -10547,7 +10551,7 @@ namespace BioLib
                 }
             }
 
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, im, Channel, Time);
+            Recorder.Record($"BioImage.FindFocus({im}, {Channel}, {Time});");
             return fr;
         }
         /// The function calculates the focus quality of a given bitmap image.

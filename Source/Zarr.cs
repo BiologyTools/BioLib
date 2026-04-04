@@ -258,7 +258,7 @@ namespace BioLib
                 Log($"[PostSaveReadback] EXCEPTION: {e.GetType().Name}: {e.Message}");
             }
 
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b);
+            Recorder.Record($"Zarr.SaveZarr({b}, \"{outputDir}\");");
             BioImage.Progress = 100;
         }
 
@@ -568,7 +568,7 @@ namespace BioLib
             string json = JsonSerializer.Serialize(dtos, opts);
             File.WriteAllText(Path.Combine(outputDir, RoiFileName), json);
 
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, outputDir);
+            Recorder.Record($"Zarr.SaveROIs({b}, \"{outputDir}\");");
         }
 
         /// <summary>
@@ -634,7 +634,7 @@ namespace BioLib
                 result.Add(an);
             }
 
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, zarrDir);
+            Recorder.Record($"Zarr.LoadROIs(\"{zarrDir}\");");
             return result;
         }
 
@@ -710,7 +710,7 @@ namespace BioLib
                 }
             }
 
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, zarrDir);
+            Recorder.Record($"Zarr.LoadLabelsAsROIs({b}, \"{zarrDir}\");");
             return result;
         }
 

@@ -132,10 +132,11 @@ namespace BioLib
         /// <returns>
         /// The method does not return any value. It is a void method.
         /// </returns>
-        public static void RunOnImage(BioImage bi,string con, int index, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
+        public static void RunOnImage(BioImage bi,string con, int index, bool headless, bool onTab, bool bioformats, bool resultInNewTab, string outputStem = null)
         {
             if (OperatingSystem.IsMacOS())
                 bioformats = false;
+            Console.WriteLine($"[ImageJ.RunOnImage] input={bi?.ID} index={index} headless={headless} onTab={onTab} bioformats={bioformats} resultInNewTab={resultInNewTab} outputStem={outputStem}");
             string filename = "";
             string dir = Path.GetDirectoryName(bi.file);
             dir = dir.Replace("\\", "/");
@@ -151,40 +152,46 @@ namespace BioLib
             string file = inputIsZarr ? inputPath : dir + "/" + filename + ".ome.tif";
             if (!bioformats && !inputIsZarr)
                 file = dir + "/" + filename + ".tif";
-            string filet = dir + "/" + filename + "-" + Images.GetImageCountByName(filename);
+            string outputName = string.IsNullOrWhiteSpace(outputStem) ? filename : outputStem;
+            string exportPath = bioformats
+                ? dir + "/" + outputName + "-temp.ome.tif"
+                : dir + "/" + outputName + ".tif";
             string donepath = Path.GetDirectoryName(Environment.ProcessPath);
             donepath = donepath.Replace("\\", "/");
             string st =
             "run(\"Bio-Formats Importer\", \"open=" + file + " autoscale color_mode=Default open_all_series display_rois rois_import=[ROI manager] view=Hyperstack stack_order=XYCZT\"); " + con +
-            "run(\"Bio-Formats Exporter\", \"save=" + filet + " export compression=Uncompressed\"); " +
+            "run(\"Bio-Formats Exporter\", \"save=" + exportPath + " export compression=Uncompressed\"); " +
             "dir = \"" + donepath + "\"" +
             "File.saveString(\"done\", dir + \"/done.txt\");";
             if (!bioformats)
                 st =
                 "open(getArgument); " + con +
-                "saveAs(\"Tiff\",\"" + file + "\"); " +
+                "saveAs(\"Tiff\",\"" + exportPath + "\"); " +
                 "dir = \"" + donepath + "\"" +
                 "File.saveString(\"done\", dir + \"/done.txt\");";
-            if (File.Exists(file) && bioformats && !inputIsZarr)
-                File.Delete(file);
+            Console.WriteLine($"[ImageJ.RunOnImage] inputFile={file}");
             RunString(bi,st, dir + "/" + bi.ID, headless);
             if (!File.Exists(file))
+            {
+                Console.WriteLine($"[ImageJ.RunOnImage] input file missing after run: {file}");
                 return;
-            
-            string s = filename;
-            if (bioformats)
-                s += "-temp.ome.tif";
-            else
-                s += ".tif";
-            string f = dir + "/" + s;
-            f = f.Replace("\\", "/");
-            string fn = filename + ".tif";
-            if (bioformats)
-                fn = filename + ".ome.tif";
+            }
+
+            string f = ResolveExportedImagePath(exportPath);
+            if (f == null)
+            {
+                Console.WriteLine($"[ImageJ.RunOnImage] output file not found for exportPath={exportPath}");
+                return;
+            }
+
+            Console.WriteLine($"[ImageJ.RunOnImage] resolvedOutput={f}");
+
+            string fn = Path.GetFileName(f);
             //If not in images we add it to a new tab.
             if (Images.GetImage(fn) == null)
             {
                 BioImage bm = BioImage.OpenFileAsync(f, index, false, false).Result;
+                Console.WriteLine($"[ImageJ.RunOnImage] opened new image {bm?.ID} filename={bm?.Filename}");
                 bm.Filename = fn;
                 bm.ID = fn;
                 bm.file = dir + "/" + fn;
@@ -193,6 +200,7 @@ namespace BioLib
             else
             {
                 BioImage b = BioImage.OpenFileAsync(f, index, false, false).Result;
+                Console.WriteLine($"[ImageJ.RunOnImage] updating existing image with {b?.ID} filename={b?.Filename}");
                 b.ID = bi.ID;
                 b.Filename = bi.ID;
                 b.file = dir + "/" + fn;
@@ -202,6 +210,30 @@ namespace BioLib
             if(bioformats)
             File.Delete(f);;
             //Recorder.AddLine("ImageJ.RunOnImage(\"" + con + "\"," + headless + "," + onTab + "," + bioformats + "," + resultInNewTab + ");");
+        }
+
+        private static string ResolveExportedImagePath(string exportPath)
+        {
+            if (File.Exists(exportPath))
+                return exportPath.Replace("\\", "/");
+
+            string dir = Path.GetDirectoryName(exportPath);
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+                return null;
+
+            string stem = Path.GetFileNameWithoutExtension(exportPath);
+            string[] candidates = Directory.GetFiles(dir)
+                .Where(f =>
+                {
+                    string name = Path.GetFileName(f);
+                    return name.StartsWith(stem, StringComparison.OrdinalIgnoreCase) &&
+                           (name.EndsWith(".tif", StringComparison.OrdinalIgnoreCase) ||
+                            name.EndsWith(".tiff", StringComparison.OrdinalIgnoreCase));
+                })
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .ToArray();
+
+            return candidates.Length > 0 ? candidates[0].Replace("\\", "/") : null;
         }
 
         /// <summary>
@@ -258,14 +290,12 @@ namespace BioLib
             flat.Volume = new VolumeD(
                 new Point3D(b.Volume.Location.X, b.Volume.Location.Y, b.Volume.Location.Z),
                 new Point3D(
-                    width * flat.Resolutions[0].PhysicalSizeX,
-                    height * flat.Resolutions[0].PhysicalSizeY,
-                    b.SizeZ * flat.Resolutions[0].PhysicalSizeZ));
+                width * flat.Resolutions[0].PhysicalSizeX,
+                height * flat.Resolutions[0].PhysicalSizeY,
+                b.SizeZ * flat.Resolutions[0].PhysicalSizeZ));
 
-            // CopyInfo preserves the source bit depth, but the tiled image we
-            // assembled here may already have been reduced to 8-bit buffers.
-            // Keep the metadata aligned with the actual buffers so OME writing
-            // does not request twice as many bytes as are present.
+            // Keep the metadata aligned with the actual raw buffers so OME
+            // writing matches the tile bytes we assembled.
             int flatBits = 8;
             if (flat.Buffers.Count > 0)
             {
@@ -308,39 +338,49 @@ namespace BioLib
                 return null;
             if (!b.isPyramidal)
             {
+                Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] non-pyramidal passthrough id={b.ID}");
                 RunOnImage(b, con, headless, onTab, bioformats, resultInNewTab);
                 return b;
             }
 
+            Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] start id={b.ID} level={level} bioformats={bioformats}");
             BioImage flat = await FlattenPyramidalImage(b, level).ConfigureAwait(false);
             if (flat == null)
+            {
+                Console.WriteLine("[ImageJ.RunOnPyramidalImageInternal] flatten returned null");
                 return null;
+            }
 
             string tempDir = Path.GetDirectoryName(Environment.ProcessPath);
-            string tempPath = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".zarr");
-            if (Directory.Exists(tempPath))
-                Directory.Delete(tempPath, true);
-            Zarr.SaveZarr(flat, tempPath);
+            string tempPath = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".ome.tif");
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+            BioImage.SaveOME(flat, tempPath);
             flat.file = tempPath;
             flat.Filename = Path.GetFileName(tempPath);
             flat.ID = Path.GetFileName(tempPath);
+            Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] flatTemp={tempPath} flatId={flat.ID}");
 
             try
             {
-                RunOnImage(flat, con, headless, onTab, true, resultInNewTab);
-                string fn = Path.GetFileNameWithoutExtension(tempPath);
-                fn += ".tif";
+                string outputStem = Path.GetFileNameWithoutExtension(tempPath) + "-result";
+                Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] outputStem={outputStem}");
+                RunOnImage(flat, con, level ,headless, onTab, bioformats, resultInNewTab, outputStem);
+                string fn = outputStem + (bioformats ? ".ome.tif" : ".tif");
                 BioImage bm = Images.GetImage(fn);
+                if (bm == null && bioformats)
+                    bm = Images.GetImage(outputStem + ".tif");
+                Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] lookup fn={fn} result={(bm == null ? "null" : bm.ID)}");
                 if (record)
-                    Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, con, level, headless, onTab, bioformats, resultInNewTab);
+                    Recorder.Record($"ImageJ.RunOnPyramidalImage({b}, \"{con}\", {level}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
                 return bm;
             }
             finally
             {
                 try
                 {
-                    if (Directory.Exists(tempPath))
-                        Directory.Delete(tempPath, true);
+                    if (File.Exists(tempPath))
+                        File.Delete(tempPath);
                 }
                 catch
                 {
@@ -369,7 +409,7 @@ namespace BioLib
             if (!b.isPyramidal || b.Resolutions.Count == 0)
             {
                 RunOnImage(b, con, headless, onTab, bioformats, resultInNewTab);
-                Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, con, headless, onTab, bioformats, resultInNewTab);
+                Recorder.Record($"ImageJ.RunOnImage({b}, \"{con}\", {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
                 return b;
             }
 
@@ -389,7 +429,7 @@ namespace BioLib
             BioImage.SaveOMEPyramidal(results.ToArray(), tempFile, NetVips.Enums.ForeignTiffCompression.None, 0);
 
             BioImage pyramidal = await BioImage.OpenFileAsync(tempFile, 0, true, true).ConfigureAwait(false);
-            Recorder.Record(BioLib.Recorder.GetCurrentMethodInfo(), false, b, con, headless, onTab, bioformats, resultInNewTab);
+            Recorder.Record($"ImageJ.RunOnImage({b}, \"{con}\", {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
             return pyramidal;
         }
 
