@@ -4522,6 +4522,8 @@ namespace BioLib
             InitFactory();
             InitReader();
             InitWriter();
+            if (OperatingSystem.IsMacOS())
+                return;
             if (imageJPath.Contains("Fiji"))
             {
                 Fiji.Initialize(imageJPath);

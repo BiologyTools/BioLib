@@ -70,7 +70,6 @@ namespace BioLib
             internal static void Initialize()
             {
                 Commands.Clear();
-                EnsureCommandTableLoaded();
                 string[] sts = File.ReadAllLines(System.IO.Path.GetDirectoryName(Environment.ProcessPath) + "/macro-functions.txt");
                 foreach (string s in sts)
                 {
@@ -109,6 +108,10 @@ namespace BioLib
                             Functions[com].Add(new Function(com, args, doc));
                     }
                 }
+                if (OperatingSystem.IsMacOS())
+                    LoadCommandTableFromCsv();
+                else
+                    EnsureCommandTableLoaded();
             }
         }
         static bool init = false;
@@ -471,7 +474,7 @@ namespace BioLib
         /// @param headless Whether or not to run ImageJ in headless mode.
         /// 
         /// @return Nothing.
-        public async static Task<BioImage> RunStringFiji(BioImage b,string con, string param, bool headless)
+        public async static Task<BioImage> RunStringFiji(BioImage b,string con, string param, bool headless, string outputPath = null)
         {
             Process pr = new Process();
             pr.StartInfo.FileName = ImageJPath;
@@ -513,11 +516,16 @@ namespace BioLib
             } while (!pr.HasExited);
             Console.WriteLine("Deleting temp file:" + p);
             File.Delete(p);
-            Console.WriteLine("Directory: " + Path.GetDirectoryName(b.file));
-            Console.WriteLine("FileName: " + Path.GetFileNameWithoutExtension(b.file));
-            string f =  Path.GetDirectoryName(b.file) + "/" + Path.GetFileNameWithoutExtension(b.file) + "-temp.ome.tif";
+            string f = outputPath;
+            if (string.IsNullOrWhiteSpace(f))
+            {
+                Console.WriteLine("Directory: " + Path.GetDirectoryName(b.file));
+                Console.WriteLine("FileName: " + Path.GetFileNameWithoutExtension(b.file));
+                f = Path.GetDirectoryName(b.file) + "/" + Path.GetFileNameWithoutExtension(b.file) + "-temp.ome.tif";
+            }
             Console.WriteLine("Opening: " + f);
-            await BioImage.OpenAsync(f, true, true, true, 0);
+            if (File.Exists(f))
+                await BioImage.OpenAsync(f, true, true, true, 0);
             Console.WriteLine("GetImage: " + f);
             BioImage bm = Images.GetImage(f);
             BioLib.Recorder.Record($"Fiji.RunStringFiji({b}, \"{con}\", \"{param}\", {headless.ToString().ToLower()});");
@@ -535,7 +543,7 @@ namespace BioLib
         /// @return The image is being returned as a new tab.
         public async static Task<BioImage> RunOnImageFiji(BioImage b, string con, int index, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
         {
-            if (UseFiji)
+            if (UseFiji || OperatingSystem.IsMacOS())
             {
                 string filename = "";
                 string dir = Path.GetDirectoryName(b.file);
@@ -551,6 +559,7 @@ namespace BioLib
                 string filet = dir + "/" + filename + "-temp.ome.tif";
                 if (!bioformats)
                     file = dir + "/" + filename + ".tif";
+                string outputFile = bioformats ? filet : filet + ".tif";
                 string donepath = Path.GetDirectoryName(Environment.ProcessPath);
                 donepath = donepath.Replace("\\", "/");
                 string op = b.ID.Replace("\\", "/");
@@ -567,11 +576,11 @@ namespace BioLib
                 if (!bioformats)
                     st =
                     "open(getArgument); " + con +
-                    "saveAs(\"Tiff\",\"" + file + "\"); " +
+                    "saveAs(\"Tiff\",\"" + outputFile + "\"); " +
                     "dir = \"" + donepath + "\"" +
                     "File.saveString(\"done\", dir + \"/done.txt\");";
 
-                BioImage bm = await Fiji.RunStringFiji(b, st, "", Fiji.headless);
+                BioImage bm = await Fiji.RunStringFiji(b, st, "", Fiji.headless, outputFile);
                 if (File.Exists(file) && bioformats)
                     File.Delete(file);
                 BioLib.Recorder.Record($"Fiji.RunOnImageFiji({b}, \"{con}\", {index}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
@@ -627,7 +636,7 @@ namespace BioLib
             if (b != null && b.isPyramidal)
                 return await ImageJ.RunOnPyramidalImage(b, con, b.Level, headless, onTab, useBioformats, resultInNewTab).ConfigureAwait(false);
             BioImage bm;
-            if (UseFiji)
+            if (UseFiji || OperatingSystem.IsMacOS())
                 bm = await RunOnImageFiji(b, con, 0, headless, onTab, useBioformats, resultInNewTab);
             else
             {
@@ -675,6 +684,24 @@ namespace BioLib
                 string name = (string)keys.nextElement();
                 string className = (string)commands.get(name);
                 Macro.Commands[name] = new Macro.Command(name, className ?? "", className ?? "");
+            }
+        }
+        private static void LoadCommandTableFromCsv()
+        {
+            string csvPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Environment.ProcessPath), "macro-commands.csv");
+            if (!File.Exists(csvPath))
+                return;
+
+            foreach (string s in File.ReadAllLines(csvPath))
+            {
+                if (string.IsNullOrWhiteSpace(s))
+                    continue;
+
+                string[] v = s.Split(',');
+                if (v.Length < 2)
+                    continue;
+
+                Macro.Commands[v[0]] = new Macro.Command(v[0], v[1], "");
             }
         }
         static class IJCommandDump

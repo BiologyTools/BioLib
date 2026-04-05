@@ -11,6 +11,21 @@ namespace BioLib
     {
         /* Creating a new dictionary with a string as the key and a string as the value. */
         static Dictionary<string,string> Default = new Dictionary<string,string>();
+        private static readonly string path = GetSettingsPath();
+
+        private static string GetSettingsPath()
+        {
+            string basePath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrWhiteSpace(basePath))
+                basePath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            if (string.IsNullOrWhiteSpace(basePath))
+                basePath = Path.GetTempPath();
+
+            string settingsDir = Path.Combine(basePath, "BioGTK");
+            Directory.CreateDirectory(settingsDir);
+            return settingsDir;
+        }
+
         /// <summary>
         /// The function "GetSettings" returns the value associated with a given name from a dictionary,
         /// or an empty string if the name is not found.
@@ -41,7 +56,6 @@ namespace BioLib
             else
                 Default.Add(name, val);
         }
-        static string path = System.IO.Path.GetDirectoryName(Environment.ProcessPath);
         /// <summary>
         /// The Save function writes the key-value pairs from the Default dictionary to a text file.
         /// </summary>
