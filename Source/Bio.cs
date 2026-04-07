@@ -6481,7 +6481,7 @@ namespace BioLib
                     c = 3;
                 string endian = (bis[px][s].Buffers[0].LittleEndian).ToString().ToLower();
                 met +=
-                "<Image ID=\"Image:" + ib + "\">" +
+                "<Image ID=\"Image:\"" + ib + "\">" +
                 "<Pixels BigEndian=\"" + endian + "\" DimensionOrder= \"XYCZT\" ID= \"Pixels:0\" Interleaved=\"true\" " +
                 "PhysicalSizeX=\"" + bis[px][s].PhysicalSizeX + "\" PhysicalSizeXUnit=\"µm\" PhysicalSizeY=\"" + bis[px][s].PhysicalSizeY + "\" PhysicalSizeYUnit=\"µm\" SignificantBits=\"" + bis[px][s].bitsPerPixel + "\" " +
                 "SizeC = \"" + c + "\" SizeT = \"" + bis[px][s].SizeT + "\" SizeX =\"" + ss[px].Width +

@@ -196,6 +196,7 @@ namespace BioLib
                 bm.ID = fn;
                 bm.file = dir + "/" + fn;
                 Images.AddImage(bm);
+                lastRunOutput = bm;
             }
             else
             {
@@ -205,6 +206,7 @@ namespace BioLib
                 b.Filename = bi.ID;
                 b.file = dir + "/" + fn;
                 Images.UpdateImage(b);
+                lastRunOutput = b;
             }
             //If using bioformats we delete the temp file.
             if(bioformats)
@@ -236,11 +238,15 @@ namespace BioLib
             return candidates.Length > 0 ? candidates[0].Replace("\\", "/") : null;
         }
 
+        private static BioImage lastRunOutput;
+
         /// <summary>
-        /// Flattens a pyramidal BioImage to a single resolution level so it can
-        /// be processed by the existing ImageJ import/export path.
+        /// Copies a pyramidal BioImage to a temporary Zarr dataset, then extracts
+        /// a single resolution level from that Zarr-backed copy for Fiji.
+        /// The full pyramid stays intact on disk while Fiji still receives the
+        /// requested level as a regular single-resolution BioImage.
         /// </summary>
-        private static async Task<BioImage> FlattenPyramidalImage(BioImage b, int level)
+        private static async Task<BioImage> PreparePyramidalLevelImage(BioImage b, int level, string tempZarr)
         {
             if (b == null)
                 return null;
@@ -248,19 +254,29 @@ namespace BioLib
                 return b;
 
             level = Math.Clamp(level, 0, b.Resolutions.Count - 1);
-            Resolution res = b.Resolutions[level];
+            if (Directory.Exists(tempZarr))
+                Directory.Delete(tempZarr, true);
+
+            Console.WriteLine($"[ImageJ.PreparePyramidalLevelImage] saving full pyramid to {tempZarr}");
+            BioImage.SaveZarr(b, tempZarr);
+
+            BioImage zarrSource = await BioImage.OpenFileAsync(tempZarr, 0, false, false).ConfigureAwait(false);
+            if (zarrSource == null)
+                return null;
+
+            Resolution res = zarrSource.Resolutions[level];
             int width = res.SizeX > 0 ? res.SizeX : b.SizeX;
             int height = res.SizeY > 0 ? res.SizeY : b.SizeY;
             if (width <= 0 || height <= 0)
                 return null;
 
-            BioImage flat = BioImage.CopyInfo(b, true, true);
-            flat.Buffers.Clear();
-            flat.Resolutions.Clear();
-            flat.seriesCount = 1;
-            flat.UpdateCoords(b.SizeZ, b.SizeC, b.SizeT);
-            flat.Coordinate = new ZCT(0, 0, 0);
-            flat.Resolutions.Add(new Resolution(
+            BioImage levelImage = BioImage.CopyInfo(zarrSource, true, true);
+            levelImage.Buffers.Clear();
+            levelImage.Resolutions.Clear();
+            levelImage.seriesCount = 1;
+            levelImage.UpdateCoords(zarrSource.SizeZ, zarrSource.SizeC, zarrSource.SizeT);
+            levelImage.Coordinate = new ZCT(0, 0, 0);
+            levelImage.Resolutions.Add(new Resolution(
                 width,
                 height,
                 res.PixelFormat,
@@ -277,60 +293,61 @@ namespace BioLib
                 {
                     for (int z = 0; z < b.SizeZ; z++)
                     {
-                        int index = b.GetFrameIndex(z, c, t);
-                        Bitmap tile = await b.GetTile(index, level, 0, 0, width, height, new ZCT(z, c, t), true).ConfigureAwait(false);
+                        int index = zarrSource.GetFrameIndex(z, c, t);
+                        Bitmap tile = await zarrSource.GetTile(index, level, 0, 0, width, height, new ZCT(z, c, t), true).ConfigureAwait(false);
                         if (tile == null)
                             return null;
                         tile.Stats = Statistics.FromBytes(tile);
-                        flat.Buffers.Add(tile);
+                        levelImage.Buffers.Add(tile);
                     }
                 }
             }
 
-            flat.Volume = new VolumeD(
-                new Point3D(b.Volume.Location.X, b.Volume.Location.Y, b.Volume.Location.Z),
+            levelImage.Volume = new VolumeD(
+                new Point3D(zarrSource.Volume.Location.X, zarrSource.Volume.Location.Y, zarrSource.Volume.Location.Z),
                 new Point3D(
-                width * flat.Resolutions[0].PhysicalSizeX,
-                height * flat.Resolutions[0].PhysicalSizeY,
-                b.SizeZ * flat.Resolutions[0].PhysicalSizeZ));
+                width * levelImage.Resolutions[0].PhysicalSizeX,
+                height * levelImage.Resolutions[0].PhysicalSizeY,
+                zarrSource.SizeZ * levelImage.Resolutions[0].PhysicalSizeZ));
 
             // Keep the metadata aligned with the actual raw buffers so OME
             // writing matches the tile bytes we assembled.
             int flatBits = 8;
-            if (flat.Buffers.Count > 0)
+            if (levelImage.Buffers.Count > 0)
             {
-                PixelFormat pf = flat.Buffers[0].PixelFormat;
+                PixelFormat pf = levelImage.Buffers[0].PixelFormat;
                 if (pf == PixelFormat.Format16bppGrayScale || pf == PixelFormat.Format48bppRgb)
                     flatBits = 16;
             }
 
-            if (flat.Channels == null)
-                flat.Channels = new List<Channel>();
-            if (flat.Channels.Count == 0)
+            if (levelImage.Channels == null)
+                levelImage.Channels = new List<Channel>();
+            if (levelImage.Channels.Count == 0)
             {
-                int channelCount = Math.Max(1, flat.SizeC);
+                int channelCount = Math.Max(1, levelImage.SizeC);
                 for (int i = 0; i < channelCount; i++)
-                    flat.Channels.Add(new Channel(i, flatBits, 1));
+                    levelImage.Channels.Add(new Channel(i, flatBits, 1));
             }
             else
             {
-                foreach (Channel ch in flat.Channels)
+                foreach (Channel ch in levelImage.Channels)
                     ch.BitsPerPixel = flatBits;
             }
 
-            if (flat.Resolutions.Count > 0)
+            if (levelImage.Resolutions.Count > 0)
             {
-                Resolution res0 = flat.Resolutions[0];
+                Resolution res0 = levelImage.Resolutions[0];
                 res0.PixelFormat = flatBits > 8 ? PixelFormat.Format16bppGrayScale : PixelFormat.Format8bppIndexed;
-                flat.Resolutions[0] = res0;
+                levelImage.Resolutions[0] = res0;
             }
 
-            return flat;
+            return levelImage;
         }
 
         /// <summary>
-        /// Runs an ImageJ command on a pyramidal BioImage by flattening the
-        /// selected pyramid level to a temporary OME-TIFF first.
+        /// Runs an ImageJ command on a pyramidal BioImage by saving the full
+        /// pyramid to a temporary Zarr first, then extracting the requested
+        /// level for Fiji processing.
         /// </summary>
         private static async Task<BioImage> RunOnPyramidalImageInternal(BioImage b, string con, int level, bool headless, bool onTab, bool bioformats, bool resultInNewTab, bool record)
         {
@@ -344,32 +361,48 @@ namespace BioLib
             }
 
             Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] start id={b.ID} level={level} bioformats={bioformats}");
-            BioImage flat = await FlattenPyramidalImage(b, level).ConfigureAwait(false);
-            if (flat == null)
+            string tempDir = Path.GetDirectoryName(Environment.ProcessPath);
+            string tempZarr = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".ome.tif");
+            BioImage levelImage = await PreparePyramidalLevelImage(b, level, tempZarr).ConfigureAwait(false);
+            if (levelImage == null)
             {
-                Console.WriteLine("[ImageJ.RunOnPyramidalImageInternal] flatten returned null");
+                Console.WriteLine("[ImageJ.RunOnPyramidalImageInternal] level preparation returned null");
                 return null;
             }
 
-            string tempDir = Path.GetDirectoryName(Environment.ProcessPath);
             string tempPath = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".ome.tif");
             if (File.Exists(tempPath))
                 File.Delete(tempPath);
-            BioImage.SaveOME(flat, tempPath);
-            flat.file = tempPath;
-            flat.Filename = Path.GetFileName(tempPath);
-            flat.ID = Path.GetFileName(tempPath);
-            Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] flatTemp={tempPath} flatId={flat.ID}");
+            BioImage.SaveOME(levelImage, tempPath);
+            levelImage.file = tempPath;
+            levelImage.Filename = Path.GetFileName(tempPath);
+            levelImage.ID = Path.GetFileName(tempPath);
+            Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] levelTemp={tempPath} levelId={levelImage.ID}");
 
             try
             {
                 string outputStem = Path.GetFileNameWithoutExtension(tempPath) + "-result";
                 Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] outputStem={outputStem}");
-                RunOnImage(flat, con, level ,headless, onTab, bioformats, resultInNewTab, outputStem);
+                lastRunOutput = null;
+                RunOnImage(levelImage, con, level ,headless, onTab, bioformats, resultInNewTab, outputStem);
                 string fn = outputStem + (bioformats ? ".ome.tif" : ".tif");
-                BioImage bm = Images.GetImage(fn);
+                BioImage bm = lastRunOutput ?? Images.GetImage(fn);
                 if (bm == null && bioformats)
                     bm = Images.GetImage(outputStem + ".tif");
+                if (bm != null && bm.Resolutions.Count > 0 && levelImage.Resolutions.Count > 0)
+                {
+                    Resolution srcRes = levelImage.Resolutions[0];
+                    Resolution outRes = bm.Resolutions[0];
+                    outRes.PixelFormat = srcRes.PixelFormat;
+                    outRes.PhysicalSizeX = srcRes.PhysicalSizeX;
+                    outRes.PhysicalSizeY = srcRes.PhysicalSizeY;
+                    outRes.PhysicalSizeZ = srcRes.PhysicalSizeZ;
+                    outRes.StageSizeX = srcRes.StageSizeX;
+                    outRes.StageSizeY = srcRes.StageSizeY;
+                    outRes.StageSizeZ = srcRes.StageSizeZ;
+                    bm.Resolutions[0] = outRes;
+                    bm.Volume = levelImage.Volume;
+                }
                 Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] lookup fn={fn} result={(bm == null ? "null" : bm.ID)}");
                 if (record)
                     Recorder.Record($"ImageJ.RunOnPyramidalImage({b}, \"{con}\", {level}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
@@ -379,6 +412,8 @@ namespace BioLib
             {
                 try
                 {
+                    if (Directory.Exists(tempZarr))
+                        Directory.Delete(tempZarr, true);
                     if (File.Exists(tempPath))
                         File.Delete(tempPath);
                 }
@@ -389,8 +424,9 @@ namespace BioLib
         }
 
         /// <summary>
-        /// Runs an ImageJ command on a pyramidal BioImage by flattening the
-        /// selected pyramid level to a temporary OME-TIFF first.
+        /// Runs an ImageJ command on a pyramidal BioImage by preserving the
+        /// source pyramid in a temporary Zarr, then processing the requested
+        /// level as a single-resolution image for Fiji.
         /// </summary>
         public static async Task<BioImage> RunOnPyramidalImage(BioImage b, string con, int level, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
         {
@@ -399,7 +435,7 @@ namespace BioLib
 
         /// <summary>
         /// Runs an ImageJ command on every pyramid level and returns a single
-        /// pyramidal BioImage backed by a temporary OME-TIFF.
+        /// pyramidal BioImage assembled from the processed resolution levels.
         /// </summary>
         public static async Task<BioImage> RunOnAllPyramidLevels(BioImage b, string con, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
         {
@@ -428,7 +464,7 @@ namespace BioLib
             string tempFile = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + "-pyr.ome.tif");
             BioImage.SaveOMEPyramidal(results.ToArray(), tempFile, NetVips.Enums.ForeignTiffCompression.None, 0);
 
-            BioImage pyramidal = await BioImage.OpenFileAsync(tempFile, 0, true, true).ConfigureAwait(false);
+            BioImage pyramidal = await BioImage.OpenFileAsync(tempFile, 0, false, false).ConfigureAwait(false);
             Recorder.Record($"ImageJ.RunOnImage({b}, \"{con}\", {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
             return pyramidal;
         }
