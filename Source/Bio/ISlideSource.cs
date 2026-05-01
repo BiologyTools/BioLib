@@ -7,6 +7,7 @@ using org.checkerframework.common.returnsreceiver.qual;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -41,6 +42,7 @@ namespace BioLib
         private readonly int capacity = 200;
         private Dictionary<Info, LinkedListNode<(Info key, TValue value)>> cacheMap = new Dictionary<Info, LinkedListNode<(Info key, TValue value)>>();
         private LinkedList<(Info key, TValue value)> lruList = new LinkedList<(Info key, TValue value)>();
+        private readonly object sync = new object();
 
         public LruCache(int capacity)
         {
@@ -55,64 +57,76 @@ namespace BioLib
         }
         public TValue Get(Info ke)
         {
-            foreach (LinkedListNode<(Info key, TValue value)> item in cacheMap.Values)
+            lock (sync)
             {
-                if (ke.Coordinate.Z == item.Value.key.Coordinate.Z &&
-                    ke.Coordinate.C == item.Value.key.Coordinate.C &&
-                    ke.Coordinate.T == item.Value.key.Coordinate.T &&
-                    ke.Index == item.Value.key.Index)
+                foreach (LinkedListNode<(Info key, TValue value)> item in cacheMap.Values)
                 {
-                    lruList.Remove(item);
-                    lruList.AddLast(item);
-                    return item.Value.value;
+                    if (ke.Coordinate.Z == item.Value.key.Coordinate.Z &&
+                        ke.Coordinate.C == item.Value.key.Coordinate.C &&
+                        ke.Coordinate.T == item.Value.key.Coordinate.T &&
+                        ke.Index == item.Value.key.Index)
+                    {
+                        lruList.Remove(item);
+                        lruList.AddLast(item);
+                        return item.Value.value;
+                    }
                 }
+                return default(TValue);
             }
-            return default(TValue);
         }
 
         public void Add(Info key, TValue value)
         {
-            if (cacheMap.Count >= capacity)
+            lock (sync)
             {
-                var oldest = lruList.First;
-                if (oldest != null)
+                if (cacheMap.Count >= capacity)
                 {
-                    lruList.RemoveFirst();
-                    cacheMap.Remove(oldest.Value.key);
+                    var oldest = lruList.First;
+                    if (oldest != null)
+                    {
+                        lruList.RemoveFirst();
+                        cacheMap.Remove(oldest.Value.key);
+                    }
                 }
-            }
 
-            if (cacheMap.ContainsKey(key))
-            {
-                lruList.Remove(cacheMap[key]);
-            }
+                if (cacheMap.ContainsKey(key))
+                {
+                    lruList.Remove(cacheMap[key]);
+                }
 
-            var newNode = new LinkedListNode<(Info key, TValue value)>((key, value));
-            lruList.AddLast(newNode);
-            cacheMap[key] = newNode;
+                var newNode = new LinkedListNode<(Info key, TValue value)>((key, value));
+                lruList.AddLast(newNode);
+                cacheMap[key] = newNode;
+            }
         }
 
         public void RemoveTile(Info key)
         {
-            var toRemove = cacheMap
-                .Where(kvp => kvp.Key.Coordinate.Z == key.Coordinate.Z
-                           && kvp.Key.Coordinate.C == key.Coordinate.C
-                           && kvp.Key.Coordinate.T == key.Coordinate.T
-                           && Equals(kvp.Key.Index, key.Index))
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            foreach (var k in toRemove)
+            lock (sync)
             {
-                if (cacheMap.TryGetValue(k, out var node))
-                    lruList.Remove(node);
-                cacheMap.Remove(k);
+                var toRemove = cacheMap
+                    .Where(kvp => kvp.Key.Coordinate.Z == key.Coordinate.Z
+                               && kvp.Key.Coordinate.C == key.Coordinate.C
+                               && kvp.Key.Coordinate.T == key.Coordinate.T
+                               && Equals(kvp.Key.Index, key.Index))
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                foreach (var k in toRemove)
+                {
+                    if (cacheMap.TryGetValue(k, out var node))
+                        lruList.Remove(node);
+                    cacheMap.Remove(k);
+                }
             }
         }
         public void Dispose()
         {
-            cacheMap.Clear();
-            lruList.Clear();
+            lock (sync)
+            {
+                cacheMap.Clear();
+                lruList.Clear();
+            }
         }
     }
     public class TileCache
@@ -120,6 +134,7 @@ namespace BioLib
         private LruCache<TileInformation, byte[]> cache;
         private int capacity;
         SlideSourceBase source = null;
+        private readonly object sync = new object();
         public TileCache(SlideSourceBase source, int capacity = 64)
         {
             this.source = source;
@@ -128,65 +143,114 @@ namespace BioLib
         }
         public bool HasTile(TileInformation info)
         {
-            if (cache == null)
-                cache = new LruCache<TileInformation, byte[]>(capacity);
-            LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
-            inf.Coordinate = info.Coordinate;
-            inf.Index = info.Index;
-            byte[] data = cache.Get(inf);
-            if (data == null)
+            lock (sync)
             {
-                return false;
+                if (cache == null)
+                    cache = new LruCache<TileInformation, byte[]>(capacity);
+                LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
+                inf.Coordinate = info.Coordinate;
+                inf.Index = info.Index;
+                byte[] data = cache.Get(inf);
+                if (data == null)
+                {
+                    return false;
+                }
+                else
+                    return true;
             }
-            else
-                return true;
         }
         public void DisposeTile(TileInformation info)
         {
-            var inf = new LruCache<TileInformation, byte[]>.Info();
-            inf.Coordinate = info.Coordinate;
-            inf.Index = info.Index;
-            cache.RemoveTile(inf);
+            lock (sync)
+            {
+                var inf = new LruCache<TileInformation, byte[]>.Info();
+                inf.Coordinate = info.Coordinate;
+                inf.Index = info.Index;
+                cache?.RemoveTile(inf);
+            }
         }
         public void DisposeTile(TileInfo info)
         {
             // TileInfo does not carry a ZCT coordinate; clear the whole cache
             // rather than silently doing nothing.
-            cache = new LruCache<TileInformation, byte[]>(capacity);
-        }
-        public async Task<byte[]> GetTile(TileInformation info)
-        {
-            if (cache == null)
-                cache = new LruCache<TileInformation, byte[]>(capacity);
-            LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
-            inf.Coordinate = info.Coordinate;
-            inf.Index = info.Index;
-            byte[] data = cache.Get(inf);
-            if (data != null)
+            lock (sync)
             {
-                return data;
+                cache = new LruCache<TileInformation, byte[]>(capacity);
             }
-            byte[] tile = await LoadTile(info);
+        }
+        public async Task<byte[]> GetTile(TileInformation info, CancellationToken ct = default)
+        {
+            if (info == null)
+                return null;
+            var sw = Stopwatch.StartNew();
+            TraceTile("[TileCache.GetTile] start", info, info.Coordinate);
+            lock (sync)
+            {
+                if (cache == null)
+                    cache = new LruCache<TileInformation, byte[]>(capacity);
+                LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
+                inf.Coordinate = info.Coordinate;
+                inf.Index = info.Index;
+                byte[] data = cache.Get(inf);
+                if (data != null)
+                {
+                    TraceTile("[TileCache.GetTile] cache-hit", info, info.Coordinate, sw.ElapsedMilliseconds, $"bytes={data.Length}");
+                    return data;
+                }
+            }
+            byte[] tile = await LoadTile(info, ct);
             if (tile != null)
                 AddTile(info, tile);
+            TraceTile("[TileCache.GetTile] end", info, info.Coordinate, sw.ElapsedMilliseconds, tile != null ? $"bytes={tile.Length}" : "tile=null");
             return tile;
+        }
+
+        private static void TraceTile(string phase, TileInformation tileInfo, ZCT coord, long? elapsedMs = null, string extra = null)
+        {
+            try
+            {
+                File.AppendAllText(@"log.txt",
+                    $"{DateTime.UtcNow:O} {phase} level={tileInfo.Index.Level} col={tileInfo.Index.Col} row={tileInfo.Index.Row} " +
+                    $"coord={coord.Z},{coord.C},{coord.T} extent=({tileInfo.Extent.MinX},{tileInfo.Extent.MinY},{tileInfo.Extent.MaxX},{tileInfo.Extent.MaxY}) " +
+                    $"{(elapsedMs.HasValue ? $"elapsed={elapsedMs.Value}ms " : string.Empty)}{extra ?? string.Empty}{Environment.NewLine}");
+            }
+            catch { }
+        }
+
+        private static void TraceTile(string phase, BruTile.TileIndex index, ZCT coord, Extent extent, long? elapsedMs = null, string extra = null)
+        {
+            try
+            {
+                File.AppendAllText(@"log.txt",
+                    $"{DateTime.UtcNow:O} {phase} level={index.Level} col={index.Col} row={index.Row} " +
+                    $"coord={coord.Z},{coord.C},{coord.T} extent=({extent.MinX},{extent.MinY},{extent.MaxX},{extent.MaxY}) " +
+                    $"{(elapsedMs.HasValue ? $"elapsed={elapsedMs.Value}ms " : string.Empty)}{extra ?? string.Empty}{Environment.NewLine}");
+            }
+            catch { }
         }
 
         public void AddTile(TileInformation tileId, byte[] tile)
         {
-            LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
-            inf.Coordinate = tileId.Coordinate;
-            inf.Index = tileId.Index;
-            if (cache == null)
-                cache = new LruCache<TileInformation, byte[]>(capacity);
-            cache.Add(inf, tile);
+            lock (sync)
+            {
+                LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
+                inf.Coordinate = tileId.Coordinate;
+                inf.Index = tileId.Index;
+                if (cache == null)
+                    cache = new LruCache<TileInformation, byte[]>(capacity);
+                cache.Add(inf, tile);
+            }
         }
 
-                private async Task<byte[]> LoadTile(TileInformation tileId)
+        private async Task<byte[]> LoadTile(TileInformation tileId, CancellationToken ct)
         {
             try
             {
-                return await source.GetTileAsync(tileId, tileId.Coordinate);
+                var sw = Stopwatch.StartNew();
+                TraceTile("[TileCache.LoadTile] start", tileId, tileId.Coordinate);
+                var tile = await source.GetTileAsync(tileId, tileId.Coordinate, ct);
+                TraceTile("[TileCache.LoadTile] end", tileId, tileId.Coordinate, sw.ElapsedMilliseconds, tile != null ? $"bytes={tile.Length}" : "tile=null");
+                return tile;
             }
             catch (Exception e)
             {
@@ -201,7 +265,10 @@ namespace BioLib
 
         public void Clear()
         {
-            cache = new LruCache<TileInformation, byte[]>(capacity);
+            lock (sync)
+            {
+                cache = new LruCache<TileInformation, byte[]>(capacity);
+            }
         }
     }
 
@@ -287,13 +354,37 @@ namespace BioLib
             return 50;
         }
 
+        private static void TraceTile(string phase, TileInformation tileInfo, ZCT coord, long? elapsedMs = null, string extra = null)
+        {
+            try
+            {
+                File.AppendAllText(@"log.txt",
+                    $"{DateTime.UtcNow:O} {phase} level={tileInfo.Index.Level} col={tileInfo.Index.Col} row={tileInfo.Index.Row} " +
+                    $"coord={coord.Z},{coord.C},{coord.T} extent=({tileInfo.Extent.MinX},{tileInfo.Extent.MinY},{tileInfo.Extent.MaxX},{tileInfo.Extent.MaxY}) " +
+                    $"{(elapsedMs.HasValue ? $"elapsed={elapsedMs.Value}ms " : string.Empty)}{extra ?? string.Empty}{Environment.NewLine}");
+            }
+            catch { }
+        }
+
+        private static void TraceTile(string phase, BruTile.TileIndex index, ZCT coord, Extent extent, long? elapsedMs = null, string extra = null)
+        {
+            try
+            {
+                File.AppendAllText(@"log.txt",
+                    $"{DateTime.UtcNow:O} {phase} level={index.Level} col={index.Col} row={index.Row} " +
+                    $"coord={coord.Z},{coord.C},{coord.T} extent=({extent.MinX},{extent.MinY},{extent.MaxX},{extent.MaxY}) " +
+                    $"{(elapsedMs.HasValue ? $"elapsed={elapsedMs.Value}ms " : string.Empty)}{extra ?? string.Empty}{Environment.NewLine}");
+            }
+            catch { }
+        }
+
         private async Task<byte[]> FetchSingleTileAsync(TileInfo tile, int level, ZCT coord)
         {
             // Your existing tile fetch logic here
             // This should use the cache and only fetch if not cached
             try
             {
-                byte[] tileData = await GetTileAsync(tile, coord);
+                byte[] tileData = await GetTileAsync(tile, coord).ConfigureAwait(false);
                 // Process tile data...
                 return tileData;
             }
@@ -348,7 +439,7 @@ namespace BioLib
                 // Parallel fetch within batch
                 byte[][] results = await Task.WhenAll(
                     batch.Select(tile => FetchSingleTileAsync(tile, level, coordinate))
-                );
+                ).ConfigureAwait(false);
 
                 // ----------------------------------------------------------------
                 // 4. Insert into appropriate cache
@@ -391,7 +482,7 @@ namespace BioLib
             {
                 tileInfos = Schema.GetTileInfos(sliceInfo.Extent.PixelToWorldInvertedY(curUnitsPerPixel), curLevel);
             }
-            await FetchTilesAsync(tileInfos.ToList(), curLevel, sliceInfo.Coordinate, PyramidalOrign, PyramidalSize);
+            await FetchTilesAsync(tileInfos.ToList(), curLevel, sliceInfo.Coordinate, PyramidalOrign, PyramidalSize).ConfigureAwait(false);
 
             var srcPixelExtent = sliceInfo.Extent.WorldToPixelInvertedY(curUnitsPerPixel);
             var dstPixelExtent = sliceInfo.Extent.WorldToPixelInvertedY(sliceInfo.Resolution);
@@ -420,7 +511,7 @@ namespace BioLib
                             if (!stitch.HasTile(t))
                             {
                                 TileInformation tf = new TileInformation(t.Index, t.Extent, sliceInfo.Coordinate);
-                                byte[] tileData = await cache.GetTile(tf);
+                                byte[] tileData = await cache.GetTile(tf).ConfigureAwait(false);
                                 if (tileData != null)
                                 {
                                     // Calculate actual tile dimensions (edge tiles may be smaller)
@@ -479,7 +570,7 @@ namespace BioLib
                     foreach (BruTile.TileInfo t in tileInfos)
                     {
                         TileInformation tf = new TileInformation(t.Index, t.Extent, sliceInfo.Coordinate);
-                        byte[] c = await cache.GetTile(tf);
+                        byte[] c = await cache.GetTile(tf).ConfigureAwait(false);
                         if (c != null)
                             tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
                     }
@@ -504,7 +595,7 @@ namespace BioLib
                 foreach (BruTile.TileInfo t in tileInfos)
                 {
                     TileInformation tf = new TileInformation(t.Index, t.Extent, sliceInfo.Coordinate);
-                    byte[] c = await cache.GetTile(tf);
+                    byte[] c = await cache.GetTile(tf).ConfigureAwait(false);
                     if (c != null)
                         tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
                 }
@@ -599,7 +690,7 @@ namespace BioLib
 
         public SlideImage Image { get; set; }
 
-        public ITileSchema Schema { get; protected set; }
+        public ITileSchema Schema { get; set; }
 
         public string Name { get; protected set; }
 
@@ -663,15 +754,17 @@ namespace BioLib
             return padded;
         }
 
-     public async Task<byte[]> GetTileAsync(TileInformation tileInfo, ZCT coord)
+     public async Task<byte[]> GetTileAsync(TileInformation tileInfo, ZCT coord, CancellationToken ct = default)
         {
             if (tileInfo == null)
                 return null;
+            var sw = Stopwatch.StartNew();
+            TraceTile("[SlideSourceBase.GetTileAsync(TileInformation)] start", tileInfo, coord);
             if (cache == null)
                 cache = new TileCache(this);
             if (cache.HasTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord)))
             {
-                return await cache.GetTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord));
+                return await cache.GetTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord), ct).ConfigureAwait(false);
             }
             var r = Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
             var tileWidth = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
@@ -703,21 +796,26 @@ namespace BioLib
                 return empty;
             }
 
-            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, tileInfo.Coordinate);
+            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, tileInfo.Coordinate, ct);
+            TraceTile("[SlideSourceBase.GetTileAsync(TileInformation)] end", tileInfo, coord, sw.ElapsedMilliseconds, bgraData != null ? $"bytes={bgraData.Length}" : "tile=null");
+            if (bgraData == null)
+                return null;
             bgraData = PadToBgra(bgraData, curTileWidth, curTileHeight, tileWidth, tileHeight);
             cache.AddTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord), bgraData);
             return bgraData;
         }
         static ZCT coord = new ZCT();
-        public async Task<byte[]> GetTileAsync(BruTile.TileInfo tileInfo, ZCT coord)
+        public async Task<byte[]> GetTileAsync(BruTile.TileInfo tileInfo, ZCT coord, CancellationToken ct = default)
         {
             if (tileInfo == null)
                 return null;
+            var sw = Stopwatch.StartNew();
+            TraceTile("[SlideSourceBase.GetTileAsync(BruTile.TileInfo)] start", tileInfo.Index, coord, tileInfo.Extent);
             if (cache == null)
                 cache = new TileCache(this);
             if(cache.HasTile(new TileInformation(tileInfo.Index,tileInfo.Extent,coord)))
             {
-                return await cache.GetTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord));
+                return await cache.GetTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord), ct).ConfigureAwait(false);
             }
             var r = Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
             var tileWidth = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
@@ -749,7 +847,10 @@ namespace BioLib
                 return empty;
             }
 
-            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, coord);
+            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, coord, ct);
+            TraceTile("[SlideSourceBase.GetTileAsync(BruTile.TileInfo)] end", tileInfo.Index, coord, tileInfo.Extent, sw.ElapsedMilliseconds, bgraData != null ? $"bytes={bgraData.Length}" : "tile=null");
+            if (bgraData == null)
+                return null;
             bgraData = PadToBgra(bgraData, curTileWidth, curTileHeight, tileWidth, tileHeight);
             cache.AddTile(new TileInformation(tileInfo.Index, tileInfo.Extent, coord), bgraData);
             return bgraData;

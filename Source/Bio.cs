@@ -1967,9 +1967,9 @@ namespace BioLib
         {
             get
             {
+                if (Plate != null || ZarrWellLevels.Count > 0)
+                    return ImageType.well;
                 if (Resolutions.Count > 1 && Plate == null)
-                    return ImageType.pyramidal;
-                if (Resolutions.Count > 1 && Plate != null)
                     return ImageType.pyramidal;
                 return ImageType.stack;
             }
@@ -1980,12 +1980,11 @@ namespace BioLib
         public List<NetVips.Image> vipPages = new List<NetVips.Image>();
 
         int level = 0;
+        int wellIndex = 0;
         public int Level
         {
             get
             {
-                if (Type == ImageType.well)
-                    return level;
                 int l = 0;
                 if (openslideBase != null)
                     l = OpenSlideGTK.TileUtil.GetLevel(openslideBase.Schema.Resolutions, Resolution);
@@ -1994,6 +1993,8 @@ namespace BioLib
                     l = LevelFromResolution(Resolution);
                 if (l < 0)
                     return 0;
+                if (l >= Resolutions.Count)
+                    return Resolutions.Count - 1;
                 return l;
             }
             set
@@ -2048,26 +2049,26 @@ namespace BioLib
                 if (Channels != null && Channels.Count > 0)
                     return Channels[0].BitsPerPixel;
 
-                if (Resolutions == null || Resolutions.Count <= Level)
-                    return 8; // safe fallback
-
-                PixelFormat p = Resolutions[Level].PixelFormat;
-
-                switch (p)
+                if (Resolutions != null && Resolutions.Count > Level)
                 {
-                    case PixelFormat.Format8bppIndexed:
-                    case PixelFormat.Format24bppRgb:   // 8 bits per channel
-                    case PixelFormat.Format32bppArgb:  // 8 bits per channel
-                        return 8;
+                    PixelFormat p = Resolutions[Level].PixelFormat;
+                    switch (p)
+                    {
+                        case PixelFormat.Format8bppIndexed:
+                        case PixelFormat.Format24bppRgb:   // 8 bits per channel
+                        case PixelFormat.Format32bppArgb:  // 8 bits per channel
+                            return 8;
 
-                    case PixelFormat.Format16bppGrayScale:
-                    case PixelFormat.Format48bppRgb:   // 16 bits per channel
-                    case PixelFormat.Format64bppArgb:  // 16 bits per channel
-                        return 16;
+                        case PixelFormat.Format16bppGrayScale:
+                        case PixelFormat.Format48bppRgb:   // 16 bits per channel
+                        case PixelFormat.Format64bppArgb:  // 16 bits per channel
+                            return 16;
 
-                    default:
-                        return 8; // conservative default
+                        default:
+                            return 8; // conservative default
+                    }
                 }
+                return 8;
             }
         }
         public int imagesPerSeries = 0;
@@ -2756,10 +2757,11 @@ namespace BioLib
         {
             get
             {
-                if (Type == ImageType.pyramidal || (Resolutions.Count > 1))
+                if (Type == ImageType.pyramidal && (Resolutions.Count > 1))
                     return true;
-                else
-                    return false;
+                else if (Resolutions.Count > 1)
+                    return true;
+                return false;
             }
         }
         public string file;
@@ -5024,15 +5026,15 @@ namespace BioLib
         {
             get
             {
-                if (Type == ImageType.well && ZarrWellLevels.Count > 0)
-                    return Math.Clamp(level, 0, ZarrWellLevels.Count - 1);
+                if (ZarrWellLevels.Count > 0)
+                    return Math.Clamp(wellIndex, 0, ZarrWellLevels.Count - 1);
                 return 0;
             }
             set
             {
                 if (ZarrWellLevels.Count == 0)
                     return;
-                level = Math.Clamp(value, 0, ZarrWellLevels.Count - 1);
+                wellIndex = Math.Clamp(value, 0, ZarrWellLevels.Count - 1);
             }
         }
 
@@ -5953,7 +5955,6 @@ namespace BioLib
         {
             if (File.Exists(f))
                 File.Delete(f);
-
             // helper to ensure strictly positive physical lengths
             double SafePositive(double v) => (v > 0.0 && !double.IsNaN(v)) ? v : 1.0;
 
@@ -5979,7 +5980,18 @@ namespace BioLib
 
                 // Pixel layout and type
                 omexml.setPixelsDimensionOrder(ome.xml.model.enums.DimensionOrder.XYCZT, serie);
-                omexml.setPixelsInterleaved(java.lang.Boolean.TRUE, serie);
+                // Keep the OME interleaving flag aligned with the actual pixel layout.
+                // Packed RGB buffers are interleaved; split-channel stacks are not.
+                omexml.setPixelsInterleaved(java.lang.Boolean.valueOf(
+                    b.Buffers.Count > 0 &&
+                    (b.Buffers[0].PixelFormat == PixelFormat.Format24bppRgb ||
+                     b.Buffers[0].PixelFormat == PixelFormat.Format48bppRgb ||
+                     b.Buffers[0].PixelFormat == PixelFormat.Format32bppArgb ||
+                     b.Buffers[0].PixelFormat == PixelFormat.Format32bppPArgb ||
+                     b.Buffers[0].PixelFormat == PixelFormat.Format32bppRgb ||
+                     b.Buffers[0].PixelFormat == PixelFormat.Format64bppArgb ||
+                     b.Buffers[0].PixelFormat == PixelFormat.Format64bppPArgb)),
+                    serie);
                 if (b.bitsPerPixel > 8)
                     omexml.setPixelsType(ome.xml.model.enums.PixelType.UINT16, serie);
                 else
@@ -5989,9 +6001,8 @@ namespace BioLib
                 omexml.setPixelsSizeX(new ome.xml.model.primitives.PositiveInteger(java.lang.Integer.valueOf(b.SizeX)), serie);
                 omexml.setPixelsSizeY(new ome.xml.model.primitives.PositiveInteger(java.lang.Integer.valueOf(b.SizeY)), serie);
                 omexml.setPixelsSizeZ(new ome.xml.model.primitives.PositiveInteger(java.lang.Integer.valueOf(b.SizeZ)), serie);
-                omexml.setPixelsSizeC(new ome.xml.model.primitives.PositiveInteger(java.lang.Integer.valueOf(b.SizeC)), serie);
                 omexml.setPixelsSizeT(new ome.xml.model.primitives.PositiveInteger(java.lang.Integer.valueOf(b.SizeT)), serie);
-
+                omexml.setPixelsSizeC(new ome.xml.model.primitives.PositiveInteger(java.lang.Integer.valueOf(b.SizeC)), serie);
                 // Endianness
                 omexml.setPixelsBigEndian(java.lang.Boolean.valueOf(!BitConverter.IsLittleEndian), serie);
 
@@ -7097,14 +7108,37 @@ namespace BioLib
                 try
                 {
                     int s = b.meta.getChannelSamplesPerPixel(serie, i).getNumberValue().intValue();
-                    Channel ch = new Channel(i, b.bitsPerPixel, s);
-                    if (b.meta.getChannelSamplesPerPixel(serie, i) != null)
+                    var px = b.meta.getPixelsType(serie);
+                    PixelFormat pf = GetPixelFormat(s, px);
+                    Channel ch = null;
+                    if(pf == PixelFormat.Format8bppIndexed)
                     {
-                        ch.SamplesPerPixel = s;
-                        sumSamples += s;
-                        def = true;
-                        b.Channels.Add(ch);
+                        ch = new Channel(i, 8, s);
                     }
+                    else if (pf == PixelFormat.Format16bppGrayScale)
+                    {
+                        ch = new Channel(i, 16, s);
+                    }
+                    else if (pf == PixelFormat.Format24bppRgb)
+                    {
+                        ch = new Channel(i, 8, s);
+                    }
+                    if (pf == PixelFormat.Format32bppArgb)
+                    {
+                        ch = new Channel(i, 8, s);
+                    }
+                    else if (pf == PixelFormat.Format48bppRgb)
+                    {
+                        ch = new Channel(i, 16, s);
+                    }
+                    else if (pf == PixelFormat.Float)
+                    {
+                        ch = new Channel(i, 32, s);
+                    }
+                    ch.SamplesPerPixel = s;
+                    sumSamples += s;
+                    def = true;
+                    b.Channels.Add(ch);
                     if (i == 0)
                     {
                         b.rgbChannels[0] = 0;
@@ -7149,8 +7183,6 @@ namespace BioLib
                         ch.DiodeName = b.meta.getLightEmittingDiodeID(serie, i);
                     if (b.meta.getChannelLightSourceSettingsAttenuation(serie, i) != null)
                         ch.LightSourceAttenuation = b.meta.getChannelLightSourceSettingsAttenuation(serie, i).toString();
-
-
                 }
                 catch (Exception e)
                 {
@@ -8057,7 +8089,7 @@ namespace BioLib
                 List<ResolutionLevelNode> activeLevels;
                 if (Type == ImageType.well && ZarrWellLevels.Count > 0)
                 {
-                    int fieldIndex = Math.Clamp(b.Level, 0, ZarrWellLevels.Count - 1);
+                    int fieldIndex = Math.Clamp(b.WellIndex, 0, ZarrWellLevels.Count - 1);
 
                     // Lazy-load: ZarrWellLevels entries are null for fields that were not
                     // the active well at initial load time.  When the user switches to a
@@ -8416,7 +8448,7 @@ namespace BioLib
                 List<ResolutionLevelNode> activeLevels;
                 if (Type == ImageType.well && ZarrWellLevels.Count > 0)
                 {
-                    int fieldIndex = Math.Clamp(Level, 0, ZarrWellLevels.Count - 1);
+                    int fieldIndex = Math.Clamp(WellIndex, 0, ZarrWellLevels.Count - 1);
                     activeLevels = ZarrWellLevels[fieldIndex]
                         ?? ZarrWellLevels.FirstOrDefault(l => l != null)
                         ?? (levels ??= (await multiscale.OpenAllResolutionLevelsAsync()).ToList());
@@ -8804,6 +8836,8 @@ namespace BioLib
                     return PixelFormat.Format8bppIndexed;
                 else if (px == ome.xml.model.enums.PixelType.INT16 || px == ome.xml.model.enums.PixelType.UINT16)
                     return PixelFormat.Format16bppGrayScale;
+                else if (px == ome.xml.model.enums.PixelType.FLOAT)
+                    return PixelFormat.Float;
             }
             else if (rgbChannelCount == 3)
             {

@@ -9,6 +9,8 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using ZarrNET.Core.OmeZarr.Nodes;
 using ZarrNET.Core.OmeZarr.Metadata;
@@ -324,8 +326,9 @@ namespace BioLib
             try { System.IO.File.AppendAllText(@"C:\\Users\\Public\\biolog.txt", msg + "\n"); }
             catch { }
         }
-        public async Task<byte[]> TryReadRegionAsync(int level, long x, long y, long width, long height, ZCT zct)
+        public async Task<byte[]> TryReadRegionAsync(int level, long x, long y, long width, long height, ZCT zct, CancellationToken ct = default)
         {
+            var sw = Stopwatch.StartNew();
             // Final defence: never forward zero/negative dimensions to the zarr reader.
             // Callers should have caught this already, but if a negative curTileWidth or
             // curTileHeight slips through it causes the reader to clamp to chunk 0 and
@@ -333,12 +336,12 @@ namespace BioLib
             if (width <= 0 || height <= 0 || x < 0 || y < 0)
                 return null;
 
-            Log($"[TryReadRegionAsync] Type={BioImage.Type} WellLevels={BioImage.ZarrWellLevels?.Count}");
+            Log($"[TryReadRegionAsync] start type={BioImage.Type} level={level} x={x} y={y} w={width} h={height} zct={zct.Z},{zct.C},{zct.T} wellLevels={BioImage.ZarrWellLevels?.Count}");
             // Use ZarrWellLevels whenever available — this handles well-plate images
             // regardless of how Type is set at call time.
             if (BioImage.Type == BioImage.ImageType.well && BioImage.ZarrWellLevels?.Count > 0)
             {
-                Log($"[Well TryReadRegionAsync] level={level} x={x} y={y} w={width} h={height} zct={zct.Z},{zct.C},{zct.T} bioLevel={BioImage.WellIndex} wellLevelCount={BioImage.ZarrWellLevels.Count}");
+                Log($"[Well TryReadRegionAsync] level={level} x={x} y={y} w={width} h={height} zct={zct.Z},{zct.C},{zct.T} bioWellIndex={BioImage.WellIndex} wellLevelCount={BioImage.ZarrWellLevels.Count}");
                 int fi          = Math.Clamp(BioImage.WellIndex, 0, BioImage.ZarrWellLevels.Count - 1);
                 var fieldLevels = BioImage.ZarrWellLevels[fi];
                 if (fieldLevels == null || fieldLevels.Count == 0)
@@ -383,9 +386,19 @@ namespace BioLib
                     return null;
                 }
 
-                var result = await levelNode.ReadTileAsync(
+                var resultTask = levelNode.ReadTileAsync(
                     (int)x, (int)y, (int)clampedW, (int)clampedH,
-                    z: zct.Z, c: zct.C, t: zct.T).ConfigureAwait(false);
+                    z: zct.Z, c: zct.C, t: zct.T, ct: ct);
+                var resultCompleted = await global::System.Threading.Tasks.Task.WhenAny(
+                    resultTask,
+                    global::System.Threading.Tasks.Task.Delay(global::System.Threading.Timeout.Infinite, ct)).ConfigureAwait(false);
+                if (resultCompleted != resultTask)
+                {
+                    Log($"[Well TryReadRegionAsync] ReadTileAsync timed out or was canceled");
+                    return null;
+                }
+
+                var result = await resultTask.ConfigureAwait(false);
 
                 if (result == null)
                 {
@@ -394,29 +407,18 @@ namespace BioLib
                 }
                 Log($"[Well TryReadRegionAsync] Got {result.Data.Length} bytes, dtype={result.DataType}");
 
-                // Determine actual returned size from result shape/axes.
-                int resultW = (int)clampedW, resultH = (int)clampedH;
-                for (int i = 0; i < result.Axes.Length; i++)
-                {
-                    switch (result.Axes[i].Name.ToLowerInvariant())
-                    {
-                        case "x": resultW = (int)result.Shape[i]; break;
-                        case "y": resultH = (int)result.Shape[i]; break;
-                    }
-                }
-
                 // Convert raw pixel data to BGRA (4 bytes/pixel) which is what
                 // the tile renderer expects.
                 // IMPORTANT: allocate and copy only clampedW × clampedH pixels.
                 // resultW/resultH from the zarr reader may equal the full chunk size
                 // (256×256) even for boundary tiles — those extra pixels lie outside
                 // the image and contain data from another plane, causing the noise strip.
-                int copyW = Math.Min(resultW, (int)clampedW);
-                int copyH = Math.Min(resultH, (int)clampedH);
+                int copyW = (int)Math.Min(clampedW, width);
+                int copyH = (int)Math.Min(clampedH, height);
                 int pixelCount  = copyW * copyH;
                 byte[] bgra     = new byte[pixelCount * 4];
                 bool is16       = result.DataType == "uint16";
-                int srcStride   = resultW * (is16 ? 2 : 1);
+                int srcStride   = copyW * (is16 ? 2 : 1);
                 int dstStride   = copyW * 4;
 
                 // For 16-bit: use a shared display range so all tiles normalize
@@ -478,10 +480,23 @@ namespace BioLib
                     }
                 }
                 Log($"[Well TryReadRegionAsync] Returning {bgra.Length} BGRA bytes");
+                Log($"[TryReadRegionAsync] end well elapsed={sw.ElapsedMilliseconds}ms bytes={bgra.Length}");
                 return bgra;
             }
 
-            using Bitmap bts = await BioImage.GetTile(BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height);
+            Log($"[TryReadRegionAsync] non-well start level={level} x={x} y={y} w={width} h={height} zct={zct.Z},{zct.C},{zct.T}");
+            var tileTask = BioImage.GetTile(BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height);
+            var tileCompleted = await global::System.Threading.Tasks.Task.WhenAny(
+                tileTask,
+                global::System.Threading.Tasks.Task.Delay(global::System.Threading.Timeout.Infinite, ct)).ConfigureAwait(false);
+            if (tileCompleted != tileTask)
+            {
+                Log($"[ReadRegionAsync] GetTile timed out or was canceled");
+                return null;
+            }
+
+            using Bitmap bts = await tileTask.ConfigureAwait(false);
+            Log($"[TryReadRegionAsync] end non-well elapsed={sw.ElapsedMilliseconds}ms bytes={(bts?.Bytes?.Length ?? 0)}");
             return bts.Bytes;
         }
         ///<summary>
@@ -532,11 +547,13 @@ namespace BioLib
             GC.SuppressFinalize(this);
         }
 
-        public async Task<byte[]> ReadRegionAsync(int level, long curLevelOffsetXPixel, long curLevelOffsetYPixel, int curTileWidth, int curTileHeight, ZCT coord)
+        public async Task<byte[]> ReadRegionAsync(int level, long curLevelOffsetXPixel, long curLevelOffsetYPixel, int curTileWidth, int curTileHeight, ZCT coord, CancellationToken ct = default)
         {
             try
             {
-                byte[] bts = await TryReadRegionAsync(level, curLevelOffsetXPixel, curLevelOffsetYPixel, curTileWidth, curTileHeight,coord);
+                Log($"[ReadRegionAsync] start level={level} x={curLevelOffsetXPixel} y={curLevelOffsetYPixel} w={curTileWidth} h={curTileHeight} coord={coord.Z},{coord.C},{coord.T}");
+                byte[] bts = await TryReadRegionAsync(level, curLevelOffsetXPixel, curLevelOffsetYPixel, curTileWidth, curTileHeight, coord, ct);
+                Log($"[ReadRegionAsync] end level={level} bytes={(bts?.Length ?? 0)} coord={coord.Z},{coord.C},{coord.T}");
                 return bts;
             }
             catch (Exception e)

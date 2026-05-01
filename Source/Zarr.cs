@@ -115,7 +115,7 @@ namespace BioLib
         /// OME-Zarr v3 dataset at <paramref name="outputDir"/>.
         /// All pyramid resolution levels in <c>b.Resolutions</c> are written.
         /// </summary>
-        public static void SaveZarr(BioImage b, string outputDir)
+        public static async void SaveZarr(BioImage b, string outputDir)
         {
             // ------------------------------------------------------------------
             // 1. Resolve dimensions and data type from the BioImage
@@ -217,7 +217,7 @@ namespace BioLib
                                 BioImage.Status = $"Writing level {levelIndex + 1}/{levelDescriptors.Count} plane T{t + 1}/{b.SizeT} Z{z + 1}/{b.SizeZ} C{c + 1}/{b.SizeC}";
                                 if (sourceIsInterleavedRgb)
                                 {
-                                    WritePlaneInTiles(
+                                    await WritePlaneInTiles(
                                         writer, b, lvlDesc,
                                         t, c, z,
                                         bytesPerSample, tileW, tileH,
@@ -225,15 +225,15 @@ namespace BioLib
                                         rgbChannelIndex: c,
                                         srcChannelCount: sourceChannelCount,
                                         isBGRA: sourceIsBGRA,
-                                        logicalC: 0).GetAwaiter().GetResult();
+                                        logicalC: 0);
                                 }
                                 else
                                 {
-                                    WritePlaneInTiles(
+                                    await WritePlaneInTiles(
                                         writer, b, lvlDesc,
                                         t, c, z,
                                         bytesPerSample, tileW, tileH,
-                                        levelIndex: levelIndex).GetAwaiter().GetResult();
+                                        levelIndex: levelIndex);
                                 }
 
                                 writtenPlanes++;
