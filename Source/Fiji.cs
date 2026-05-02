@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -560,6 +561,7 @@ namespace BioLib
                 if (!bioformats)
                     file = dir + "/" + filename + ".tif";
                 string outputFile = bioformats ? filet : filet + ".tif";
+                string roiZip = ExportRoiZipForFiji(b, filename);
                 string donepath = Path.GetDirectoryName(Environment.ProcessPath);
                 donepath = donepath.Replace("\\", "/");
                 string op = b.ID.Replace("\\", "/");
@@ -567,20 +569,27 @@ namespace BioLib
                 op = op.Replace(ex, ".ome.tif");
                 //if (File.Exists(file))
                 //    File.Delete(file);
-                BioImage.SaveOME(b, file);
+                BioImage cleanInput = BioImage.Copy(b, false);
+                BioImage.SaveOME(cleanInput, file);
                 string st =
                 "run(\"Bio-Formats Importer\", \"open=" + file + " autoscale color_mode=Default open_all_series display_rois rois_import=[ROI manager] view=Hyperstack stack_order=XYCZT\"); " + con +
+                "roiManager(\"Show None\"); run(\"Select None\"); " +
                 "run(\"Bio-Formats Exporter\", \"save=" + filet + " export compression=Uncompressed\"); " +
                 "dir = \"" + donepath + "\"" +
                 "File.saveString(\"done\", dir + \"/done.txt\");";
                 if (!bioformats)
                     st =
-                    "open(getArgument); " + con +
+                    "open(getArgument); " +
+                    (!string.IsNullOrWhiteSpace(roiZip)
+                        ? "roiManager(\"Reset\"); roiManager(\"Open\", \"" + roiZip.Replace("\\", "/") + "\"); roiManager(\"Show All\"); "
+                        : string.Empty) +
+                    con +
+                    "roiManager(\"Show None\"); run(\"Select None\"); " +
                     "saveAs(\"Tiff\",\"" + outputFile + "\"); " +
                     "dir = \"" + donepath + "\"" +
                     "File.saveString(\"done\", dir + \"/done.txt\");";
 
-                BioImage bm = await Fiji.RunStringFiji(b, st, "", Fiji.headless, outputFile);
+                BioImage bm = await Fiji.RunStringFiji(b, st, "", Fiji.headless, file);
                 if (File.Exists(file) && bioformats)
                     File.Delete(file);
                 BioLib.Recorder.Record($"Fiji.RunOnImageFiji({b}, \"{con}\", {index}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
@@ -600,6 +609,66 @@ namespace BioLib
                 t.Wait();
                 BioLib.Recorder.Record($"Fiji.RunOnImageFiji({b}, \"{con}\", {index}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
                 return t.Result;
+            }
+        }
+
+        private static string ExportRoiZipForFiji(BioImage image, string stem)
+        {
+            if (image == null || image.Annotations == null || image.Annotations.Count == 0)
+                return string.Empty;
+
+            try
+            {
+                string tempRoot = Path.Combine(Path.GetTempPath(), "BioLib-Rois");
+                Directory.CreateDirectory(tempRoot);
+
+                string tempDir = Path.Combine(tempRoot, Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(tempDir);
+
+                int index = 0;
+                foreach (ROI roi in image.Annotations)
+                {
+                    if (roi == null)
+                        continue;
+
+                    string safeName = string.IsNullOrWhiteSpace(roi.roiName)
+                        ? $"{stem}_{index}"
+                        : $"{stem}_{index}_{roi.roiName}";
+                    foreach (char bad in Path.GetInvalidFileNameChars())
+                        safeName = safeName.Replace(bad, '_');
+
+                    string roiPath = Path.Combine(tempDir, safeName + ".roi");
+                    RoiEncoder.save(image, roi, roiPath);
+                    index++;
+                }
+
+                if (index == 0)
+                    return string.Empty;
+
+                string zipPath = Path.Combine(tempRoot, stem + "-" + Guid.NewGuid().ToString("N") + ".zip");
+                if (File.Exists(zipPath))
+                    File.Delete(zipPath);
+
+                using (ZipArchive zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+                {
+                    foreach (string file in Directory.GetFiles(tempDir, "*.roi"))
+                        zip.CreateEntryFromFile(file, Path.GetFileName(file), CompressionLevel.Fastest);
+                }
+
+                try
+                {
+                    Directory.Delete(tempDir, true);
+                }
+                catch
+                {
+                }
+
+                return zipPath.Replace("\\", "/");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Fiji.ExportRoiZipForFiji] {ex.Message}");
+                return string.Empty;
             }
         }
 
@@ -1665,13 +1734,17 @@ namespace BioLib
                 float[]
                 xf = null, yf = null;
                 int floatSize = 0;
-                //if (roi instanceof PolygonRoi) {
-                //PolygonRoi proi = (PolygonRoi)roi;
-                //Polygon p = proi.getNonSplineCoordinates();
-                n = roi.Points.Count; //p.npoints;
-                //x = p.xpoints;
-                //y = p.ypoints;
-                GetPointsXY(b, roi, out x, out y);
+                bool usePointData = type != rect && type != oval;
+                if (usePointData)
+                {
+                    //if (roi instanceof PolygonRoi) {
+                    //PolygonRoi proi = (PolygonRoi)roi;
+                    //Polygon p = proi.getNonSplineCoordinates();
+                    n = roi.Points.Count; //p.npoints;
+                    //x = p.xpoints;
+                    //y = p.ypoints;
+                    GetPointsXY(b, roi, out x, out y);
+                }
                 if (subres)
                 {
                     /*
