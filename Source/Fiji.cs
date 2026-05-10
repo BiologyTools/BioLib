@@ -589,7 +589,7 @@ namespace BioLib
                     "dir = \"" + donepath + "\"" +
                     "File.saveString(\"done\", dir + \"/done.txt\");";
 
-                BioImage bm = await Fiji.RunStringFiji(b, st, "", Fiji.headless, file);
+                BioImage bm = await Fiji.RunStringFiji(b, st, "", headless, outputFile);
                 if (File.Exists(file) && bioformats)
                     File.Delete(file);
                 BioLib.Recorder.Record($"Fiji.RunOnImageFiji({b}, \"{con}\", {index}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
@@ -679,6 +679,21 @@ namespace BioLib
         static bool bioformats;
         static bool resultInNewTabs;
         static BioImage bioImage;
+        private static readonly object imageJRunLock = new object();
+        public static BioImage RunOnImageInProcess(BioImage b, string con, bool headless, bool bioformats, bool resultInNewTab)
+        {
+            lock (imageJRunLock)
+            {
+                cons = con;
+                indexs = 0;
+                Fiji.headless = headless;
+                Fiji.bioformats = bioformats;
+                resultInNewTabs = resultInNewTab;
+                bioImage = b;
+                return RunImageJ();
+            }
+        }
+
         private static BioImage RunImageJ()
         {
             ImagePlus ip = GetImagePlus(bioImage);
@@ -703,7 +718,7 @@ namespace BioLib
         public async static Task<BioImage> RunOnImage(BioImage b, string con, bool headless, bool onTab, bool useBioformats,bool resultInNewTab)
         {
             if (b != null && b.isPyramidal)
-                return await ImageJ.RunOnPyramidalImage(b, con, b.Level, headless, onTab, useBioformats, resultInNewTab).ConfigureAwait(false);
+                return await ImageJ.RunOnAllPyramidLevels(b, con, headless, onTab, useBioformats, resultInNewTab).ConfigureAwait(false);
             BioImage bm;
             if (UseFiji || OperatingSystem.IsMacOS())
                 bm = await RunOnImageFiji(b, con, 0, headless, onTab, useBioformats, resultInNewTab);
@@ -724,7 +739,12 @@ namespace BioLib
         public static void RunOnImage(BioImage b, string con, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
         {
             if (UseFiji)
-                RunOnImageFiji(b,con, 0, headless, onTab, bioformats, resultInNewTab);
+            {
+                if (b != null && b.isPyramidal)
+                    ImageJ.RunOnAllPyramidLevels(b, con, headless, onTab, bioformats, resultInNewTab).Wait();
+                else
+                    RunOnImageFiji(b, con, 0, headless, onTab, bioformats, resultInNewTab).Wait();
+            }
             else
                 RunOnImage(b, con, headless, onTab, bioformats, resultInNewTab);
         }

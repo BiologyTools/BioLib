@@ -574,12 +574,21 @@ namespace BioLib
                         if (c != null)
                             tiles.Add(Tuple.Create(t.Extent.WorldToPixelInvertedY(curUnitsPerPixel), c));
                     }
-                    NetVips.Image im = null;
                     if (Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
-                        im = ImageUtil.JoinVips16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
+                    {
+                        Image<L16> im16 = ImageUtil.Join16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
+                        if (im16 != null)
+                        {
+                            byte[] bts = Get16Bytes(im16);
+                            im16.Dispose();
+                            return bts;
+                        }
+                    }
                     else if (Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
-                        im = ImageUtil.JoinVipsRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    return im.WriteToMemory();
+                    {
+                        NetVips.Image im = ImageUtil.JoinVipsRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
+                        return im.WriteToMemory();
+                    }
                 }
                 catch (Exception e)
                 {

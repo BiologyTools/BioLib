@@ -321,11 +321,6 @@ namespace BioLib
         /// <param name="data">The BGRA pixel data of this region.</param>
         /// <returns></returns>
 
-        private static void Log(string msg)
-        {
-            try { System.IO.File.AppendAllText(@"C:\\Users\\Public\\biolog.txt", msg + "\n"); }
-            catch { }
-        }
         public async Task<byte[]> TryReadRegionAsync(int level, long x, long y, long width, long height, ZCT zct, CancellationToken ct = default)
         {
             var sw = Stopwatch.StartNew();
@@ -336,12 +331,10 @@ namespace BioLib
             if (width <= 0 || height <= 0 || x < 0 || y < 0)
                 return null;
 
-            Log($"[TryReadRegionAsync] start type={BioImage.Type} level={level} x={x} y={y} w={width} h={height} zct={zct.Z},{zct.C},{zct.T} wellLevels={BioImage.ZarrWellLevels?.Count}");
             // Use ZarrWellLevels whenever available — this handles well-plate images
             // regardless of how Type is set at call time.
             if (BioImage.Type == BioImage.ImageType.well && BioImage.ZarrWellLevels?.Count > 0)
             {
-                Log($"[Well TryReadRegionAsync] level={level} x={x} y={y} w={width} h={height} zct={zct.Z},{zct.C},{zct.T} bioWellIndex={BioImage.WellIndex} wellLevelCount={BioImage.ZarrWellLevels.Count}");
                 int fi          = Math.Clamp(BioImage.WellIndex, 0, BioImage.ZarrWellLevels.Count - 1);
                 var fieldLevels = BioImage.ZarrWellLevels[fi];
                 if (fieldLevels == null || fieldLevels.Count == 0)
@@ -350,16 +343,11 @@ namespace BioLib
                     // first non-null field so tiles still render.
                     fieldLevels = BioImage.ZarrWellLevels.FirstOrDefault(l => l != null && l.Count > 0);
                     if (fieldLevels == null)
-                    {
-                        Log($"[Well TryReadRegionAsync] no loaded fieldLevels found, returning null");
                         return null;
-                    }
-                    Log($"[Well TryReadRegionAsync] fi={fi} was null, fell back to first loaded field");
                 }
 
                 int lev       = Math.Clamp(level, 0, fieldLevels.Count - 1);
                 var levelNode = fieldLevels[lev];
-                Log($"[Well TryReadRegionAsync] Using zarr lev={lev}, shape={string.Join(",", levelNode.Shape)}");
 
                 // Clamp requested region to the actual level dimensions so we never
                 // ask ReadTileAsync for pixels that lie beyond the image boundary.
@@ -381,10 +369,7 @@ namespace BioLib
                 long clampedW = (levelNodeW > 0) ? Math.Min(width,  levelNodeW - x) : width;
                 long clampedH = (levelNodeH > 0) ? Math.Min(height, levelNodeH - y) : height;
                 if (clampedW <= 0 || clampedH <= 0)
-                {
-                    Log($"[Well TryReadRegionAsync] request fully OOB (x={x} y={y} levelW={levelNodeW} levelH={levelNodeH}), returning null");
                     return null;
-                }
 
                 var resultTask = levelNode.ReadTileAsync(
                     (int)x, (int)y, (int)clampedW, (int)clampedH,
@@ -393,19 +378,12 @@ namespace BioLib
                     resultTask,
                     global::System.Threading.Tasks.Task.Delay(global::System.Threading.Timeout.Infinite, ct)).ConfigureAwait(false);
                 if (resultCompleted != resultTask)
-                {
-                    Log($"[Well TryReadRegionAsync] ReadTileAsync timed out or was canceled");
                     return null;
-                }
 
                 var result = await resultTask.ConfigureAwait(false);
 
                 if (result == null)
-                {
-                    Log($"[Well TryReadRegionAsync] ReadTileAsync returned null");
                     return null;
-                }
-                Log($"[Well TryReadRegionAsync] Got {result.Data.Length} bytes, dtype={result.DataType}");
 
                 // Convert raw pixel data to BGRA (4 bytes/pixel) which is what
                 // the tile renderer expects.
@@ -479,24 +457,129 @@ namespace BioLib
                         bgra[dstOff + 3] = 255;  // A
                     }
                 }
-                Log($"[Well TryReadRegionAsync] Returning {bgra.Length} BGRA bytes");
-                Log($"[TryReadRegionAsync] end well elapsed={sw.ElapsedMilliseconds}ms bytes={bgra.Length}");
                 return bgra;
             }
 
-            Log($"[TryReadRegionAsync] non-well start level={level} x={x} y={y} w={width} h={height} zct={zct.Z},{zct.C},{zct.T}");
+            bool isZarr16 = BioImage?.Filename != null &&
+                            BioImage.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                            BioImage.Resolutions != null &&
+                            BioImage.Resolutions.Count > level &&
+                            BioImage.Resolutions[level].PixelFormat == PixelFormat.Format16bppGrayScale;
+            if (isZarr16)
+            {
+                byte[] raw = await BioImage.GetTileBytesRaw(
+                    BioImage.GetFrameIndex(zct.Z, zct.C, zct.T),
+                    level,
+                    (int)x,
+                    (int)y,
+                    (int)width,
+                    (int)height,
+                    zct).ConfigureAwait(false);
+
+                if (raw == null || raw.Length == 0)
+                    return null;
+
+                int w = (int)width;
+                int h = (int)height;
+                byte[] bgra = new byte[w * h * 4];
+                int min = ushort.MaxValue;
+                int max = ushort.MinValue;
+                if (BioImage != null && BioImage.ZarrDisplayMax > BioImage.ZarrDisplayMin)
+                {
+                    min = BioImage.ZarrDisplayMin;
+                    max = BioImage.ZarrDisplayMax;
+                }
+                else
+                {
+                    int valueCount = Math.Min(w * h, raw.Length / 2);
+                    for (int i = 0; i < valueCount; i++)
+                    {
+                        int s = i * 2;
+                        ushort v = (ushort)(raw[s] | (raw[s + 1] << 8));
+                        if (v < min) min = v;
+                        if (v > max) max = v;
+                    }
+                }
+                if (max <= min)
+                    max = min + 1;
+                float scale = 255f / (max - min);
+                int rawPixels = Math.Min(w * h, raw.Length / 2);
+                for (int i = 0; i < rawPixels; i++)
+                {
+                    int s = i * 2;
+                    ushort v = (ushort)(raw[s] | (raw[s + 1] << 8));
+                    byte g = (byte)System.Math.Clamp((v - min) * scale, 0f, 255f);
+                    int d = i * 4;
+                    bgra[d + 0] = g;
+                    bgra[d + 1] = g;
+                    bgra[d + 2] = g;
+                    bgra[d + 3] = 255;
+                }
+                return bgra;
+            }
+
             var tileTask = BioImage.GetTile(BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height);
             var tileCompleted = await global::System.Threading.Tasks.Task.WhenAny(
                 tileTask,
                 global::System.Threading.Tasks.Task.Delay(global::System.Threading.Timeout.Infinite, ct)).ConfigureAwait(false);
             if (tileCompleted != tileTask)
-            {
-                Log($"[ReadRegionAsync] GetTile timed out or was canceled");
                 return null;
-            }
 
             using Bitmap bts = await tileTask.ConfigureAwait(false);
-            Log($"[TryReadRegionAsync] end non-well elapsed={sw.ElapsedMilliseconds}ms bytes={(bts?.Bytes?.Length ?? 0)}");
+            if (bts.PixelFormat == PixelFormat.Format24bppRgb ||
+                bts.PixelFormat == PixelFormat.Format32bppArgb ||
+                bts.PixelFormat == PixelFormat.Format32bppRgb ||
+                bts.PixelFormat == PixelFormat.Format32bppPArgb)
+            {
+                byte[] bgra = bts.Bytes;
+                return bgra;
+            }
+
+            if (bts.PixelFormat == PixelFormat.Format16bppGrayScale)
+            {
+                int w = bts.Width;
+                int h = bts.Height;
+                byte[] src = bts.Bytes;
+                byte[] bgra = new byte[w * h * 4];
+                bool littleEndian = bts.LittleEndian;
+                int min = ushort.MaxValue;
+                int max = ushort.MinValue;
+                if (BioImage != null && BioImage.ZarrDisplayMax > BioImage.ZarrDisplayMin)
+                {
+                    min = BioImage.ZarrDisplayMin;
+                    max = BioImage.ZarrDisplayMax;
+                }
+                else
+                {
+                    for (int i = 0; i < w * h; i++)
+                    {
+                        int s = i * 2;
+                        ushort v = littleEndian
+                            ? (ushort)(src[s] | (src[s + 1] << 8))
+                            : (ushort)(src[s + 1] | (src[s] << 8));
+                        if (v < min) min = v;
+                        if (v > max) max = v;
+                    }
+                }
+                if (max <= min)
+                    max = min + 1;
+                float scale = 255f / (max - min);
+                for (int i = 0; i < w * h; i++)
+                {
+                    int s = i * 2;
+                    ushort v = littleEndian
+                        ? (ushort)(src[s] | (src[s + 1] << 8))
+                        : (ushort)(src[s + 1] | (src[s] << 8));
+                    byte g = (byte)System.Math.Clamp((v - min) * scale, 0f, 255f);
+                    int d = i * 4;
+                    bgra[d + 0] = g;
+                    bgra[d + 1] = g;
+                    bgra[d + 2] = g;
+                    bgra[d + 3] = 255;
+                }
+                return bgra;
+            }
+
             return bts.Bytes;
         }
         ///<summary>
@@ -551,14 +634,11 @@ namespace BioLib
         {
             try
             {
-                Log($"[ReadRegionAsync] start level={level} x={curLevelOffsetXPixel} y={curLevelOffsetYPixel} w={curTileWidth} h={curTileHeight} coord={coord.Z},{coord.C},{coord.T}");
                 byte[] bts = await TryReadRegionAsync(level, curLevelOffsetXPixel, curLevelOffsetYPixel, curTileWidth, curTileHeight, coord, ct);
-                Log($"[ReadRegionAsync] end level={level} bytes={(bts?.Length ?? 0)} coord={coord.Z},{coord.C},{coord.T}");
                 return bts;
             }
             catch (Exception e)
             {
-                Log($"[ReadRegionAsync] EXCEPTION: {e.GetType().Name}: {e.Message}");
                 return null;
             }
         }

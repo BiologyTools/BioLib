@@ -137,10 +137,13 @@ namespace BioLib
             bool sourceIsInterleavedRgb = IsInterleavedRgbFormat(sourcePixelFormat);
             int sourceChannelCount = sourceIsInterleavedRgb ? BioImage.GetBands(sourcePixelFormat) : 1;
             bool sourceIsBGRA = IsBGRAFormat(sourcePixelFormat);
+            int exportChannelCount = sourceIsInterleavedRgb && b.SizeC == 1
+                ? Math.Min(3, sourceChannelCount)
+                : b.SizeC;
 
             var bytesPerSample = bitsPerSample / 8;
             var zarrDataType   = MapDataType(bitsPerSample);
-            var totalChannels  = b.SizeC;
+            var totalChannels  = exportChannelCount;
 
             int tileW = 512;
             int tileH = 512;
@@ -212,7 +215,7 @@ namespace BioLib
                     {
                         for (int z = 0; z < b.SizeZ; z++)
                         {
-                            for (int c = 0; c < b.SizeC; c++)
+                            for (int c = 0; c < exportChannelCount; c++)
                             {
                                 BioImage.Status = $"Writing level {levelIndex + 1}/{levelDescriptors.Count} plane T{t + 1}/{b.SizeT} Z{z + 1}/{b.SizeZ} C{c + 1}/{b.SizeC}";
                                 if (sourceIsInterleavedRgb)
@@ -262,6 +265,181 @@ namespace BioLib
             BioImage.Progress = 100;
         }
 
+        /// <summary>
+        /// Saves already-processed pyramid levels as an OME-Zarr multiscale
+        /// dataset. Each entry in <paramref name="levels"/> is written as one
+        /// resolution level in the output pyramid.
+        /// </summary>
+        public static async Task SavePyramidalZarr(BioImage[] levels, string outputDir)
+        {
+            if (levels == null || levels.Length == 0)
+                throw new ArgumentException("No pyramid levels were provided.", nameof(levels));
+
+            if (Directory.Exists(outputDir))
+                Directory.Delete(outputDir, true);
+            if (File.Exists(outputDir))
+                File.Delete(outputDir);
+
+            var root = levels[0];
+            if (root == null)
+                throw new ArgumentNullException(nameof(levels));
+
+            if (root.SizeX <= 0 || root.SizeY <= 0 || root.SizeZ <= 0 || root.SizeC <= 0 || root.SizeT <= 0)
+                throw new InvalidOperationException(
+                    $"Invalid pyramid root dimensions: X={root.SizeX} Y={root.SizeY} Z={root.SizeZ} C={root.SizeC} T={root.SizeT}.");
+
+            int bitsPerSample = DetermineSourceBitsPerSample(root);
+            var sourcePixelFormat = DetermineSourcePixelFormat(root);
+            bool sourceIsInterleavedRgb = IsInterleavedRgbFormat(sourcePixelFormat);
+            int sourceChannelCount = sourceIsInterleavedRgb ? BioImage.GetBands(sourcePixelFormat) : 1;
+            bool sourceIsBGRA = IsBGRAFormat(sourcePixelFormat);
+            int bytesPerSample = bitsPerSample / 8;
+            int tileW = 512;
+            int tileH = 512;
+
+            BioImage.Progress = 0;
+            BioImage.Status = "Preparing pyramid Zarr writer";
+
+            var levelDescriptors = new List<ResolutionLevelDescriptor>();
+            for (int lvl = 0; lvl < levels.Length; lvl++)
+            {
+                BioImage level = levels[lvl];
+                if (level == null)
+                    continue;
+
+                Resolution res = level.Resolutions.Count > 0
+                    ? level.Resolutions[Math.Min(lvl, level.Resolutions.Count - 1)]
+                    : new Resolution(level.SizeX, level.SizeY, level.Buffers.Count > 0 ? level.Buffers[0].PixelFormat : root.Resolutions[0].PixelFormat, level.PhysicalSizeX, level.PhysicalSizeY, level.PhysicalSizeZ, level.StageSizeX, level.StageSizeY, level.StageSizeZ);
+                int levelSizeX = res.SizeX > 0 ? res.SizeX : root.SizeX;
+                int levelSizeY = res.SizeY > 0 ? res.SizeY : root.SizeY;
+                double downsample = lvl == 0
+                    ? 1.0
+                    : Math.Max(
+                        (double)root.SizeX / Math.Max(1, levelSizeX),
+                        (double)root.SizeY / Math.Max(1, levelSizeY));
+                levelDescriptors.Add(new ResolutionLevelDescriptor(levelSizeX, levelSizeY, downsample));
+                Log($"[SavePyramidalZarr] level={lvl} size={levelSizeX}x{levelSizeY} fmt={res.PixelFormat}");
+            }
+
+            if (levelDescriptors.Count == 0)
+                throw new InvalidOperationException("No valid pyramid levels found.");
+
+            var coord = new ZarrNET.Core.ZCT(root.SizeZ, root.SizeC, root.SizeT);
+            var baseDescriptor = new BioImageDescriptor(root.SizeX, root.SizeY, coord)
+            {
+                Name = Path.GetFileNameWithoutExtension(root.Filename),
+                DataType = MapDataType(bitsPerSample),
+                PhysicalSizeX = root.PhysicalSizeX,
+                PhysicalSizeY = root.PhysicalSizeY,
+                PhysicalSizeZ = root.PhysicalSizeZ,
+                ChunkY = tileH,
+                ChunkX = tileW,
+            };
+
+            var writer = await OmeZarrWriter.CreateAsync(outputDir, baseDescriptor, levelDescriptors).ConfigureAwait(false);
+            try
+            {
+                long totalPlanes = Math.Max(1L, (long)levels.Length * root.SizeT * root.SizeZ * root.SizeC);
+                long writtenPlanes = 0;
+
+                for (int levelIndex = 0; levelIndex < levels.Length; levelIndex++)
+                {
+                    BioImage levelImage = levels[levelIndex];
+                    if (levelImage == null)
+                        continue;
+
+                    ResolutionLevelDescriptor lvlDesc = levelDescriptors[Math.Min(levelIndex, levelDescriptors.Count - 1)];
+                    int levelBitsPerSample = DetermineSourceBitsPerSample(levelImage);
+                    int levelBytesPerSample = levelBitsPerSample / 8;
+                    var levelPixelFormat = DetermineSourcePixelFormat(levelImage);
+                    bool levelIsInterleavedRgb = IsInterleavedRgbFormat(levelPixelFormat);
+                    int levelChannelCount = levelIsInterleavedRgb ? BioImage.GetBands(levelPixelFormat) : 1;
+                    bool levelIsBGRA = IsBGRAFormat(levelPixelFormat);
+
+                    BioImage.Status = $"Writing pyramid level {levelIndex + 1}/{levels.Length}";
+
+                    for (int t = 0; t < levelImage.SizeT; t++)
+                    {
+                        for (int z = 0; z < levelImage.SizeZ; z++)
+                        {
+                            for (int c = 0; c < levelImage.SizeC; c++)
+                            {
+                                bool streamFromZarr = levelImage.Filename != null &&
+                                    levelImage.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                    levelImage.zarrReader != null &&
+                                    levelImage.levels != null &&
+                                    levelImage.levels.Count > 0;
+
+                                if (streamFromZarr)
+                                {
+                                    await WritePlaneInTiles(
+                                        writer, levelImage, lvlDesc,
+                                        t, c, z,
+                                        levelBytesPerSample, tileW, tileH,
+                                        levelIndex: levelIndex,
+                                        sourceLevelIndex: 0,
+                                        rgbChannelIndex: levelIsInterleavedRgb ? c : -1,
+                                        srcChannelCount: levelChannelCount,
+                                        isBGRA: levelIsBGRA,
+                                        logicalC: 0).ConfigureAwait(false);
+                                }
+                                else
+                                {
+                                    // Pyramid results are full-frame level images. Their
+                                    // PyramidalOrigin reflects viewport state, not where the
+                                    // level pixels should be placed in the output pyramid.
+                                    int originX = 0;
+                                    int originY = 0;
+
+                                    if (levelIsInterleavedRgb)
+                                    {
+                                        await WritePlaneFromBuffer(
+                                            writer, levelImage, lvlDesc,
+                                            t, c, z,
+                                            levelBytesPerSample, tileW, tileH,
+                                            levelIndex: levelIndex,
+                                            originX: originX,
+                                            originY: originY,
+                                            rgbChannelIndex: c,
+                                            srcChannelCount: levelChannelCount,
+                                            isBGRA: levelIsBGRA,
+                                            logicalC: 0).ConfigureAwait(false);
+                                    }
+                                    else
+                                    {
+                                        await WritePlaneFromBuffer(
+                                            writer, levelImage, lvlDesc,
+                                            t, c, z,
+                                            levelBytesPerSample, tileW, tileH,
+                                            levelIndex: levelIndex,
+                                            originX: originX,
+                                            originY: originY,
+                                            sourceLevelIndex: 0).ConfigureAwait(false);
+                                    }
+                                }
+
+                                writtenPlanes++;
+                                BioImage.Progress = (float)(writtenPlanes * 100.0 / totalPlanes);
+                            }
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                try
+                {
+                    await writer.DisposeAsync().ConfigureAwait(false);
+                }
+                catch
+                {
+                }
+            }
+
+            Recorder.Record($"Zarr.SavePyramidalZarr(new BioImage[] {{ {string.Join(", ", levels.Select(level => level.ToString()))} }}, \"{outputDir}\");");
+            BioImage.Progress = 100;
+        }
+
         // =====================================================================
         // Tiled plane writer
         // =====================================================================
@@ -279,6 +457,9 @@ namespace BioLib
             int bytesPerSample,
             int tileW, int tileH,
             int levelIndex      = 0,
+            int sourceLevelIndex = -1,
+            int originX = 0,
+            int originY = 0,
             int rgbChannelIndex = -1,
             int srcChannelCount = 1,
             bool isBGRA         = false,
@@ -286,6 +467,7 @@ namespace BioLib
         {
             bool needsDeinterleave = rgbChannelIndex >= 0;
             int  srcC              = needsDeinterleave ? logicalC : c;
+            int  tileLevel         = sourceLevelIndex >= 0 ? sourceLevelIndex : levelIndex;
 
             for (int tileY = 0; tileY < lvlDesc.SizeY; tileY += tileH)
             {
@@ -299,28 +481,53 @@ namespace BioLib
                     int singleChannelBytes = pixelCount * bytesPerSample;
 
                     // Fetch raw tile bytes from BioLib at the requested pyramid level.
-                    byte[] pixelBytes = await b.GetTileBytesRaw(
-                        b.GetFrameIndex(z, srcC, t), levelIndex, tileX, tileY, actualW, actualH,
-                        new AForge.ZCT(z, srcC, t)).ConfigureAwait(false);
+                    byte[] pixelBytes;
+                    try
+                    {
+                        pixelBytes = await b.GetTileBytesRaw(
+                            b.GetFrameIndex(z, srcC, t), tileLevel, tileX, tileY, actualW, actualH,
+                            new AForge.ZCT(z, srcC, t)).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        pixelBytes = null;
+                    }
+
+                    int expectedBytes = needsDeinterleave ? interleavedBytes : singleChannelBytes;
+                    if (pixelBytes == null || pixelBytes.Length == 0)
+                    {
+                        pixelBytes = new byte[expectedBytes];
+                    }
 
                     if (needsDeinterleave)
                     {
+                        int inferredChannelCount = srcChannelCount;
+                        if (pixelCount > 0 && pixelBytes.Length > 0)
+                        {
+                            int inferred = pixelBytes.Length / (pixelCount * bytesPerSample);
+                            if (inferred >= 1 && inferred <= 4)
+                                inferredChannelCount = inferred;
+                        }
+
                         // Ensure the buffer is the full interleaved size before
                         // extracting a single channel from it.
-                        if (pixelBytes.Length != interleavedBytes)
+                        int expectedInterleavedBytes = pixelCount * inferredChannelCount * bytesPerSample;
+                        if (pixelBytes.Length != expectedInterleavedBytes)
                         {
-                            var trimmed = new byte[interleavedBytes];
+                            var trimmed = new byte[expectedInterleavedBytes];
                             Buffer.BlockCopy(pixelBytes, 0, trimmed, 0,
-                                Math.Min(pixelBytes.Length, interleavedBytes));
+                                Math.Min(pixelBytes.Length, expectedInterleavedBytes));
                             pixelBytes = trimmed;
                         }
 
                         // For BGRA buffers the byte order is [B, G, R, A].
-                        // Map output channel index:  0→R(byte2), 1→G(byte1), 2→B(byte0)
-                        int srcByteIndex = isBGRA ? (2 - rgbChannelIndex) : rgbChannelIndex;
+                        // OpenSlide SVS tiles commonly arrive as BGRA even when the
+                        // nominal source pixel format is reported as 24bpp RGB.
+                        bool actualIsBGRA = isBGRA || inferredChannelCount == 4;
+                        int srcByteIndex = actualIsBGRA ? (2 - rgbChannelIndex) : rgbChannelIndex;
 
                         pixelBytes = DeinterleaveChannel(
-                            pixelBytes, srcByteIndex, srcChannelCount,
+                            pixelBytes, srcByteIndex, inferredChannelCount,
                             bytesPerSample, pixelCount);
                     }
                     else
@@ -360,6 +567,150 @@ namespace BioLib
             }
         }
 
+        private static async Task WritePlaneFromBuffer(
+            OmeZarrWriter              writer,
+            BioImage                   b,
+            ResolutionLevelDescriptor  lvlDesc,
+            int t, int c, int z,
+            int bytesPerSample,
+            int tileW, int tileH,
+            int levelIndex      = 0,
+            int sourceLevelIndex = -1,
+            int originX = 0,
+            int originY = 0,
+            int rgbChannelIndex = -1,
+            int srcChannelCount = 1,
+            bool isBGRA         = false,
+            int logicalC        = -1)
+        {
+            bool needsDeinterleave = rgbChannelIndex >= 0;
+            int srcC = needsDeinterleave ? logicalC : c;
+            int index = b.GetFrameIndex(z, srcC, t);
+            if (index < 0 || index >= b.Buffers.Count || b.Buffers[index] == null)
+            {
+                byte[] empty = new byte[Math.Max(0, lvlDesc.SizeX * lvlDesc.SizeY * bytesPerSample)];
+                await writer.WriteRegionAsync(t, c, z, 0, 0, lvlDesc.SizeY, lvlDesc.SizeX, empty, levelIndex: levelIndex).ConfigureAwait(false);
+                return;
+            }
+
+            Bitmap buffer = b.Buffers[index];
+            int planeW = buffer.SizeX > 0 ? buffer.SizeX : lvlDesc.SizeX;
+            int planeH = buffer.SizeY > 0 ? buffer.SizeY : lvlDesc.SizeY;
+            int bufferBytesPerPixel = needsDeinterleave
+                ? Math.Max(1, srcChannelCount * bytesPerSample)
+                : Math.Max(1, bytesPerSample);
+            byte[] planeBytes = ExtractRawPixels(buffer, planeW, planeH, bufferBytesPerPixel);
+
+            if (needsDeinterleave)
+            {
+                int pixelCount = planeW * planeH;
+                if (pixelCount <= 0)
+                    return;
+
+                int inferredChannelCount = srcChannelCount;
+                if (planeBytes.Length > 0)
+                {
+                    int inferred = planeBytes.Length / (pixelCount * bytesPerSample);
+                    if (inferred >= 1 && inferred <= 4)
+                        inferredChannelCount = inferred;
+                }
+
+                int srcByteIndex = (isBGRA || inferredChannelCount == 4) ? (2 - rgbChannelIndex) : rgbChannelIndex;
+                planeBytes = DeinterleaveChannel(
+                    planeBytes, srcByteIndex, inferredChannelCount,
+                    bytesPerSample, pixelCount);
+            }
+            else
+            {
+                if (planeBytes.Length != planeW * planeH * bytesPerSample)
+                {
+                    var trimmed = new byte[planeW * planeH * bytesPerSample];
+                    Buffer.BlockCopy(planeBytes, 0, trimmed, 0, Math.Min(planeBytes.Length, trimmed.Length));
+                    planeBytes = trimmed;
+                }
+
+                if (!buffer.LittleEndian && (buffer.PixelFormat == PixelFormat.Format16bppGrayScale || buffer.PixelFormat == PixelFormat.Format48bppRgb))
+                    SwapBytePairsInPlace(planeBytes);
+            }
+
+            int writeX = Math.Max(0, originX);
+            int writeY = Math.Max(0, originY);
+            int writeW = Math.Min(planeW, Math.Max(0, lvlDesc.SizeX - writeX));
+            int writeH = Math.Min(planeH, Math.Max(0, lvlDesc.SizeY - writeY));
+            if (writeW <= 0 || writeH <= 0)
+                return;
+
+            if (writeW != planeW || writeH != planeH || writeX != 0 || writeY != 0)
+            {
+                byte[] canvas = new byte[lvlDesc.SizeX * lvlDesc.SizeY * bytesPerSample];
+                int srcRowBytes = planeW * bytesPerSample;
+                int dstRowBytes = lvlDesc.SizeX * bytesPerSample;
+                for (int row = 0; row < writeH; row++)
+                {
+                    Buffer.BlockCopy(planeBytes, row * srcRowBytes, canvas, (writeY + row) * dstRowBytes + writeX * bytesPerSample, writeW * bytesPerSample);
+                }
+                planeBytes = canvas;
+                planeW = lvlDesc.SizeX;
+                planeH = lvlDesc.SizeY;
+            }
+
+            await writer.WriteRegionAsync(t, c, z, 0, 0, planeH, planeW, planeBytes, levelIndex: levelIndex).ConfigureAwait(false);
+        }
+
+        internal static async Task WriteTileFromBuffer(
+            OmeZarrWriter              writer,
+            Bitmap                     buffer,
+            ResolutionLevelDescriptor  lvlDesc,
+            int t, int c, int z,
+            int tileX, int tileY,
+            int bytesPerSample,
+            int levelIndex      = 0,
+            int rgbChannelIndex = -1,
+            int srcChannelCount = 1,
+            bool isBGRA         = false,
+            int logicalC        = -1)
+        {
+            if (buffer == null || buffer.Bytes == null || buffer.Bytes.Length == 0)
+                return;
+
+            bool needsDeinterleave = rgbChannelIndex >= 0;
+            int bufferBytesPerPixel = needsDeinterleave
+                ? Math.Max(1, srcChannelCount * bytesPerSample)
+                : Math.Max(1, bytesPerSample);
+
+            byte[] pixelBytes = ExtractRawPixels(buffer, buffer.SizeX, buffer.SizeY, bufferBytesPerPixel);
+            if (needsDeinterleave)
+            {
+                int pixelCount = buffer.SizeX * buffer.SizeY;
+                if (pixelCount <= 0)
+                    return;
+
+                int srcByteIndex = isBGRA ? (2 - rgbChannelIndex) : rgbChannelIndex;
+                pixelBytes = DeinterleaveChannel(
+                    pixelBytes, srcByteIndex, srcChannelCount,
+                    bytesPerSample, pixelCount);
+            }
+            else
+            {
+                if (pixelBytes.Length != buffer.SizeX * buffer.SizeY * bytesPerSample)
+                {
+                    var trimmed = new byte[buffer.SizeX * buffer.SizeY * bytesPerSample];
+                    Buffer.BlockCopy(pixelBytes, 0, trimmed, 0, Math.Min(pixelBytes.Length, trimmed.Length));
+                    pixelBytes = trimmed;
+                }
+
+                if (!buffer.LittleEndian && (buffer.PixelFormat == PixelFormat.Format16bppGrayScale || buffer.PixelFormat == PixelFormat.Format48bppRgb))
+                    SwapBytePairsInPlace(pixelBytes);
+            }
+
+            await writer.WriteRegionAsync(
+                t, c, z,
+                tileY, tileX,
+                buffer.SizeY, buffer.SizeX,
+                pixelBytes,
+                levelIndex: levelIndex).ConfigureAwait(false);
+        }
+
         /// <summary>
         /// Copies exactly width × height × bytesPerSample from the bitmap's
         /// buffer, stripping any stride padding the bitmap format may include.
@@ -383,6 +734,19 @@ namespace BioLib
             }
 
             return output;
+        }
+
+        private static void SwapBytePairsInPlace(byte[] data)
+        {
+            if (data == null)
+                return;
+
+            for (int i = 0; i + 1 < data.Length; i += 2)
+            {
+                byte b0 = data[i];
+                data[i] = data[i + 1];
+                data[i + 1] = b0;
+            }
         }
 
         private static async Task PostSaveReadback(string outputDir)
@@ -995,10 +1359,16 @@ namespace BioLib
             var stride       = totalChannels * bytesPerSample;
             var channelStart = channelIndex  * bytesPerSample;
 
+            if (channelStart < 0 || channelStart + bytesPerSample > stride)
+                return output;
+
             for (int px = 0; px < pixelCount; px++)
             {
                 var srcOffset = px * stride + channelStart;
                 var dstOffset = px * bytesPerSample;
+
+                if (srcOffset < 0 || srcOffset + bytesPerSample > interleaved.Length)
+                    break;
 
                 for (int byteIdx = 0; byteIdx < bytesPerSample; byteIdx++)
                     output[dstOffset + byteIdx] = interleaved[srcOffset + byteIdx];

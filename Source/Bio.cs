@@ -1868,7 +1868,6 @@ namespace BioLib
 
     public class BioImage : IDisposable
     {
-        private static int s_debugZarrRawTileLogs = 0;
 
         public class WellPlate
         {
@@ -1985,17 +1984,12 @@ namespace BioLib
         {
             get
             {
-                int l = 0;
-                if (openslideBase != null)
-                    l = OpenSlideGTK.TileUtil.GetLevel(openslideBase.Schema.Resolutions, Resolution);
+                if (SlideBase != null)
+                    return OpenSlideGTK.TileUtil.GetLevel(SlideBase.Schema.Resolutions, Resolution);
+                else if (OpenSlideBase != null)
+                    return OpenSlideGTK.TileUtil.GetLevel(OpenSlideBase.Schema.Resolutions, Resolution);
                 else
-                    if (slideBase != null)
-                    l = LevelFromResolution(Resolution);
-                if (l < 0)
-                    return 0;
-                if (l >= Resolutions.Count)
-                    return Resolutions.Count - 1;
-                return l;
+                    return LevelFromResolution(Resolution);
             }
             set
             {
@@ -2012,18 +2006,13 @@ namespace BioLib
         {
             get
             {
-                // For zarr files opened from a URL the full URL is stored in 'file'
-                // while 'filename' only holds the basename (Path.GetFileName result).
-                // Return 'file' when it is a URL so that OmeZarrReader.OpenAsync and
-                // ResolveMultiscaleAsync receive the complete address, not just a relative
-                // basename that would resolve to a missing local file.
-                if (file != null && (file.StartsWith("https://") || file.StartsWith("http://") || file.StartsWith("s3://")))
+                // For Zarr sources the full backing path/URL must be preserved so the
+                // reader can reopen the same container later. Returning only the
+                // basename breaks local .zarr reopening when the working directory
+                // does not match the image location.
+                if (file != null && (file.StartsWith("https://") || file.StartsWith("http://") || file.StartsWith("s3://") || file.Contains(".zarr")))
                 {
                     return file;
-                }
-                if (filename != null && filename.Contains(".zarr"))
-                {
-                    return filename;
                 }
                 if (filename == null || filename == "")
                     return Type.ToString() + ".ome.tif";
@@ -2108,13 +2097,13 @@ namespace BioLib
                 // leaving the image as a tiny thumbnail.
                 if (OpenSlideBase != null)
                 {
-                    if (value > OpenSlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel)
-                        return;
+                    // Allow zooming out beyond the coarsest source level.
+                    // The renderer will keep using the coarsest level and scale
+                    // it down further so zoom-out remains continuous.
                 }
                 else if (SlideBase?.Schema?.Resolutions != null && SlideBase.Schema.Resolutions.Count > 0)
                 {
-                    if (value > SlideBase.Schema.Resolutions.Last().Value.UnitsPerPixel)
-                        return;
+                    // Allow zooming out beyond the coarsest source level.
                 }
                 resolution = value;
             }
@@ -5591,16 +5580,28 @@ namespace BioLib
                     throw new Exception("OME-Zarr contains no resolution levels.");
 
                 // -----------------------------------------------------------------
-                // Determine datatype from the highest resolution level
+                // Determine datatype and logical channel layout from the highest
+                // resolution level.
+                //
+                // RGB Zarrs are stored as 3 channels in the array, but the viewer
+                // should treat them as one logical RGB image, matching TIFF RGB.
                 // -----------------------------------------------------------------
 
                 var firstLevel = b.levels[0];
                 string dtype = firstLevel.DataType;
+                int channelCount = GetAxisSize(firstLevel, "c", 1);
+                bool isRgbZarr = channelCount == 3;
+                int bitsPerChannel = dtype switch
+                {
+                    "uint8" => 8,
+                    "uint16" => 16,
+                    _ => throw new UnknownFormatException($"Unsupported datatype {dtype}")
+                };
 
                 PixelFormat pixelFormat = dtype switch
                 {
-                    "uint8" => PixelFormat.Format8bppIndexed,
-                    "uint16" => PixelFormat.Format16bppGrayScale,
+                    "uint8"  => isRgbZarr ? PixelFormat.Format24bppRgb   : PixelFormat.Format8bppIndexed,
+                    "uint16" => isRgbZarr ? PixelFormat.Format48bppRgb   : PixelFormat.Format16bppGrayScale,
                     _ => throw new UnknownFormatException($"Unsupported datatype {dtype}")
                 };
 
@@ -5625,7 +5626,7 @@ namespace BioLib
                 // -----------------------------------------------------------------
 
                 b.sizeZ = GetAxisSize(firstLevel, "z", 1);
-                b.sizeC = GetAxisSize(firstLevel, "c", 1);
+                b.sizeC = isRgbZarr ? 1 : channelCount;
                 b.sizeT = GetAxisSize(firstLevel, "t", 1);
 
                 // -----------------------------------------------------------------
@@ -5694,20 +5695,74 @@ namespace BioLib
                 // -----------------------------------------------------------------
 
                 Status = "Reading tile pixels";
-                RegionResult tileResult = await firstLevel
-                    .ReadPixelRegionAsync(region)
-                    .ConfigureAwait(false);
-                Progress = 85;
 
-                // Recover actual tile dimensions from the clamped region
+                // Recover actual tile dimensions from the clamped region.
                 int actualTileW = GetRegionAxisSize(axes, start, end, "x");
                 int actualTileH = GetRegionAxisSize(axes, start, end, "y");
+                int xAxisIndex = Array.FindIndex(axes, a => a.Name.Equals("x", StringComparison.OrdinalIgnoreCase));
+                int yAxisIndex = Array.FindIndex(axes, a => a.Name.Equals("y", StringComparison.OrdinalIgnoreCase));
+
+                byte[] tileBytes;
+                if (isRgbZarr)
+                {
+                    var red = await firstLevel.ReadTileAsync((int)start[xAxisIndex],
+                                                             (int)start[yAxisIndex],
+                                                             actualTileW, actualTileH, z: clampedZ, c: 0, t: clampedT).ConfigureAwait(false);
+                    var green = await firstLevel.ReadTileAsync((int)start[xAxisIndex],
+                                                               (int)start[yAxisIndex],
+                                                               actualTileW, actualTileH, z: clampedZ, c: 1, t: clampedT).ConfigureAwait(false);
+                    var blue = await firstLevel.ReadTileAsync((int)start[xAxisIndex],
+                                                              (int)start[yAxisIndex],
+                                                              actualTileW, actualTileH, z: clampedZ, c: 2, t: clampedT).ConfigureAwait(false);
+
+                    if (bitsPerChannel == 8)
+                    {
+                        int pixelCount = actualTileW * actualTileH;
+                        tileBytes = new byte[pixelCount * 3];
+                        int copyCount = Math.Min(pixelCount,
+                            Math.Min(red?.Data?.Length ?? 0, Math.Min(green?.Data?.Length ?? 0, blue?.Data?.Length ?? 0)));
+                        for (int i = 0; i < copyCount; i++)
+                        {
+                            int d = i * 3;
+                            tileBytes[d + 0] = blue.Data[i];
+                            tileBytes[d + 1] = green.Data[i];
+                            tileBytes[d + 2] = red.Data[i];
+                        }
+                    }
+                    else
+                    {
+                        int pixelCount = actualTileW * actualTileH;
+                        tileBytes = new byte[pixelCount * 6];
+                        int copyCount = Math.Min(pixelCount,
+                            Math.Min(red?.Data?.Length ?? 0, Math.Min(green?.Data?.Length ?? 0, blue?.Data?.Length ?? 0)) / 2);
+                        for (int i = 0; i < copyCount; i++)
+                        {
+                            int d = i * 6;
+                            int s = i * 2;
+                            tileBytes[d + 0] = blue.Data[s + 0];
+                            tileBytes[d + 1] = blue.Data[s + 1];
+                            tileBytes[d + 2] = green.Data[s + 0];
+                            tileBytes[d + 3] = green.Data[s + 1];
+                            tileBytes[d + 4] = red.Data[s + 0];
+                            tileBytes[d + 5] = red.Data[s + 1];
+                        }
+                    }
+                }
+                else
+                {
+                    RegionResult tileResult = await firstLevel
+                        .ReadPixelRegionAsync(region)
+                        .ConfigureAwait(false);
+                    tileBytes = tileResult.Data;
+                }
+
+                Progress = 85;
 
                 var bm = CreateAForgeBitmap(
                     actualTileW,
                     actualTileH,
                     pixelFormat,
-                    tileResult.Data,
+                    tileBytes,
                     coord);
 
                 b.Buffers.Add(bm.GetImageRGBA());
@@ -5737,8 +5792,10 @@ namespace BioLib
 
                 b.Channels.Add(pixelFormat switch
                 {
-                    PixelFormat.Format8bppIndexed => new Channel(0, 8, 1),
+                    PixelFormat.Format8bppIndexed    => new Channel(0, 8, 1),
                     PixelFormat.Format16bppGrayScale => new Channel(0, 16, 2),
+                    PixelFormat.Format24bppRgb       => new Channel(0, bitsPerChannel, 3),
+                    PixelFormat.Format48bppRgb       => new Channel(0, bitsPerChannel, 3),
                     _ => throw new NotSupportedException()
                 });
 
@@ -5810,11 +5867,22 @@ namespace BioLib
 
             for (int i = 0; i < axes.Length; i++)
             {
-                if (axes[i].Name.Equals(axisName, StringComparison.OrdinalIgnoreCase))
+                if (AxisMatches(axes[i].Name, axisName))
                     return (int)shape[i];
             }
 
             return fallback;
+        }
+
+        private static bool AxisMatches(string actualName, string expectedName)
+        {
+            if (actualName.Equals(expectedName, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // OME-Zarr readers sometimes expose the channel axis as "channel"
+            // instead of the short form "c".
+            return expectedName.Equals("c", StringComparison.OrdinalIgnoreCase) &&
+                   actualName.Equals("channel", StringComparison.OrdinalIgnoreCase);
         }
         static AForge.Bitmap CreateAForgeBitmap(
         int width,
@@ -6382,6 +6450,16 @@ namespace BioLib
         }
 
         /// <summary>
+        /// Saves already-processed pyramid levels as an OME-Zarr multiscale
+        /// dataset.
+        /// </summary>
+        public static async Task SaveOMEZarr(BioImage[] bms, string outputDir)
+        {
+            await Zarr.SavePyramidalZarr(bms, outputDir).ConfigureAwait(false);
+            Recorder.Record($"BioImage.SaveOMEZarr(new BioImage[] {{ {string.Join(", ", bms.Select(bm => bm.ToString()))} }}, \"{outputDir}\");");
+        }
+
+        /// <summary>
         /// The function "GetBands" returns the number of color bands for a given pixel format in the
         /// AForge library.
         /// </summary>
@@ -6512,12 +6590,13 @@ namespace BioLib
             foreach (double px in bis.Keys)
             {
                 PixelFormat pf = bis[px][0].Buffers[0].PixelFormat;
-                Bitmap level = new Bitmap(ss[px].Width, ss[px].Height, pf);
                 int bands = GetBands(pf);
-                if (bis[px][0].bitsPerPixel > 8)
-                    img = NetVips.Image.NewFromMemory(level.Data, (ulong)level.Length, level.Width, level.Height, bands, Enums.BandFormat.Ushort);
-                else
-                    img = NetVips.Image.NewFromMemory(level.Data, (ulong)level.Length, level.Width, level.Height, bands, Enums.BandFormat.Uchar);
+                long firstBytes = bis[px][0].Buffers[0].Length;
+                long expected8 = (long)bis[px][0].Buffers[0].Width * bis[px][0].Buffers[0].Height * bands;
+                long expected16 = expected8 * 2;
+                bool levelIs16Bit = firstBytes >= expected16;
+                NetVips.Image canvas = NetVips.Image.Black(ss[px].Width, ss[px].Height, bands: bands);
+                img = levelIs16Bit ? canvas.Cast(Enums.BandFormat.Ushort) : canvas;
                 int i = 0;
                 foreach (BioImage b in bis[px])
                 {
@@ -6526,10 +6605,17 @@ namespace BioLib
                     double xs = (-(min[px].X - bis[px][i].Volume.Location.X) / bis[px][i].Resolutions[0].VolumeWidth) * bis[px][i].SizeX;
                     double ys = (-(min[px].Y - bis[px][i].Volume.Location.Y) / bis[px][i].Resolutions[0].VolumeHeight) * bis[px][i].SizeY;
                     NetVips.Image tile;
-                    if (b.bitsPerPixel > 8)
-                        tile = NetVips.Image.NewFromMemory(bis[px][i].Buffers[0].Data, (ulong)bis[px][i].Buffers[0].Length, bis[px][i].Buffers[0].Width, bis[px][i].Buffers[0].Height, bands, Enums.BandFormat.Ushort);
-                    else
-                        tile = NetVips.Image.NewFromMemory(bis[px][i].Buffers[0].Data, (ulong)bis[px][i].Buffers[0].Length, bis[px][i].Buffers[0].Width, bis[px][i].Buffers[0].Height, bands, Enums.BandFormat.Uchar);
+                    long tileBytes = bis[px][i].Buffers[0].Length;
+                    long tileExpected8 = (long)bis[px][i].Buffers[0].Width * bis[px][i].Buffers[0].Height * bands;
+                    long tileExpected16 = tileExpected8 * 2;
+                    bool tileIs16Bit = tileBytes >= tileExpected16;
+                    tile = NetVips.Image.NewFromMemory(
+                        bis[px][i].Buffers[0].Data,
+                        (ulong)tileBytes,
+                        bis[px][i].Buffers[0].Width,
+                        bis[px][i].Buffers[0].Height,
+                        bands,
+                        tileIs16Bit ? Enums.BandFormat.Ushort : Enums.BandFormat.Uchar);
                     img = img.Insert(tile, (int)xs, (int)ys);
                     i++;
                 };
@@ -6539,7 +6625,7 @@ namespace BioLib
                     mutable.Set(GValue.GStrType, "image-description", met);
                     mutable.Set(GValue.GIntType, "page-height", ss[last].Height);
                 });
-                if (bis[px][0].bitsPerPixel > 8)
+                if (levelIs16Bit)
                     mutated.Tiffsave(file, compression, 1, Enums.ForeignTiffPredictor.None, true, ss[px].Width, ss[px].Height, true, false, 16,
                     Enums.ForeignTiffResunit.Cm, 1000 * bis[px][0].PhysicalSizeX, 1000 * bis[px][0].PhysicalSizeY, true, null, Enums.RegionShrink.Nearest,
                     compressionLevel, true, Enums.ForeignDzDepth.One, true, false, null, null, ss[px].Height);
@@ -7995,6 +8081,67 @@ namespace BioLib
                 }
             }
 
+            int channelCount = GetAxisSize(levelNode, "c", 1);
+            if (channelCount == 3)
+            {
+                try
+                {
+                    var red = await levelNode.ReadTileAsync(
+                        tileOriginX: 0,
+                        tileOriginY: 0,
+                        tileSizeX:   imgW,
+                        tileSizeY:   imgH,
+                        z: safeZ,
+                        c: 0,
+                        t: safeT).ConfigureAwait(false);
+                    var green = await levelNode.ReadTileAsync(
+                        tileOriginX: 0,
+                        tileOriginY: 0,
+                        tileSizeX:   imgW,
+                        tileSizeY:   imgH,
+                        z: safeZ,
+                        c: 1,
+                        t: safeT).ConfigureAwait(false);
+                    var blue = await levelNode.ReadTileAsync(
+                        tileOriginX: 0,
+                        tileOriginY: 0,
+                        tileSizeX:   imgW,
+                        tileSizeY:   imgH,
+                        z: safeZ,
+                        c: 2,
+                        t: safeT).ConfigureAwait(false);
+
+                    if (red != null && green != null && blue != null &&
+                        red.DataType == "uint8" && green.DataType == "uint8" && blue.DataType == "uint8")
+                    {
+                        var rs = red.Shape;
+                        int rgbPlaneW = (int)rs[rs.Length - 1];
+                        int rgbPlaneH = (int)rs[rs.Length - 2];
+                        int pixelCount = rgbPlaneW * rgbPlaneH;
+                        byte[] rgbPixels = new byte[pixelCount * 4];
+                        int copyCount = Math.Min(pixelCount,
+                            Math.Min(red.Data.Length, Math.Min(green.Data.Length, blue.Data.Length)));
+
+                        for (int i = 0; i < copyCount; i++)
+                        {
+                            int d = i * 4;
+                            rgbPixels[d + 0] = blue.Data[i];
+                            rgbPixels[d + 1] = green.Data[i];
+                            rgbPixels[d + 2] = red.Data[i];
+                            rgbPixels[d + 3] = 255;
+                        }
+
+                        var rgbCoord = new ZCT(safeZ, 0, safeT);
+                        var rgbBitmap = new Bitmap("", rgbPlaneW, rgbPlaneH, PixelFormat.Format32bppArgb, rgbPixels, rgbCoord, 0, null, true, true);
+                        return rgbBitmap;
+                    }
+                }
+                catch
+                {
+                    // Fall back to the single-channel path below.
+                }
+            }
+
             // Read the full spatial plane at the chosen z/c/t.
             var plane = await levelNode.ReadTileAsync(
                 tileOriginX: 0,
@@ -8043,14 +8190,6 @@ namespace BioLib
                 int chIdx = Math.Clamp(c, 0, Channels.Count - 1);
                 rMin1 = Channels[chIdx].RangeR.Min;
                 rMax1 = Channels[chIdx].RangeR.Max;
-            }
-            if (fmt == PixelFormat.Format16bppGrayScale && ZarrDisplayMax <= ZarrDisplayMin)
-            {
-                if (TrySeedZarrDisplayRange(pixels, true, planeW, planeH, out ushort displayMin, out ushort displayMax))
-                {
-                    ZarrDisplayMin = displayMin;
-                    ZarrDisplayMax = displayMax;
-                }
             }
             if (fmt == PixelFormat.Format16bppGrayScale &&
                 Filename != null && Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
@@ -8199,107 +8338,272 @@ namespace BioLib
                 // Bug fix: ReadTileAsync parameter order is (x, y, sizeX, sizeY, z, c, t).
                 // Previously T was passed as z and Z as t, which reads the wrong slice on
                 // images with more than one z or t index.
+                int channelCount = GetAxisSize(activeLevels[pyramidLevel], "c", 1);
+                if (channelCount == 3)
+                {
+                    try
+                    {
+                        var red = await activeLevels[pyramidLevel].ReadTileAsync(
+                            tilex, tiley, tileSizeX, tileSizeY,
+                            z: tileCoord.Z,
+                            c: 0,
+                            t: tileCoord.T).ConfigureAwait(false);
+                        var green = await activeLevels[pyramidLevel].ReadTileAsync(
+                            tilex, tiley, tileSizeX, tileSizeY,
+                            z: tileCoord.Z,
+                            c: 1,
+                            t: tileCoord.T).ConfigureAwait(false);
+                        var blue = await activeLevels[pyramidLevel].ReadTileAsync(
+                            tilex, tiley, tileSizeX, tileSizeY,
+                            z: tileCoord.Z,
+                            c: 2,
+                            t: tileCoord.T).ConfigureAwait(false);
+
+                        if (red != null && green != null && blue != null &&
+                            red.DataType == "uint8" && green.DataType == "uint8" && blue.DataType == "uint8")
+                        {
+                            int rgbPlaneW = (int)red.Shape[red.Shape.Length - 1];
+                            int rgbPlaneH = (int)red.Shape[red.Shape.Length - 2];
+                            int pixelCount = rgbPlaneW * rgbPlaneH;
+                            byte[] rgbPixels = new byte[pixelCount * 4];
+                            int copyCount = Math.Min(pixelCount,
+                                Math.Min(red.Data.Length, Math.Min(green.Data.Length, blue.Data.Length)));
+                            for (int i = 0; i < copyCount; i++)
+                            {
+                                int d = i * 4;
+                                rgbPixels[d + 0] = blue.Data[i];
+                                rgbPixels[d + 1] = green.Data[i];
+                                rgbPixels[d + 2] = red.Data[i];
+                                rgbPixels[d + 3] = 255;
+                            }
+
+                            Bitmap rgbBm = new Bitmap(
+                                "",
+                                rgbPlaneW,
+                                rgbPlaneH,
+                                AForge.PixelFormat.Format32bppArgb,
+                                rgbPixels,
+                                tileCoord,
+                                index,
+                                null,
+                                true,
+                                true);
+
+                            if (returnRaw)
+                                return rgbBm;
+
+                            return rgbBm;
+                        }
+                    }
+                    catch
+                    {
+                        // Fall back to the single-channel path below.
+                    }
+                }
+
                 var planef = await activeLevels[pyramidLevel].ReadTileAsync(
                     tilex, tiley, tileSizeX, tileSizeY,
                     z: tileCoord.Z,
                     c: tileCoord.C,
                     t: tileCoord.T);
 
-                PixelFormat fmt;
-                int elementSize;
-
                 if (planef.DataType == "uint16")
                 {
-                    fmt = AForge.PixelFormat.Format16bppGrayScale;
-                    elementSize = 2;
+                    int planeW = (int)planef.Shape[planef.Shape.Length - 1];
+                    int planeH = (int)planef.Shape[planef.Shape.Length - 2];
+                    int srcStride = planeW * 2;
+                    int dstStride = tileSizeX * 2;
+                    byte[] tileData = new byte[tileSizeY * dstStride];
+                    int rMin2 = 0, rMax2 = ushort.MaxValue;
+
+                    if (b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                        b.ZarrDisplayMax > b.ZarrDisplayMin)
+                    {
+                        rMin2 = b.ZarrDisplayMin;
+                        rMax2 = (ushort)b.ZarrDisplayMax;
+                        if (rMax2 <= rMin2)
+                        {
+                            rMin2 = 0;
+                            rMax2 = ushort.MaxValue;
+                        }
+
+                        int copyH = Math.Min(actualH, planeH);
+                        int copyWBytes = Math.Min(actualW, planeW) * 2;
+
+                    for (int row = 0; row < copyH; row++)
+                    {
+                        int srcRow = row * srcStride;
+                        int dstRow = row * dstStride;
+                        Buffer.BlockCopy(
+                                planef.Data,
+                                srcRow,
+                                tileData,
+                                dstRow,
+                            Math.Min(copyWBytes, dstStride));
+                    }
+
+                    if (returnRaw)
+                    {
+                        Bitmap bm = new Bitmap(
+                            "",
+                            tileSizeX,
+                            tileSizeY,
+                            AForge.PixelFormat.Format16bppGrayScale,
+                            tileData,
+                            tileCoord,
+                            index,
+                            null,
+                            true,
+                            true);
+                        return bm;
+                    }
+
+                    byte[] bgra = new byte[tileSizeX * tileSizeY * 4];
+                    float scale = rMax2 > rMin2 ? 255f / (rMax2 - rMin2) : 1f;
+                    int pixels = tileSizeX * tileSizeY;
+                    int srcPixelCount = Math.Min(pixels, tileData.Length / 2);
+                    for (int i = 0; i < srcPixelCount; i++)
+                    {
+                        int s = i * 2;
+                        ushort v = (ushort)(tileData[s] | (tileData[s + 1] << 8));
+                        byte g = (byte)System.Math.Clamp((v - rMin2) * scale, 0f, 255f);
+                        int d = i * 4;
+                        bgra[d + 0] = g;
+                        bgra[d + 1] = g;
+                        bgra[d + 2] = g;
+                        bgra[d + 3] = 255;
+                    }
+
+                    return new Bitmap(
+                        "",
+                        tileSizeX,
+                        tileSizeY,
+                        AForge.PixelFormat.Format32bppArgb,
+                        bgra,
+                        tileCoord,
+                        index,
+                        null,
+                        true,
+                        true);
+                }
+
+                int copyH2 = Math.Min(actualH, planeH);
+                int copyWBytes2 = Math.Min(actualW, planeW) * 2;
+
+                    for (int row = 0; row < copyH2; row++)
+                    {
+                        int srcRow = row * srcStride;
+                        int dstRow = row * dstStride;
+                        Buffer.BlockCopy(
+                            planef.Data,
+                            srcRow,
+                            tileData,
+                            dstRow,
+                            Math.Min(copyWBytes2, dstStride));
+                    }
+
+                    if (returnRaw)
+                    {
+                        Bitmap bm2 = new Bitmap(
+                            "",
+                            tileSizeX,
+                            tileSizeY,
+                            AForge.PixelFormat.Format16bppGrayScale,
+                            tileData,
+                            tileCoord,
+                            index,
+                            null,
+                            true,
+                            true);
+                        return bm2;
+                    }
+
+                    byte[] bgra2 = new byte[tileSizeX * tileSizeY * 4];
+                    float scale2 = rMax2 > rMin2 ? 255f / (rMax2 - rMin2) : 1f;
+                    int pixels2 = tileSizeX * tileSizeY;
+                    int srcPixelCount2 = Math.Min(pixels2, tileData.Length / 2);
+                    for (int i = 0; i < srcPixelCount2; i++)
+                    {
+                        int s = i * 2;
+                        ushort v = (ushort)(tileData[s] | (tileData[s + 1] << 8));
+                        byte g = (byte)System.Math.Clamp((v - rMin2) * scale2, 0f, 255f);
+                        int d = i * 4;
+                        bgra2[d + 0] = g;
+                        bgra2[d + 1] = g;
+                        bgra2[d + 2] = g;
+                        bgra2[d + 3] = 255;
+                    }
+
+                    return new Bitmap(
+                        "",
+                        tileSizeX,
+                        tileSizeY,
+                        AForge.PixelFormat.Format32bppArgb,
+                        bgra2,
+                        tileCoord,
+                        index,
+                        null,
+                        true,
+                        true);
                 }
                 else if (planef.DataType == "uint8")
                 {
-                    fmt = AForge.PixelFormat.Format8bppIndexed;
-                    elementSize = 1;
+                    PixelFormat fmt = AForge.PixelFormat.Format8bppIndexed;
+                    int elementSize = 1;
+                    int dstStride = tileSizeX * elementSize;
+                    int planeW = (int)planef.Shape[planef.Shape.Length - 1];
+                    int planeH = (int)planef.Shape[planef.Shape.Length - 2];
+                    int srcStride = planeW * elementSize;
+
+                    byte[] tileData = new byte[tileSizeY * dstStride];
+                    int copyH = Math.Min(actualH, planeH);
+                    int copyRowBytes = Math.Min(srcStride, dstStride);
+
+                    if (copyRowBytes > 0 && copyH > 0)
+                    {
+                        for (int row = 0; row < copyH; row++)
+                        {
+                            Buffer.BlockCopy(
+                                planef.Data,
+                                row * srcStride,
+                                tileData,
+                                row * dstStride,
+                                copyRowBytes);
+                        }
+                    }
+
+                    Bitmap bm = new Bitmap(
+                        "",
+                        tileSizeX,
+                        tileSizeY,
+                        fmt,
+                        tileData,
+                    tileCoord,
+                    index,
+                    null,
+                    true,
+                    true);
+                    if (returnRaw)
+                        return bm;
+
+                    int rMin2 = 0, rMax2 = 0;
+                    if (b.Channels.Count > 0)
+                    {
+                        int chIdx = Math.Clamp(b.Coordinate.C, 0, b.Channels.Count - 1);
+                        rMin2 = b.Channels[chIdx].RangeR.Min;
+                        rMax2 = b.Channels[chIdx].RangeR.Max;
+                    }
+                    if (rMin2 >= rMax2)
+                    {
+                        rMin2 = 0;
+                        rMax2 = byte.MaxValue;
+                    }
+                    return RangedRGBA(bm, rMin2, rMax2);
                 }
                 else
                 {
                     throw new NotSupportedException(planef.DataType + " is not supported.");
                 }
-
-                int dstStride = tileSizeX * elementSize;
-                // Bug fix: derive the actual width/height from the Shape returned by the
-                // zarr reader rather than the locally-computed actualW/actualH. These can
-                // differ when zarr chunk boundaries don't align with the schema tile
-                // boundaries, causing a stride mismatch that shifts every row after the
-                // first and produces vertical banding on edge tiles.
-                // Shape axes are (..., y, x) — last two axes are always spatial.
-                int planeW = (int)planef.Shape[planef.Shape.Length - 1];
-                int planeH = (int)planef.Shape[planef.Shape.Length - 2];
-                int srcStride = planeW * elementSize;
-
-                // Always allocate padded tile buffer
-                byte[] tileData = new byte[tileSizeY * dstStride];
-
-                int copyH = Math.Min(actualH, planeH);
-                int copyRowBytes = Math.Min(srcStride, dstStride);
-
-                if (copyRowBytes > 0 && copyH > 0)
-                {
-                    for (int row = 0; row < copyH; row++)
-                    {
-                        Buffer.BlockCopy(
-                            planef.Data,
-                            row * srcStride,
-                            tileData,
-                            row * dstStride,
-                            copyRowBytes);
-                    }
-                }
-
-                Bitmap bm = new Bitmap(
-                    "",
-                    tileSizeX,
-                    tileSizeY,
-                    fmt,
-                    tileData,
-                    tileCoord,
-                    index,
-                    null,
-                    true,
-                    false);
-
-                if (returnRaw)
-                    return bm;
-
-                if (fmt == AForge.PixelFormat.Format16bppGrayScale && b.ZarrDisplayMax <= b.ZarrDisplayMin)
-                {
-                    if (TrySeedZarrDisplayRange(tileData, true, tileSizeX, tileSizeY, out ushort displayMin, out ushort displayMax))
-                    {
-                        b.ZarrDisplayMin = displayMin;
-                        b.ZarrDisplayMax = displayMax;
-                    }
-                }
-
-                // Use the channel's display range if set; otherwise fall back to the
-                // full bit-depth range so every tile is normalised identically and
-                // no seams appear between tiles.
-                int rMin2 = 0, rMax2 = 0;
-                if (b.Channels.Count > 0)
-                {
-                    int chIdx = Math.Clamp(b.Coordinate.C, 0, b.Channels.Count - 1);
-                    rMin2 = b.Channels[chIdx].RangeR.Min;
-                    rMax2 = b.Channels[chIdx].RangeR.Max;
-                }
-                if (rMin2 >= rMax2)
-                {
-                    rMin2 = 0;
-                    rMax2 = fmt == AForge.PixelFormat.Format16bppGrayScale ? ushort.MaxValue : byte.MaxValue;
-                }
-                if (fmt == AForge.PixelFormat.Format16bppGrayScale &&
-                    b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                    b.ZarrDisplayMax > b.ZarrDisplayMin)
-                {
-                    rMin2 = b.ZarrDisplayMin;
-                    rMax2 = b.ZarrDisplayMax;
-                }
-                return RangedRGBA(bm, rMin2, rMax2);
             }
             if (b.Tag != null)
             {
@@ -8335,38 +8639,32 @@ namespace BioLib
             //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
             if (b.openSlideImage != null)
             {
-                byte[] bts = b.openSlideImage.ReadRegion(level, tilex, tiley, tileSizeX, tileSizeY);
-                if (b.IsEmpty(bts) && b.Resolutions.Count > level - 1)
-                {
-                    bts = b.openSlideImage.ReadRegion(level - 1, tilex, tiley, b.Resolutions[level - 1].SizeX, b.Resolutions[level - 1].SizeY);
-                    Bitmap bm = new Bitmap("", b.Resolutions[level - 1].SizeX, b.Resolutions[level - 1].SizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0);
-                    if (returnRaw)
-                        return bm;
+                double downsample = b.GetLevelDownsample(level);
+                long level0X = (long)Math.Round(tilex * downsample);
+                long level0Y = (long)Math.Round(tiley * downsample);
+
+                byte[] bts = b.openSlideImage.ReadRegion(level, level0X, level0Y, tileSizeX, tileSizeY);
+                Bitmap bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0);
+                if (returnRaw)
                     return bm;
-                }
-                else
-                {
-                    Bitmap bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0);
-                    if (returnRaw)
-                        return bm;
-                    return bm;
-                }
+                return bm;
             }
 
             try
             {
-                lock (b.imRead)
-                {
-                    if (b.imRead == null)
-                        return null;
+                var imRead = b.imRead;
+                if (imRead == null)
+                    return null;
 
-                    if (b.imRead.getSeries() != level)
-                        b.imRead.setSeries(level);
-                    int SizeX = b.imRead.getSizeX();
-                    int SizeY = b.imRead.getSizeY();
-                    bool flat = b.imRead.hasFlattenedResolutions();
-                    bool littleEndian = b.imRead.isLittleEndian();
-                    bool interleaved = b.imRead.isInterleaved();
+                lock (imRead)
+                {
+                    if (imRead.getSeries() != level)
+                        imRead.setSeries(level);
+                    int SizeX = imRead.getSizeX();
+                    int SizeY = imRead.getSizeY();
+                    bool flat = imRead.hasFlattenedResolutions();
+                    bool littleEndian = imRead.isLittleEndian();
+                    bool interleaved = imRead.isInterleaved();
                     PixelFormat PixelFormat = b.Resolutions[level].PixelFormat;
                     if (tilex < 0)
                         tilex = 0;
@@ -8389,32 +8687,29 @@ namespace BioLib
                         return null;
                     byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
                 var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, true);
-                    if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale && b.ZarrDisplayMax <= b.ZarrDisplayMin)
-                    {
-                        if (TrySeedZarrDisplayRange(bytesr, littleEndian, sx, sy, out ushort displayMin, out ushort displayMax))
-                        {
-                            b.ZarrDisplayMin = displayMin;
-                            b.ZarrDisplayMax = displayMax;
-                        }
-                    }
                     int rMin3 = 0, rMax3 = 0;
-                    if (b.Channels.Count > 0)
-                    {
-                        int chIdx3 = Math.Clamp(index % Math.Max(1, b.Channels.Count), 0, b.Channels.Count - 1);
-                        rMin3 = b.Channels[chIdx3].RangeR.Min;
-                        rMax3 = b.Channels[chIdx3].RangeR.Max;
-                    }
-                    if (rMin3 >= rMax3)
-                    {
-                        rMin3 = 0;
-                        rMax3 = PixelFormat == AForge.PixelFormat.Format16bppGrayScale ? ushort.MaxValue : byte.MaxValue;
-                    }
                     if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale &&
                         b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
                         b.ZarrDisplayMax > b.ZarrDisplayMin)
                     {
                         rMin3 = b.ZarrDisplayMin;
                         rMax3 = b.ZarrDisplayMax;
+                    }
+                    else if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale)
+                    {
+                        rMin3 = 0;
+                        rMax3 = ushort.MaxValue;
+                    }
+                    else if (b.Channels.Count > 0)
+                    {
+                        int chIdx3 = Math.Clamp(index % Math.Max(1, b.Channels.Count), 0, b.Channels.Count - 1);
+                        rMin3 = b.Channels[chIdx3].RangeR.Min;
+                        rMax3 = b.Channels[chIdx3].RangeR.Max;
+                        if (rMin3 >= rMax3)
+                        {
+                            rMin3 = 0;
+                            rMax3 = byte.MaxValue;
+                        }
                     }
                     return RangedRGBA(raw, rMin3, rMax3);
                 }
@@ -8485,23 +8780,11 @@ namespace BioLib
                     c: tileCoord.C,
                     t: tileCoord.T).ConfigureAwait(false);
 
-                if (s_debugZarrRawTileLogs < 12)
+                if (planef == null || planef.Data == null)
                 {
-                    try
-                    {
-                        System.IO.File.AppendAllText(
-                            "log.txt",
-                            "[GetTileBytesRaw Zarr] " +
-                            $"file={Filename} level={level} pyramid={pyramidLevel} " +
-                            $"x={tilex} y={tiley} w={tileSizeX} h={tileSizeY} " +
-                            $"coord={tileCoord.Z},{tileCoord.C},{tileCoord.T} " +
-                            $"dtype={planef.DataType} len={planef.Data?.Length ?? 0}" +
-                            Environment.NewLine);
-                    }
-                    catch
-                    {
-                    }
-                    s_debugZarrRawTileLogs++;
+                    int fallbackBytes = tileSizeX * tileSizeY *
+                        ((Resolutions[Math.Clamp(pyramidLevel, 0, Resolutions.Count - 1)].PixelFormat == AForge.PixelFormat.Format16bppGrayScale) ? 2 : 1);
+                    return new byte[fallbackBytes];
                 }
 
                 return planef.Data;
@@ -9472,7 +9755,7 @@ namespace BioLib
                 fixed (byte* srcBytes = sourceBitmap.Bytes)
                 {
                     byte* dst = (byte*)skBitmap.GetPixels().ToPointer();
-                    bool swap = sourceBitmap.LittleEndian;
+                    bool swap = !sourceBitmap.LittleEndian;
 
                     if (isGray)
                     {

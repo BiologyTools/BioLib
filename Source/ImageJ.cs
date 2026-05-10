@@ -8,6 +8,8 @@ using System.IO;
 using CSScripting;
 using Gtk;
 using AForge;
+using ZarrNET.Core;
+using ZarrNET.Core.OmeZarr.Metadata;
 namespace BioLib
 {
     public static class ImageJ
@@ -171,9 +173,10 @@ namespace BioLib
                 "File.saveString(\"done\", dir + \"/done.txt\");";
             Console.WriteLine($"[ImageJ.RunOnImage] inputFile={file}");
             RunString(bi,st, dir + "/" + bi.ID, headless);
-            if (!File.Exists(file))
+            string sourcePath = bioformats ? file : inputPath;
+            if (!File.Exists(sourcePath))
             {
-                Console.WriteLine($"[ImageJ.RunOnImage] input file missing after run: {file}");
+                Console.WriteLine($"[ImageJ.RunOnImage] input file missing after run: {sourcePath}");
                 return;
             }
 
@@ -261,78 +264,100 @@ namespace BioLib
 
             BioImage pyrlevel = BioImage.CopyInfo(b, true, true);
             Resolution res = pyrlevel.Resolutions[level];
+            int schemaWidth = 0;
+            int schemaHeight = 0;
+            double schemaUnitsPerPixel = res.PhysicalSizeX;
+            if (b.OpenSlideBase?.Schema?.Resolutions != null && b.OpenSlideBase.Schema.Resolutions.Count > level)
+            {
+                var schemaRes = b.OpenSlideBase.Schema.Resolutions[level];
+                schemaWidth = GetIntProperty(schemaRes, "Width", "SizeX");
+                schemaHeight = GetIntProperty(schemaRes, "Height", "SizeY");
+                schemaUnitsPerPixel = schemaRes.UnitsPerPixel;
+            }
+            else if (b.SlideBase?.Schema?.Resolutions != null && b.SlideBase.Schema.Resolutions.Count > level)
+            {
+                var schemaRes = b.SlideBase.Schema.Resolutions[level];
+                schemaWidth = GetIntProperty(schemaRes, "Width", "SizeX");
+                schemaHeight = GetIntProperty(schemaRes, "Height", "SizeY");
+                schemaUnitsPerPixel = schemaRes.UnitsPerPixel;
+            }
 
-            int width = res.SizeX > 0 ? res.SizeX : b.SizeX;
-            int height = res.SizeY > 0 ? res.SizeY : b.SizeY;
+            int width = schemaWidth > 0 ? schemaWidth : (res.SizeX > 0 ? res.SizeX : b.SizeX);
+            int height = schemaHeight > 0 ? schemaHeight : (res.SizeY > 0 ? res.SizeY : b.SizeY);
             if (width <= 0 || height <= 0)
                 return null;
 
-            int total = b.SizeZ * b.SizeC * b.SizeT;
-            Bitmap[] results = new Bitmap[total];
+            if (level < pyrlevel.Resolutions.Count)
+            {
+                Resolution fixedRes = pyrlevel.Resolutions[level];
+                fixedRes.SizeX = width;
+                fixedRes.SizeY = height;
+                fixedRes.PhysicalSizeX = res.PhysicalSizeX;
+                fixedRes.PhysicalSizeY = res.PhysicalSizeY;
+                fixedRes.PhysicalSizeZ = res.PhysicalSizeZ;
+                fixedRes.StageSizeX = res.StageSizeX;
+                fixedRes.StageSizeY = res.StageSizeY;
+                fixedRes.StageSizeZ = res.StageSizeZ;
+                pyrlevel.Resolutions[level] = fixedRes;
+            }
 
-            // Tune this. Start conservative if GetTile uses shared readers internally.
-            int maxDegreeOfParallelism = Math.Max(1, Math.Min(Environment.ProcessorCount, 8));
-            using SemaphoreSlim throttler = new SemaphoreSlim(maxDegreeOfParallelism, maxDegreeOfParallelism);
+            pyrlevel.PyramidalOrigin = new PointD(0, 0);
+            pyrlevel.PyramidalSize = new AForge.Size(width, height);
+            pyrlevel.Resolution = schemaUnitsPerPixel;
+            pyrlevel.Level = level;
 
-            List<Task> tasks = new List<Task>(total);
-            int slot = 0;
-
+            pyrlevel.Buffers.Clear();
             for (int t = 0; t < b.SizeT; t++)
             {
                 for (int c = 0; c < b.SizeC; c++)
                 {
                     for (int z = 0; z < b.SizeZ; z++)
                     {
-                        int localT = t;
-                        int localC = c;
-                        int localZ = z;
-                        int localSlot = slot++;
+                        int index = b.GetFrameIndex(z, c, t);
+                        if (index < 0)
+                            continue;
 
-                        tasks.Add(Task.Run(async () =>
-                        {
-                            await throttler.WaitAsync().ConfigureAwait(false);
-                            try
-                            {
-                                int index = pyrlevel.GetFrameIndex(localZ, localC, localT);
+                        var tile = await b.GetTile(
+                            index, level,
+                            0, 0, width, height,
+                            new AForge.ZCT(z, c, t),
+                            true).ConfigureAwait(false);
 
-                                Bitmap tile = await pyrlevel.GetTile(
-                                    index,
-                                    level,
-                                    0,
-                                    0,
-                                    width,
-                                    height,
-                                    new ZCT(localZ, localC, localT),
-                                    true).ConfigureAwait(false);
-
-                                if (tile != null)
-                                    tile.Stats = Statistics.FromBytes(tile);
-
-                                results[localSlot] = tile;
-                            }
-                            finally
-                            {
-                                throttler.Release();
-                            }
-                        }));
+                        if (tile != null)
+                            pyrlevel.Buffers.Add(tile);
                     }
                 }
             }
 
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-
-            pyrlevel.Buffers.Clear();
-            pyrlevel.Buffers.Capacity = Math.Max(pyrlevel.Buffers.Capacity, total);
-
-            for (int i = 0; i < results.Length; i++)
-            {
-                if (results[i] == null)
-                    return null;
-
-                pyrlevel.Buffers.Add(results[i]);
-            }
+            if (pyrlevel.Buffers.Count == 0)
+                return null;
 
             return pyrlevel;
+        }
+
+        private static int GetIntProperty(object obj, params string[] names)
+        {
+            if (obj == null)
+                return 0;
+
+            foreach (string name in names)
+            {
+                var prop = obj.GetType().GetProperty(name);
+                if (prop == null)
+                    continue;
+
+                object value = prop.GetValue(obj);
+                if (value == null)
+                    continue;
+
+                if (value is int i)
+                    return i;
+
+                if (int.TryParse(value.ToString(), out int parsed))
+                    return parsed;
+            }
+
+            return 0;
         }
 
         /// <summary>
@@ -362,6 +387,30 @@ namespace BioLib
                 return null;
             }
 
+            bool useTiledFallback = ShouldUseTiledFallback(levelImage);
+            if (useTiledFallback)
+            {
+                Console.WriteLine("[ImageJ.RunOnPyramidalImageInternal] using tiled fallback for large pyramid level");
+                try
+                {
+                    BioImage tiled = await RunOnPyramidalLevelTiled(levelImage, b, con, level, headless, resultInNewTab).ConfigureAwait(false);
+                    if (record)
+                        Recorder.Record($"ImageJ.RunOnPyramidalImage({b}, \"{con}\", {level}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
+                    return tiled;
+                }
+                finally
+                {
+                    try
+                    {
+                        if (Directory.Exists(tempZarr))
+                            Directory.Delete(tempZarr, true);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
             string tempPath = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".ome.tif");
             if (File.Exists(tempPath))
                 File.Delete(tempPath);
@@ -373,17 +422,23 @@ namespace BioLib
 
             try
             {
-                string outputStem = Path.GetFileNameWithoutExtension(tempPath) + "-result";
-                Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] outputStem={outputStem}");
-                lastRunOutput = null;
-                RunOnImage(levelImage, con, level ,headless, onTab, bioformats, resultInNewTab, outputStem);
-                string fn = outputStem + (bioformats ? ".ome.tif" : ".tif");
-                BioImage bm = lastRunOutput ?? Images.GetImage(fn);
-                if (bm == null && bioformats)
-                    bm = Images.GetImage(outputStem + ".tif");
+                Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] dispatching level image through IKVM/ImagePlus runner");
+                BioImage bm = Fiji.RunOnImageInProcess(levelImage, con, headless, true, resultInNewTab);
                 if (bm != null && bm.Resolutions.Count > 0 && levelImage.Resolutions.Count > 0)
                 {
                     Resolution srcRes = levelImage.Resolutions[0];
+                    if (bm.Buffers.Count > 0 && bm.Buffers[0].PixelFormat != srcRes.PixelFormat)
+                    {
+                        Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] normalizing {bm.Buffers[0].PixelFormat} -> {srcRes.PixelFormat}");
+                        if (srcRes.PixelFormat == AForge.PixelFormat.Format8bppIndexed)
+                            bm.To8Bit();
+                        else if (srcRes.PixelFormat == AForge.PixelFormat.Format16bppGrayScale)
+                            bm.To16Bit();
+                        else if (srcRes.PixelFormat == AForge.PixelFormat.Format24bppRgb)
+                            bm.To24Bit();
+                        else if (srcRes.PixelFormat == AForge.PixelFormat.Format48bppRgb)
+                            bm.To48Bit();
+                    }
                     Resolution outRes = bm.Resolutions[0];
                     outRes.PixelFormat = srcRes.PixelFormat;
                     outRes.PhysicalSizeX = srcRes.PhysicalSizeX;
@@ -395,7 +450,7 @@ namespace BioLib
                     bm.Resolutions[0] = outRes;
                     bm.Volume = levelImage.Volume;
                 }
-                Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] lookup fn={fn} result={(bm == null ? "null" : bm.ID)}");
+                Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] result={(bm == null ? "null" : bm.ID)}");
                 if (record)
                     Recorder.Record($"ImageJ.RunOnPyramidalImage({b}, \"{con}\", {level}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
                 return bm;
@@ -413,6 +468,191 @@ namespace BioLib
                 {
                 }
             }
+        }
+
+        private static bool ShouldUseTiledFallback(BioImage levelImage)
+        {
+            if (levelImage == null || levelImage.Buffers == null || levelImage.Buffers.Count == 0)
+                return false;
+
+            var fmt = levelImage.Buffers[0].PixelFormat;
+            if (fmt != PixelFormat.Format8bppIndexed && fmt != PixelFormat.Format16bppGrayScale)
+                return false;
+
+            long estimatedBytes = (long)Math.Max(1, levelImage.SizeX) * Math.Max(1, levelImage.SizeY)
+                * Math.Max(1, levelImage.SizeZ) * Math.Max(1, levelImage.SizeC) * Math.Max(1, levelImage.SizeT)
+                * (fmt == PixelFormat.Format16bppGrayScale ? 2L : 1L);
+            return estimatedBytes > 256L * 1024L * 1024L;
+        }
+
+        private static async Task<BioImage> RunOnPyramidalLevelTiled(BioImage levelImage, BioImage source, string con, int level, bool headless, bool resultInNewTab)
+        {
+            if (levelImage == null || levelImage.Buffers.Count == 0)
+                return null;
+
+            int width = levelImage.SizeX;
+            int height = levelImage.SizeY;
+            if (width <= 0 || height <= 0)
+                return null;
+
+            string tempDir = Path.GetDirectoryName(Environment.ProcessPath);
+            string tempLevelZarr = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + "-level.zarr");
+            if (Directory.Exists(tempLevelZarr))
+                Directory.Delete(tempLevelZarr, true);
+            if (File.Exists(tempLevelZarr))
+                File.Delete(tempLevelZarr);
+
+            int bytesPerSample = levelImage.Buffers[0].PixelFormat == PixelFormat.Format16bppGrayScale ? 2 : 1;
+            int planeCount = Math.Max(1, levelImage.SizeZ * levelImage.SizeC * levelImage.SizeT);
+            (int tileW, int tileH) = GetLargestSafeTileSize(width, height, bytesPerSample, planeCount);
+            var coord = new ZarrNET.Core.ZCT(levelImage.SizeZ, levelImage.SizeC, levelImage.SizeT);
+            var baseDescriptor = new BioImageDescriptor(width, height, coord)
+            {
+                Name = Path.GetFileNameWithoutExtension(levelImage.Filename),
+                DataType = bytesPerSample == 2 ? "uint16" : "uint8",
+                PhysicalSizeX = levelImage.PhysicalSizeX,
+                PhysicalSizeY = levelImage.PhysicalSizeY,
+                PhysicalSizeZ = levelImage.PhysicalSizeZ,
+                ChunkX = Math.Max(1, tileW),
+                ChunkY = Math.Max(1, tileH),
+            };
+            var levelDescriptors = new List<ResolutionLevelDescriptor> { new ResolutionLevelDescriptor(width, height, 1.0) };
+            var writer = await OmeZarrWriter.CreateAsync(tempLevelZarr, baseDescriptor, levelDescriptors).ConfigureAwait(false);
+            try
+            {
+                long totalTiles = Math.Max(1L, ((width + tileW - 1) / tileW) * ((height + tileH - 1) / tileH) * Math.Max(1, levelImage.SizeZ) * Math.Max(1, levelImage.SizeC) * Math.Max(1, levelImage.SizeT));
+                long writtenTiles = 0;
+
+                for (int tileY = 0; tileY < height; tileY += tileH)
+                {
+                    for (int tileX = 0; tileX < width; tileX += tileW)
+                    {
+                        int actualW = Math.Min(tileW, width - tileX);
+                        int actualH = Math.Min(tileH, height - tileY);
+
+                        BioImage tileInput = BioImage.CopyInfo(source, true, true);
+                        tileInput.Buffers.Clear();
+                        tileInput.UpdateCoords(source.SizeZ, source.SizeC, source.SizeT);
+                        tileInput.Resolutions.Clear();
+                        tileInput.Resolutions.Add(new Resolution(actualW, actualH, source.Buffers[0].PixelFormat, source.PhysicalSizeX, source.PhysicalSizeY, source.PhysicalSizeZ, source.StageSizeX, source.StageSizeY, source.StageSizeZ));
+
+                        for (int t = 0; t < source.SizeT; t++)
+                        {
+                            for (int c = 0; c < source.SizeC; c++)
+                            {
+                                for (int z = 0; z < source.SizeZ; z++)
+                                {
+                                    int index = source.GetFrameIndex(z, c, t);
+                                    if (index < 0)
+                                        continue;
+
+                                    Bitmap tile = await source.GetTile(
+                                        index, level,
+                                        tileX, tileY, actualW, actualH,
+                                        new AForge.ZCT(z, c, t),
+                                        true).ConfigureAwait(false);
+                                    if (tile != null)
+                                        tileInput.Buffers.Add(tile);
+                                }
+                            }
+                        }
+
+                        if (tileInput.Buffers.Count == 0)
+                            continue;
+
+                        BioImage processed = Fiji.RunOnImageInProcess(tileInput, con, headless, true, resultInNewTab);
+                        if (processed == null || processed.Buffers.Count == 0)
+                            continue;
+
+                        int outIndex = 0;
+                        for (int t = 0; t < processed.SizeT; t++)
+                        {
+                            for (int c = 0; c < processed.SizeC; c++)
+                            {
+                                for (int z = 0; z < processed.SizeZ; z++)
+                                {
+                                    if (outIndex >= processed.Buffers.Count)
+                                        continue;
+
+                                    await Zarr.WriteTileFromBuffer(
+                                        writer,
+                                        processed.Buffers[outIndex],
+                                        levelDescriptors[0],
+                                        t, c, z,
+                                        tileX, tileY,
+                                        processed.Buffers[outIndex].PixelFormat == PixelFormat.Format16bppGrayScale ? 2 : 1,
+                                        levelIndex: 0).ConfigureAwait(false);
+                                    outIndex++;
+                                    writtenTiles++;
+                                    BioImage.Progress = (float)(writtenTiles * 100.0 / totalTiles);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                try
+                {
+                    await writer.DisposeAsync().ConfigureAwait(false);
+                }
+                catch
+                {
+                }
+            }
+
+            return await BioImage.OpenFileAsync(tempLevelZarr, 0, false, false).ConfigureAwait(false);
+        }
+
+        private static (int tileW, int tileH) GetLargestSafeTileSize(int width, int height, int bytesPerSample, int planeCount)
+        {
+            const long maxTileBytes = 128L * 1024L * 1024L;
+            if (width <= 0 || height <= 0)
+                return (1, 1);
+
+            long bytesPerPixelAllPlanes = Math.Max(1L, (long)bytesPerSample * planeCount);
+
+            (int w, int h) best = (1, 1);
+            long bestArea = 1;
+
+            void Consider(int candidateW, int candidateH)
+            {
+                candidateW = Math.Max(1, Math.Min(width, candidateW));
+                candidateH = Math.Max(1, Math.Min(height, candidateH));
+                long bytes = (long)candidateW * candidateH * bytesPerPixelAllPlanes;
+                if (bytes > maxTileBytes)
+                    return;
+
+                long area = (long)candidateW * candidateH;
+                if (area > bestArea)
+                {
+                    best = (candidateW, candidateH);
+                    bestArea = area;
+                }
+            }
+
+            long maxHeightForFullWidth = maxTileBytes / Math.Max(1L, (long)width * bytesPerPixelAllPlanes);
+            if (maxHeightForFullWidth > 0)
+                Consider(width, (int)Math.Min(height, maxHeightForFullWidth));
+
+            long maxWidthForFullHeight = maxTileBytes / Math.Max(1L, (long)height * bytesPerPixelAllPlanes);
+            if (maxWidthForFullHeight > 0)
+                Consider((int)Math.Min(width, maxWidthForFullHeight), height);
+
+            long pixelsBudget = Math.Max(1L, maxTileBytes / bytesPerPixelAllPlanes);
+            int square = Math.Max(1, (int)Math.Min(Math.Min(width, height), Math.Sqrt(pixelsBudget)));
+            for (int delta = 0; delta < 8; delta++)
+            {
+                int candidateW = Math.Max(1, Math.Min(width, square + delta));
+                int candidateH = Math.Max(1, (int)Math.Min(height, pixelsBudget / candidateW));
+                Consider(candidateW, candidateH);
+            }
+
+            if (bestArea > 1)
+                return best;
+
+            return (1, Math.Max(1, (int)Math.Min(height, pixelsBudget)));
         }
 
         /// <summary>
@@ -453,11 +693,11 @@ namespace BioLib
                 return null;
 
             string tempDir = Path.GetDirectoryName(Environment.ProcessPath);
-            string tempFile = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + "-pyr.ome.tif");
-            BioImage.SaveOMEPyramidal(results.ToArray(), tempFile, NetVips.Enums.ForeignTiffCompression.None, 0);
+            string tempFile = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + "-pyr.zarr");
+            await BioImage.SaveOMEZarr(results.ToArray(), tempFile).ConfigureAwait(false);
 
             BioImage pyramidal = await BioImage.OpenFileAsync(tempFile, 0, false, false).ConfigureAwait(false);
-            Recorder.Record($"ImageJ.RunOnImage({b}, \"{con}\", {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
+            Recorder.Record($"ImageJ.RunOnAllPyramidLevels({b}, \"{con}\", {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
             return pyramidal;
         }
 
@@ -488,7 +728,7 @@ namespace BioLib
         {
             if (b != null && b.isPyramidal)
             {
-                RunOnPyramidalImage(b, con, b.Level, headless, onTab, bioformats, resultInNewTab).Wait();
+                RunOnAllPyramidLevels(b, con, headless, onTab, bioformats, resultInNewTab).Wait();
                 return;
             }
             RunOnImage(b, con,0,headless,onTab,bioformats,resultInNewTab);
