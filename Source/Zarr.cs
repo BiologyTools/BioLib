@@ -162,22 +162,38 @@ namespace BioLib
             // ------------------------------------------------------------------
 
             var levelDescriptors = new List<ResolutionLevelDescriptor>();
-                for (int lvl = 0; lvl < b.Resolutions.Count; lvl++)
-                {
-                    var res        = b.Resolutions[lvl];
-                    double dsample = b.GetLevelDownsample(lvl);   // 1.0 for level 0
-                    levelDescriptors.Add(new ResolutionLevelDescriptor(res.SizeX, res.SizeY, dsample));
-                    Log($"[SaveZarr] level={lvl} size={res.SizeX}x{res.SizeY} downsample={dsample}");
-                }
+            int lastSizeX = int.MaxValue;
+            int lastSizeY = int.MaxValue;
+            bool haveLast = false;
+            var basePixelFormat = b.Resolutions.Count > 0 ? b.Resolutions[0].PixelFormat : DetermineSourcePixelFormat(b);
+
+            for (int lvl = 0; lvl < b.Resolutions.Count; lvl++)
+            {
+                var res = b.Resolutions[lvl];
+                if (res.SizeX <= 0 || res.SizeY <= 0)
+                    continue;
+
+                if (haveLast && res.PixelFormat != basePixelFormat)
+                    break;
+
+                if (haveLast && (res.SizeX > lastSizeX || res.SizeY > lastSizeY))
+                    break;
+
+                if (haveLast && res.SizeX == lastSizeX && res.SizeY == lastSizeY)
+                    continue;
+
+                double dsample = b.GetLevelDownsample(lvl);
+                if (!double.IsFinite(dsample) || dsample <= 0)
+                    dsample = 1.0;
+
+                levelDescriptors.Add(new ResolutionLevelDescriptor(res.SizeX, res.SizeY, dsample));
+                Log($"[SaveZarr] level={lvl} size={res.SizeX}x{res.SizeY} downsample={dsample} fmt={res.PixelFormat}");
+                lastSizeX = res.SizeX;
+                lastSizeY = res.SizeY;
+                haveLast = true;
+            }
 
             // Fallback: if there is somehow no Resolutions list, use the image dims.
-            if (levelDescriptors.Count == 0)
-                levelDescriptors.Add(new ResolutionLevelDescriptor(b.SizeX, b.SizeY, 1.0));
-
-            // ------------------------------------------------------------------
-            // 3. Build the base descriptor (T/C/Z/dtype — shared by all levels)
-            // ------------------------------------------------------------------
-
             var coord = new ZarrNET.Core.ZCT(b.SizeZ, totalChannels, b.SizeT);
 
             var baseDescriptor = new BioImageDescriptor(b.SizeX, b.SizeY, coord)
@@ -301,29 +317,38 @@ namespace BioLib
             BioImage.Status = "Preparing pyramid Zarr writer";
 
             var levelDescriptors = new List<ResolutionLevelDescriptor>();
-            for (int lvl = 0; lvl < levels.Length; lvl++)
+            int lastSizeX = int.MaxValue;
+            int lastSizeY = int.MaxValue;
+            bool haveLast = false;
+            var basePixelFormat = root.Resolutions.Count > 0 ? root.Resolutions[0].PixelFormat : DetermineSourcePixelFormat(root);
+
+            for (int lvl = 0; lvl < root.Resolutions.Count; lvl++)
             {
-                BioImage level = levels[lvl];
-                if (level == null)
+                var res = root.Resolutions[lvl];
+                if (res.SizeX <= 0 || res.SizeY <= 0)
                     continue;
 
-                Resolution res = level.Resolutions.Count > 0
-                    ? level.Resolutions[Math.Min(lvl, level.Resolutions.Count - 1)]
-                    : new Resolution(level.SizeX, level.SizeY, level.Buffers.Count > 0 ? level.Buffers[0].PixelFormat : root.Resolutions[0].PixelFormat, level.PhysicalSizeX, level.PhysicalSizeY, level.PhysicalSizeZ, level.StageSizeX, level.StageSizeY, level.StageSizeZ);
-                int levelSizeX = res.SizeX > 0 ? res.SizeX : root.SizeX;
-                int levelSizeY = res.SizeY > 0 ? res.SizeY : root.SizeY;
-                double downsample = lvl == 0
-                    ? 1.0
-                    : Math.Max(
-                        (double)root.SizeX / Math.Max(1, levelSizeX),
-                        (double)root.SizeY / Math.Max(1, levelSizeY));
-                levelDescriptors.Add(new ResolutionLevelDescriptor(levelSizeX, levelSizeY, downsample));
-                Log($"[SavePyramidalZarr] level={lvl} size={levelSizeX}x{levelSizeY} fmt={res.PixelFormat}");
+                if (haveLast && res.PixelFormat != basePixelFormat)
+                    break;
+
+                if (haveLast && (res.SizeX > lastSizeX || res.SizeY > lastSizeY))
+                    break;
+
+                if (haveLast && res.SizeX == lastSizeX && res.SizeY == lastSizeY)
+                    continue;
+
+                double dsample = root.GetLevelDownsample(lvl);
+                if (!double.IsFinite(dsample) || dsample <= 0)
+                    dsample = 1.0;
+
+                levelDescriptors.Add(new ResolutionLevelDescriptor(res.SizeX, res.SizeY, dsample));
+                Log($"[SaveZarr] level={lvl} size={res.SizeX}x{res.SizeY} downsample={dsample} fmt={res.PixelFormat}");
+                lastSizeX = res.SizeX;
+                lastSizeY = res.SizeY;
+                haveLast = true;
             }
 
-            if (levelDescriptors.Count == 0)
-                throw new InvalidOperationException("No valid pyramid levels found.");
-
+            // Fallback: if there is somehow no Resolutions list, use the image dims.
             var coord = new ZarrNET.Core.ZCT(root.SizeZ, root.SizeC, root.SizeT);
             var baseDescriptor = new BioImageDescriptor(root.SizeX, root.SizeY, coord)
             {
@@ -339,7 +364,7 @@ namespace BioLib
             var writer = await OmeZarrWriter.CreateAsync(outputDir, baseDescriptor, levelDescriptors).ConfigureAwait(false);
             try
             {
-                long totalPlanes = Math.Max(1L, (long)levels.Length * root.SizeT * root.SizeZ * root.SizeC);
+                long totalPlanes = Math.Max(1L, (long)levelDescriptors.Count * root.SizeT * root.SizeZ * root.SizeC);
                 long writtenPlanes = 0;
 
                 for (int levelIndex = 0; levelIndex < levels.Length; levelIndex++)
@@ -364,21 +389,14 @@ namespace BioLib
                         {
                             for (int c = 0; c < levelImage.SizeC; c++)
                             {
-                                bool streamFromZarr = levelImage.Filename != null &&
-                                    levelImage.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                                    levelImage.zarrReader != null &&
-                                    levelImage.levels != null &&
-                                    levelImage.levels.Count > 0;
-
-                                if (streamFromZarr)
+                                if (levelIsInterleavedRgb)
                                 {
                                     await WritePlaneInTiles(
                                         writer, levelImage, lvlDesc,
                                         t, c, z,
                                         levelBytesPerSample, tileW, tileH,
                                         levelIndex: levelIndex,
-                                        sourceLevelIndex: 0,
-                                        rgbChannelIndex: levelIsInterleavedRgb ? c : -1,
+                                        rgbChannelIndex: c,
                                         srcChannelCount: levelChannelCount,
                                         isBGRA: levelIsBGRA,
                                         logicalC: 0).ConfigureAwait(false);
@@ -391,31 +409,14 @@ namespace BioLib
                                     int originX = 0;
                                     int originY = 0;
 
-                                    if (levelIsInterleavedRgb)
-                                    {
-                                        await WritePlaneFromBuffer(
-                                            writer, levelImage, lvlDesc,
-                                            t, c, z,
-                                            levelBytesPerSample, tileW, tileH,
-                                            levelIndex: levelIndex,
-                                            originX: originX,
-                                            originY: originY,
-                                            rgbChannelIndex: c,
-                                            srcChannelCount: levelChannelCount,
-                                            isBGRA: levelIsBGRA,
-                                            logicalC: 0).ConfigureAwait(false);
-                                    }
-                                    else
-                                    {
-                                        await WritePlaneFromBuffer(
-                                            writer, levelImage, lvlDesc,
-                                            t, c, z,
-                                            levelBytesPerSample, tileW, tileH,
-                                            levelIndex: levelIndex,
-                                            originX: originX,
-                                            originY: originY,
-                                            sourceLevelIndex: 0).ConfigureAwait(false);
-                                    }
+                                    await WritePlaneFromBuffer(
+                                        writer, levelImage, lvlDesc,
+                                        t, c, z,
+                                        levelBytesPerSample, tileW, tileH,
+                                        levelIndex: levelIndex,
+                                        originX: originX,
+                                        originY: originY,
+                                        sourceLevelIndex: 0).ConfigureAwait(false);
                                 }
 
                                 writtenPlanes++;
@@ -438,6 +439,15 @@ namespace BioLib
 
             Recorder.Record($"Zarr.SavePyramidalZarr(new BioImage[] {{ {string.Join(", ", levels.Select(level => level.ToString()))} }}, \"{outputDir}\");");
             BioImage.Progress = 100;
+        }
+
+        private static bool IsAssociatedResolution(BioImage image, int sourceIndex)
+        {
+            if (image == null)
+                return false;
+
+            return (image.MacroResolution.HasValue && image.MacroResolution.Value == sourceIndex) ||
+                   (image.LabelResolution.HasValue && image.LabelResolution.Value == sourceIndex);
         }
 
         // =====================================================================
@@ -1378,3 +1388,4 @@ namespace BioLib
         }
     }
 }
+

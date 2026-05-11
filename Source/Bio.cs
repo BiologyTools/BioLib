@@ -35,9 +35,11 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ZarrNET;
@@ -2090,21 +2092,6 @@ namespace BioLib
             {
                 if (value <= 0)
                     return;
-                // Reject values strictly beyond the coarsest pyramid level.
-                // The coarsest level itself is valid (it exists and is renderable),
-                // so use > not >=.  The old >= guard prevented GoToImage and
-                // Initialize from setting the resolution to the coarsest level,
-                // leaving the image as a tiny thumbnail.
-                if (OpenSlideBase != null)
-                {
-                    // Allow zooming out beyond the coarsest source level.
-                    // The renderer will keep using the coarsest level and scale
-                    // it down further so zoom-out remains continuous.
-                }
-                else if (SlideBase?.Schema?.Resolutions != null && SlideBase.Schema.Resolutions.Count > 0)
-                {
-                    // Allow zooming out beyond the coarsest source level.
-                }
                 resolution = value;
             }
         }
@@ -4556,133 +4543,162 @@ namespace BioLib
             ImageReader re = b.imRead;
             var meta = b.meta;
             List<Resolution> rss = new List<Resolution>();
-            int sc = re.getSeriesCount();
             try
             {
-                for (int s = 0; s < sc; s++)
+                int serie = re.getSeries();
+                int seriesCount = re.getSeriesCount();
+
+                Resolution ReadLevel(int seriesIndex, int resolutionIndex, bool useSeriesMetadata)
                 {
-                    re.setSeries(s);
-                    int ress = re.getResolutionCount();
-                    for (int r = 0; r < ress; r++)
+                    re.setSeries(seriesIndex);
+                    re.setResolution(resolutionIndex);
+
+                    int resolutionCount = re.getResolutionCount();
+                    Status = "Reading resolution " + (resolutionIndex + 1).ToString() + "/" + resolutionCount;
+
+                    Resolution res = new Resolution();
+                    int rgbc = re.getRGBChannelCount();
+                    int bps = re.getBitsPerPixel();
+                    PixelFormat px;
+                    try
                     {
-                        Status = "Reading resolution " + (r + 1).ToString() + "/" + ress;
-                        Resolution res = new Resolution();
-                        int rgbc = re.getRGBChannelCount();
-                        int bps = re.getBitsPerPixel();
-                        PixelFormat px;
+                        px = GetPixelFormat(rgbc, meta.getPixelsType(seriesIndex));
+                    }
+                    catch (Exception ex)
+                    {
+                        px = GetPixelFormat(rgbc, bps);
+                        Console.WriteLine(ex.Message);
+                    }
+                    res.PixelFormat = px;
+                    res.SizeX = re.getSizeX();
+                    res.SizeY = re.getSizeY();
+                    res.PhysicalSizeX = (96 / 2.54) / 1000;
+                    res.PhysicalSizeY = (96 / 2.54) / 1000;
+                    res.PhysicalSizeZ = b.frameInterval;
+                    // For macOS, keep the metadata reads conservative to avoid bus errors on some files.
+                    if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                    {
+                        int metadataIndex = useSeriesMetadata ? seriesIndex : resolutionIndex;
                         try
                         {
-                            px = GetPixelFormat(rgbc, meta.getPixelsType(r));
+                            if (meta.getPixelsPhysicalSizeX(metadataIndex) != null)
+                            {
+                                res.PhysicalSizeX = meta.getPixelsPhysicalSizeX(metadataIndex).value().doubleValue();
+                            }
+                            if (meta.getPixelsPhysicalSizeY(metadataIndex) != null)
+                            {
+                                res.PhysicalSizeY = meta.getPixelsPhysicalSizeY(metadataIndex).value().doubleValue();
+                            }
+                            if (meta.getPixelsPhysicalSizeZ(metadataIndex) != null)
+                            {
+                                res.PhysicalSizeZ = meta.getPixelsPhysicalSizeZ(metadataIndex).value().doubleValue();
+                            }
                         }
-                        catch (Exception ex)
+                        catch (Exception e)
                         {
-                            px = GetPixelFormat(rgbc, bps);
-                            Console.WriteLine(ex.Message);
+                            Console.WriteLine(e.Message);
                         }
-                        res.PixelFormat = px;
-                        res.SizeX = re.getSizeX();
-                        res.SizeY = re.getSizeY();
-                        res.PhysicalSizeX = (96 / 2.54) / 1000;
-                        res.PhysicalSizeY = (96 / 2.54) / 1000;
-                        res.PhysicalSizeZ = b.frameInterval;
-                        //For some reason trying to get undefined stage coordinates or physical size causing a bus error on MacOS so we won't look for them on MacOS.
-                        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                        if (!b.isPyramidal)
                         {
                             try
                             {
-                                if (meta.getPixelsPhysicalSizeX(r) != null)
-                                {
-                                    res.PhysicalSizeX = meta.getPixelsPhysicalSizeX(r).value().doubleValue();
-                                }
-                                if (meta.getPixelsPhysicalSizeY(r) != null)
-                                {
-                                    res.PhysicalSizeY = meta.getPixelsPhysicalSizeY(r).value().doubleValue();
-                                }
-                                if (meta.getPixelsPhysicalSizeZ(r) != null)
-                                {
-                                    res.PhysicalSizeZ = meta.getPixelsPhysicalSizeZ(r).value().doubleValue();
-                                }
+                                if (meta.getStageLabelX(metadataIndex) != null)
+                                    res.StageSizeX = meta.getStageLabelX(metadataIndex).value().doubleValue();
+                                if (meta.getStageLabelY(metadataIndex) != null)
+                                    res.StageSizeY = meta.getStageLabelY(metadataIndex).value().doubleValue();
+                                if (meta.getStageLabelZ(metadataIndex) != null)
+                                    res.StageSizeZ = meta.getStageLabelZ(metadataIndex).value().doubleValue();
+                                else
+                                    res.StageSizeZ = 0;
                             }
-                            catch (Exception e)
+                            catch (Exception ex)
                             {
-                                Console.WriteLine(e.Message);
-                            }
-                            if (!b.isPyramidal)
-                            {
-                                try
-                                {
-                                    if (meta.getStageLabelX(r) != null)
-                                        res.StageSizeX = meta.getStageLabelX(r).value().doubleValue();
-                                    if (meta.getStageLabelY(r) != null)
-                                        res.StageSizeY = meta.getStageLabelY(r).value().doubleValue();
-                                    if (meta.getStageLabelZ(r) != null)
-                                        res.StageSizeZ = meta.getStageLabelZ(r).value().doubleValue();
-                                    else
-                                        res.StageSizeZ = 0;
-                                }
-                                catch (Exception ex)
-                                {
-                                    Console.WriteLine(ex.Message);
-                                    res.StageSizeX = 0;
-                                    res.StageSizeY = 0;
-                                }
-
-                            }
-                            if (b.frameInterval == 0 && meta.getPixelsPhysicalSizeZ(r) != null)
-                            {
-                                res.PhysicalSizeZ = meta.getPixelsPhysicalSizeZ(r).value().doubleValue();
-                            }
-                            else
-                            {
-                                res.PhysicalSizeZ = b.frameInterval;
+                                Console.WriteLine(ex.Message);
+                                res.StageSizeX = 0;
+                                res.StageSizeY = 0;
                             }
                         }
-                        else //IF OSX
-                        //We need to determine if this image is pyramidal or not.
-                        //For some reason trying to get undefined stage coordinates cause a bus error on MacOS so we won't look for them on MacOS.
+                        if (b.frameInterval == 0 && meta.getPixelsPhysicalSizeZ(metadataIndex) != null)
                         {
-                            if (!b.isPyramidal)
-                            {
-                                try
-                                {
-                                    if (meta.getPixelsPhysicalSizeX(r) != null)
-                                    {
-                                        res.PhysicalSizeX = meta.getPixelsPhysicalSizeX(r).value().doubleValue();
-                                    }
-                                    if (meta.getPixelsPhysicalSizeY(r) != null)
-                                    {
-                                        res.PhysicalSizeY = meta.getPixelsPhysicalSizeY(r).value().doubleValue();
-                                    }
-                                    if (meta.getPixelsPhysicalSizeZ(r) != null)
-                                    {
-                                        res.PhysicalSizeZ = meta.getPixelsPhysicalSizeZ(r).value().doubleValue();
-                                    }
-                                    else
-                                        res.PhysicalSizeZ = 1.0;
-                                    /* 
-                                    if (meta.getStageLabelX(r) != null)
-                                    res.StageSizeX = meta.getStageLabelX(r).value().doubleValue();
-                                    if (meta.getStageLabelY(r) != null)
-                                    res.StageSizeY = meta.getStageLabelY(r).value().doubleValue();
-                                    if (meta.getStageLabelZ(r) != null)
-                                    res.StageSizeZ = meta.getStageLabelZ(r).value().doubleValue();
-                                    else
-                                    res.StageSizeZ = 1;
-                                    */
-
-                                }
-                                catch (Exception ex)
-                                {
-                                    Console.WriteLine(ex);
-                                }
-
-                            }
-
+                            res.PhysicalSizeZ = meta.getPixelsPhysicalSizeZ(metadataIndex).value().doubleValue();
                         }
-                        rss.Add(res);
+                        else
+                        {
+                            res.PhysicalSizeZ = b.frameInterval;
+                        }
                     }
-                    Console.WriteLine("Series: " + s + " Resolutions:" + ress);
+                    return res;
                 }
+
+                re.setSeries(serie);
+                int currentResolutionCount = re.getResolutionCount();
+
+                // Most pyramidal files store all levels inside one series.
+                if (currentResolutionCount > 1)
+                {
+                    List<Resolution> seriesResolutions = new List<Resolution>();
+                    for (int r = 0; r < currentResolutionCount; r++)
+                    {
+                        seriesResolutions.Add(ReadLevel(serie, r, false));
+                    }
+
+                    int pyramidEnd = 0;
+                    while (pyramidEnd + 1 < seriesResolutions.Count)
+                    {
+                        var cur = seriesResolutions[pyramidEnd];
+                        var next = seriesResolutions[pyramidEnd + 1];
+                        if (cur.SizeX > next.SizeX &&
+                            cur.SizeY > next.SizeY &&
+                            cur.PixelFormat == next.PixelFormat)
+                        {
+                            pyramidEnd++;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+
+                    for (int r = 0; r <= pyramidEnd; r++)
+                    {
+                        rss.Add(seriesResolutions[r]);
+                    }
+                    Console.WriteLine("Series: " + serie + " Resolutions:" + currentResolutionCount + " Pyramidal:" + (pyramidEnd + 1));
+                    return rss;
+                }
+
+                // Some files expose one pyramid level per series. Walk forward from the
+                // selected series and collect the contiguous levels that belong together.
+                List<Resolution> seriesLevels = new List<Resolution>();
+                for (int s = serie; s < seriesCount; s++)
+                {
+                    re.setSeries(s);
+                    int resCount = re.getResolutionCount();
+                    if (resCount <= 0)
+                        continue;
+
+                    Resolution level = ReadLevel(s, 0, true);
+                    if (seriesLevels.Count == 0)
+                    {
+                        seriesLevels.Add(level);
+                        continue;
+                    }
+
+                    var prev = seriesLevels[seriesLevels.Count - 1];
+                    if (prev.SizeX > level.SizeX &&
+                        prev.SizeY > level.SizeY &&
+                        prev.PixelFormat == level.PixelFormat)
+                    {
+                        seriesLevels.Add(level);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                rss.AddRange(seriesLevels);
+                Console.WriteLine("Series: " + serie + " Resolutions:1 SeriesLevels:" + seriesLevels.Count);
             }
             catch (Exception e)
             {
@@ -5615,10 +5631,21 @@ namespace BioLib
                     var level = b.levels[i];
                     int width = GetAxisSize(level, "x");
                     int height = GetAxisSize(level, "y");
+                    double physicalSizeX = 1.0;
+                    double physicalSizeY = 1.0;
+                    double physicalSizeZ = 1.0;
+
+                    var levelScales = await TryReadZarrLevelPhysicalSizesAsync(url, b.levels.Count).ConfigureAwait(false);
+                    if (i < levelScales.Length)
+                    {
+                        physicalSizeX = levelScales[i].X;
+                        physicalSizeY = levelScales[i].Y;
+                        physicalSizeZ = levelScales[i].Z;
+                    }
 
                     b.Resolutions.Add(new Resolution(
                         width, height, pixelFormat,
-                        1, 1, 1, 0, 0, 0));
+                        physicalSizeX, physicalSizeY, physicalSizeZ, 0, 0, 0));
                 }
 
                 // -----------------------------------------------------------------
@@ -5872,6 +5899,118 @@ namespace BioLib
             }
 
             return fallback;
+        }
+
+        private static async Task<(double X, double Y, double Z)[]> TryReadZarrLevelPhysicalSizesAsync(string source, int levelCount)
+        {
+            var scales = Enumerable.Repeat((1.0, 1.0, 1.0), Math.Max(0, levelCount)).ToArray();
+
+            try
+            {
+                string? json = await ReadZarrMetadataJsonAsync(source).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(json))
+                    return scales;
+
+                using var doc = JsonDocument.Parse(json);
+                if (!TryGetRootMultiscales(doc.RootElement, out var multiscales))
+                    return scales;
+
+                if (multiscales.ValueKind != JsonValueKind.Array || multiscales.GetArrayLength() == 0)
+                    return scales;
+
+                var multiscale = multiscales[0];
+                if (!multiscale.TryGetProperty("datasets", out var datasets) || datasets.ValueKind != JsonValueKind.Array)
+                    return scales;
+
+                int count = Math.Min(levelCount, datasets.GetArrayLength());
+                for (int i = 0; i < count; i++)
+                {
+                    var dataset = datasets[i];
+                    if (!dataset.TryGetProperty("coordinateTransformations", out var transforms) ||
+                        transforms.ValueKind != JsonValueKind.Array ||
+                        transforms.GetArrayLength() == 0)
+                    {
+                        continue;
+                    }
+
+                    var transform = transforms[0];
+                    if (!transform.TryGetProperty("scale", out var scale) || scale.ValueKind != JsonValueKind.Array || scale.GetArrayLength() == 0)
+                        continue;
+
+                    double x = ReadScaleComponent(scale, scale.GetArrayLength() - 1);
+                    double y = ReadScaleComponent(scale, Math.Max(0, scale.GetArrayLength() - 2));
+                    double z = scale.GetArrayLength() >= 3
+                        ? ReadScaleComponent(scale, scale.GetArrayLength() - 3)
+                        : 1.0;
+
+                    if (x > 0 && y > 0)
+                        scales[i] = (x, y, z > 0 ? z : 1.0);
+                }
+            }
+            catch
+            {
+            }
+
+            return scales;
+        }
+
+        private static async Task<string?> ReadZarrMetadataJsonAsync(string source)
+        {
+            try
+            {
+                if (source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                    source.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    using var http = new HttpClient();
+                    return await http.GetStringAsync(source.TrimEnd('/') + "/zarr.json").ConfigureAwait(false);
+                }
+
+                string metadataPath = source;
+                if (Directory.Exists(source))
+                {
+                    metadataPath = Path.Combine(source, "zarr.json");
+                }
+                else if (File.Exists(source) && source.EndsWith(".zarr", StringComparison.OrdinalIgnoreCase))
+                {
+                    metadataPath = Path.Combine(source, "zarr.json");
+                }
+
+                if (File.Exists(metadataPath))
+                    return await File.ReadAllTextAsync(metadataPath).ConfigureAwait(false);
+            }
+            catch
+            {
+            }
+
+            return null;
+        }
+
+        private static bool TryGetRootMultiscales(JsonElement root, out JsonElement multiscales)
+        {
+            multiscales = default;
+
+            if (root.TryGetProperty("attributes", out var attributes) &&
+                attributes.TryGetProperty("ome", out var ome) &&
+                ome.TryGetProperty("multiscales", out multiscales))
+            {
+                return true;
+            }
+
+            if (root.TryGetProperty("multiscales", out multiscales))
+                return true;
+
+            return false;
+        }
+
+        private static double ReadScaleComponent(JsonElement scaleArray, int index)
+        {
+            if (index < 0 || index >= scaleArray.GetArrayLength())
+                return 1.0;
+
+            if (scaleArray[index].ValueKind == JsonValueKind.Number && scaleArray[index].TryGetDouble(out double value) && value > 0)
+                return value;
+
+            return 1.0;
         }
 
         private static bool AxisMatches(string actualName, string expectedName)
@@ -7313,66 +7452,32 @@ namespace BioLib
             if (reader.getResolutionCount() > 0)
                 ress.AddRange(GetResolutions(b));
             Console.WriteLine("Done reading resolutions.");
-            reader.setSeries(serie);
-
-            int pyramidCount = 0;
-            int pyramidResolutions = 0;
-            List<Tuple<int, int>> prs = new List<Tuple<int, int>>();
             Console.WriteLine("Determining pyramidal levels.");
-            //We need to determine if this image is pyramidal or not.
-            //We do this by seeing if the resolutions are downsampled or not.
-            if (ress.Count > 1 && b.Type != ImageType.well)
-            {
-                if (ress[0].SizeX > ress[1].SizeX)
-                {
-                    tile = true;
-                    //We need to determine number of pyramids in this image and which belong to the series we are opening.
-                    int? sr = null;
-                    for (int r = 0; r < ress.Count - 1; r++)
-                    {
-                        if (ress[r].SizeX > ress[r + 1].SizeX && ress[r].PixelFormat == ress[r + 1].PixelFormat)
-                        {
-                            if (sr == null)
-                            {
-                                sr = r;
-                                prs.Add(new Tuple<int, int>(r, 0));
-                            }
-                        }
-                        else
-                        {
-                            if (ress[prs[prs.Count - 1].Item1].PixelFormat == ress[r].PixelFormat)
-                                prs[prs.Count - 1] = new Tuple<int, int>(prs[prs.Count - 1].Item1, r);
-                            sr = null;
-                        }
-                    }
-                    pyramidCount = prs.Count;
-                    for (int p = 0; p < prs.Count; p++)
-                    {
-                        pyramidResolutions += (prs[p].Item2 - prs[p].Item1) + 1;
-                    }
-                    if (prs[serie].Item2 == 0)
-                    {
-                        prs[serie] = new Tuple<int, int>(prs[serie].Item1, b.seriesCount - 1);
-                    }
-                }
-            }
+            if (ress.Count > 1 && b.Type != ImageType.well && ress[0].SizeX > ress[1].SizeX)
+                tile = true;
             if (b.Type == ImageType.pyramidal)
             {
                 Console.WriteLine("Determining Label and Macro resolutions.");
-                for (int p = 0; p < prs.Count; p++)
+                int pyramidEnd = 0;
+                while (pyramidEnd + 1 < ress.Count)
                 {
-                    for (int r = prs[p].Item1; r < prs[p].Item2 + 1; r++)
+                    var cur = ress[pyramidEnd];
+                    var next = ress[pyramidEnd + 1];
+                    if (cur.SizeX > next.SizeX &&
+                        cur.SizeY > next.SizeY &&
+                        cur.PixelFormat == next.PixelFormat)
                     {
-                        b.Resolutions.Add(ress[r]);
+                        pyramidEnd++;
+                    }
+                    else
+                    {
+                        break;
                     }
                 }
-                //If we have 2 resolutions that we're not added they are the label & macro resolutions so we add them to the image.
-                if (ress.Count > b.Resolutions.Count)
+
+                for (int r = 0; r <= pyramidEnd; r++)
                 {
-                    b.LabelResolution = ress.Count - 1;
-                    b.Resolutions.Add(ress[ress.Count - 1]);
-                    b.MacroResolution = ress.Count - 2;
-                    b.Resolutions.Add(ress[ress.Count - 2]);
+                    b.Resolutions.Add(ress[r]);
                 }
             }
             if (b.Resolutions.Count == 0)
@@ -11076,3 +11181,5 @@ namespace BioLib
         }
     }
 }
+
+
