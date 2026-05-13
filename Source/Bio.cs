@@ -4294,6 +4294,17 @@ namespace BioLib
         /// @return A Bitmap object.
         public static unsafe Bitmap GetBitmapRGB(int w, int h, PixelFormat px, byte[] bts)
         {
+            static int GetSourceRowStride(byte[] data, int height, int expectedRowBytes)
+            {
+                if (height > 0 && data != null && data.Length % height == 0)
+                {
+                    int stride = data.Length / height;
+                    if (stride >= expectedRowBytes)
+                        return stride;
+                }
+                return expectedRowBytes;
+            }
+
             if (px == PixelFormat.Format32bppArgb)
             {
                 //opening a 8 bit per pixel jpg image
@@ -4360,20 +4371,21 @@ namespace BioLib
                 BitmapData bmd = bmp.LockBits(rec, ImageLockMode.ReadWrite, bmp.PixelFormat);
                 unsafe
                 {
+                    int rowStride = GetSourceRowStride(bts, h, w * 6);
                     //iterating through all the pixels in y direction
                     for (int y = 0; y < h; y++)
                     {
                         //getting the pixels of current row
                         byte* row = (byte*)bmd.Scan0 + (y * bmd.Stride);
-                        int rowRGB = y * w * 6;
+                        int rowRGB = y * rowStride;
                         //iterating through all the pixels in x direction
                         for (int x = 0; x < w; x++)
                         {
                             int indexRGB = x * 6;
                             int indexRGBA = x * 4;
-                            int b = (int)((float)BitConverter.ToUInt16(bts, rowRGB + indexRGB) / 255);
-                            int g = (int)((float)BitConverter.ToUInt16(bts, rowRGB + indexRGB + 2) / 255);
-                            int r = (int)((float)BitConverter.ToUInt16(bts, rowRGB + indexRGB + 4) / 255);
+                            int b = (int)((float)BitConverter.ToUInt16(bts, rowRGB + indexRGB) * byte.MaxValue / ushort.MaxValue);
+                            int g = (int)((float)BitConverter.ToUInt16(bts, rowRGB + indexRGB + 2) * byte.MaxValue / ushort.MaxValue);
+                            int r = (int)((float)BitConverter.ToUInt16(bts, rowRGB + indexRGB + 4) * byte.MaxValue / ushort.MaxValue);
                             row[indexRGBA + 3] = 255;//byte A
                             row[indexRGBA + 2] = (byte)(b);//byte R
                             row[indexRGBA + 1] = (byte)(g);//byte G
@@ -5281,8 +5293,6 @@ namespace BioLib
                     b.sizeZ = pages;
                 int str = image.ScanlineSize();
                 bool inter = true;
-                if (stride != str)
-                    inter = false;
                 InitDirectoryResolution(b, image, imDesc);
                 if (tiled)
                 {
@@ -5309,11 +5319,12 @@ namespace BioLib
                     {
                         image.SetDirectory((short)p);
 
-                        byte[] bytes = new byte[stride * SizeY];
+                        int rowStride = Math.Max(stride, str);
+                        byte[] bytes = new byte[rowStride * SizeY];
                         for (int im = 0, offset = 0; im < SizeY; im++)
                         {
                             image.ReadScanline(bytes, offset, im, 0);
-                            offset += stride;
+                            offset += rowStride;
                         }
                         Bitmap inf = new Bitmap(file, SizeX, SizeY, b.Resolutions[series].PixelFormat, bytes, new ZCT(0, 0, 0), p, null, b.littleEndian, inter);
                         b.Buffers.Add(inf);
@@ -5790,7 +5801,9 @@ namespace BioLib
                     actualTileH,
                     pixelFormat,
                     tileBytes,
-                    coord);
+                    coord,
+                    BitConverter.IsLittleEndian,
+                    true);
 
                 b.Buffers.Add(bm.GetImageRGBA());
 
@@ -6028,15 +6041,21 @@ namespace BioLib
         int height,
         PixelFormat px,
         byte[] data,
-        ZCT coord)
+        ZCT coord,
+        bool littleEndian,
+        bool interleaved)
         {
             return new AForge.Bitmap(
+                "",
                 width,
                 height,
                 px,
                 data,
                 new AForge.ZCT(coord.Z, coord.C, coord.T),
-                "");
+                0,
+                null,
+                littleEndian: littleEndian,
+                interleaved: interleaved);
         }
         
         /// > The function checks if the image is a Tiff image and if it is, it checks if the image is a
@@ -7284,7 +7303,6 @@ namespace BioLib
                 }
                 catch (Exception e)
             {
-                try { System.IO.File.AppendAllText("log.txt", "[GetTile Zarr] EXCEPTION: " + e.GetType().Name + ": " + e.Message + Environment.NewLine + e.StackTrace + Environment.NewLine); } catch { }
                 Console.WriteLine(e.Message);
                 return null;
             }
@@ -7874,6 +7892,7 @@ namespace BioLib
                 tile = true;
             }
             // read the image data bytes
+            reader.setSeries(serie);
             int pages = reader.getImageCount();
             bool inter = reader.isInterleaved();
             int z = 0;
@@ -7884,11 +7903,23 @@ namespace BioLib
                 Status = "Reading image planes.";
                 try
                 {
+                    int rgbBytesPerPixel =
+                        PixelFormat == PixelFormat.Format48bppRgb ? 6 :
+                        PixelFormat == PixelFormat.Format24bppRgb ? 3 : 1;
                     for (int p = 0; p < pages; p++)
                     {
                         Progress = ((float)p / (float)pages) * 100;
                         Bitmap bf;
                         byte[] bytes = reader.openBytes(p);
+                        if (PixelFormat == PixelFormat.Format48bppRgb)
+                        {
+                            inter = true;
+                        }
+                        else if (PixelFormat == PixelFormat.Format24bppRgb &&
+                                 bytes.Length > SizeX * SizeY * rgbBytesPerPixel)
+                        {
+                            inter = true;
+                        }
                         bf = new Bitmap(file, SizeX, SizeY, PixelFormat, bytes, new ZCT(z, c, t), p, null, b.littleEndian, inter);
                         b.Buffers.Add(bf);
                     }
@@ -8053,7 +8084,7 @@ namespace BioLib
             {
                 outMin = min;
                 outMax = max;
-                var rgba = bm.GetImageRGBA(bm.LittleEndian);
+                var rgba = bm.GetImageRGBA();
                 bm.Dispose();
                 return rgba;
             }
@@ -8082,17 +8113,21 @@ namespace BioLib
             fixed (byte* srcBytes = bm.Bytes)
             fixed (byte* dstBytes = dst.Bytes)
             {
-                ushort* src16 = (ushort*)srcBytes;
-                for (int i = 0; i < w * h; i++)
+                int rowStride = GetSourceRowStride(bm.Bytes, h, w * 2);
+                for (int y = 0; y < h; y++)
                 {
-                    ushort v = src16[i];
-                    if (swap) v = (ushort)((v << 8) | (v >> 8));
-                    byte g = (byte)System.Math.Clamp((v - min) * scale, 0f, 255f);
-                    int d = i * 4;
-                    dstBytes[d + 0] = g;   // B
-                    dstBytes[d + 1] = g;   // G
-                    dstBytes[d + 2] = g;   // R
-                    dstBytes[d + 3] = 255; // A
+                    ushort* src16 = (ushort*)(srcBytes + y * rowStride);
+                    for (int x = 0; x < w; x++)
+                    {
+                        ushort v = src16[x];
+                        if (swap) v = (ushort)((v << 8) | (v >> 8));
+                        byte g = (byte)System.Math.Clamp((v - min) * scale, 0f, 255f);
+                        int d = (y * w + x) * 4;
+                        dstBytes[d + 0] = g;   // B
+                        dstBytes[d + 1] = g;   // G
+                        dstBytes[d + 2] = g;   // R
+                        dstBytes[d + 3] = 255; // A
+                    }
                 }
             }
             bm.Dispose();
@@ -8449,17 +8484,17 @@ namespace BioLib
                     try
                     {
                         var red = await activeLevels[pyramidLevel].ReadTileAsync(
-                            tilex, tiley, tileSizeX, tileSizeY,
+                            tilex, tiley, actualW, actualH,
                             z: tileCoord.Z,
                             c: 0,
                             t: tileCoord.T).ConfigureAwait(false);
                         var green = await activeLevels[pyramidLevel].ReadTileAsync(
-                            tilex, tiley, tileSizeX, tileSizeY,
+                            tilex, tiley, actualW, actualH,
                             z: tileCoord.Z,
                             c: 1,
                             t: tileCoord.T).ConfigureAwait(false);
                         var blue = await activeLevels[pyramidLevel].ReadTileAsync(
-                            tilex, tiley, tileSizeX, tileSizeY,
+                            tilex, tiley, actualW, actualH,
                             z: tileCoord.Z,
                             c: 2,
                             t: tileCoord.T).ConfigureAwait(false);
@@ -8507,7 +8542,7 @@ namespace BioLib
                 }
 
                 var planef = await activeLevels[pyramidLevel].ReadTileAsync(
-                    tilex, tiley, tileSizeX, tileSizeY,
+                    tilex, tiley, actualW, actualH,
                     z: tileCoord.Z,
                     c: tileCoord.C,
                     t: tileCoord.T);
@@ -8821,7 +8856,6 @@ namespace BioLib
             }
             catch (Exception e)
             {
-                try { System.IO.File.AppendAllText("log.txt", "[GetTile Zarr] EXCEPTION: " + e.GetType().Name + ": " + e.Message + Environment.NewLine + e.StackTrace + Environment.NewLine); } catch { }
                 Console.WriteLine(e.Message);
                 return null;
             }
@@ -9149,6 +9183,17 @@ namespace BioLib
                 return 32767;
             else
                 return 65535;
+        }
+        private static int GetSourceRowStride(byte[] data, int height, int expectedRowBytes)
+        {
+            if (height > 0 && data != null && data.Length % height == 0)
+            {
+                int stride = data.Length / height;
+                if (stride >= expectedRowBytes)
+                    return stride;
+            }
+
+            return expectedRowBytes;
         }
         /// <summary>
         /// The function takes a list of points in stage space and converts them to image space using
@@ -9861,41 +9906,49 @@ namespace BioLib
                 {
                     byte* dst = (byte*)skBitmap.GetPixels().ToPointer();
                     bool swap = !sourceBitmap.LittleEndian;
+                    int expectedRowStride = isGray ? width * 2 : width * 6;
+                    int rowStride = GetSourceRowStride(sourceBitmap.Bytes, height, expectedRowStride);
 
                     if (isGray)
                     {
-                        ushort* src16 = (ushort*)srcBytes;
-                        for (int i = 0; i < width * height; i++)
+                        for (int y = 0; y < height; y++)
                         {
-                            ushort v = src16[i];
-                            if (swap) v = (ushort)((v << 8) | (v >> 8));
-                            byte g = (byte)System.Math.Clamp((v - rMin) * rScale, 0f, 255f);
-                            int d = i * 4;
-                            dst[d + 0] = g; // B
-                            dst[d + 1] = g; // G
-                            dst[d + 2] = g; // R
-                            dst[d + 3] = 255;
+                            ushort* src16 = (ushort*)(srcBytes + y * rowStride);
+                            for (int x = 0; x < width; x++)
+                            {
+                                ushort v = src16[x];
+                                if (swap) v = (ushort)((v << 8) | (v >> 8));
+                                byte g = (byte)System.Math.Clamp((v - rMin) * rScale, 0f, 255f);
+                                int d = (y * width + x) * 4;
+                                dst[d + 0] = g; // B
+                                dst[d + 1] = g; // G
+                                dst[d + 2] = g; // R
+                                dst[d + 3] = 255;
+                            }
                         }
                     }
                     else // Format48bppRgb: 3 × ushort per pixel
                     {
-                        ushort* src16 = (ushort*)srcBytes;
-                        for (int i = 0; i < width * height; i++)
+                        for (int y = 0; y < height; y++)
                         {
-                            ushort r = src16[i * 3 + 0];
-                            ushort g = src16[i * 3 + 1];
-                            ushort b = src16[i * 3 + 2];
-                            if (swap)
+                            ushort* src16 = (ushort*)(srcBytes + y * rowStride);
+                            for (int x = 0; x < width; x++)
                             {
-                                r = (ushort)((r << 8) | (r >> 8));
-                                g = (ushort)((g << 8) | (g >> 8));
-                                b = (ushort)((b << 8) | (b >> 8));
+                                ushort r = src16[x * 3 + 0];
+                                ushort g = src16[x * 3 + 1];
+                                ushort b = src16[x * 3 + 2];
+                                if (swap)
+                                {
+                                    r = (ushort)((r << 8) | (r >> 8));
+                                    g = (ushort)((g << 8) | (g >> 8));
+                                    b = (ushort)((b << 8) | (b >> 8));
+                                }
+                                int d = (y * width + x) * 4;
+                                dst[d + 0] = (byte)System.Math.Clamp((b - bMin) * bScale, 0f, 255f);
+                                dst[d + 1] = (byte)System.Math.Clamp((g - gMin) * gScale, 0f, 255f);
+                                dst[d + 2] = (byte)System.Math.Clamp((r - rMin) * rScale, 0f, 255f);
+                                dst[d + 3] = 255;
                             }
-                            int d = i * 4;
-                            dst[d + 0] = (byte)System.Math.Clamp((b - bMin) * bScale, 0f, 255f);
-                            dst[d + 1] = (byte)System.Math.Clamp((g - gMin) * gScale, 0f, 255f);
-                            dst[d + 2] = (byte)System.Math.Clamp((r - rMin) * rScale, 0f, 255f);
-                            dst[d + 3] = 255;
                         }
                     }
                 }
@@ -9913,7 +9966,7 @@ namespace BioLib
             if (bitm.PixelFormat == PixelFormat.Format32bppArgb)
                 return Convert32bppBitmapToSKImage(bitm);
             if (bitm.PixelFormat == PixelFormat.Float)
-                return Convert32bppBitmapToSKImage(bitm.GetImageRGBA(bitm.LittleEndian));
+                return Convert32bppBitmapToSKImage(bitm.GetImageRGBA());
             if (bitm.PixelFormat == PixelFormat.Format8bppIndexed)
                 return Convert8bppBitmapToSKImage(bitm);
             if (bitm.PixelFormat == PixelFormat.Format16bppGrayScale ||

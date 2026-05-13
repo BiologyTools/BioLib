@@ -758,8 +758,37 @@ namespace BioLib
                 safeH = safePixels / Math.Max(1, curW);
             }
             byte[] padded = new byte[expectedSize];
+            int copyWBytes = Math.Max(0, Math.Min(curW, tileWidth) * 4);
             for (int row = 0; row < safeH; row++)
-                Buffer.BlockCopy(src, row * srcStride, padded, row * tileWidth * 4, srcStride);
+            {
+                int srcRow = row * srcStride;
+                int dstRow = row * tileWidth * 4;
+                if (copyWBytes > 0)
+                    Buffer.BlockCopy(src, srcRow, padded, dstRow, copyWBytes);
+
+                if (curW > 0 && copyWBytes > 0 && copyWBytes < tileWidth * 4)
+                {
+                    byte b = padded[dstRow + copyWBytes - 4];
+                    byte g = padded[dstRow + copyWBytes - 3];
+                    byte r = padded[dstRow + copyWBytes - 2];
+                    byte a = padded[dstRow + copyWBytes - 1];
+                    for (int col = copyWBytes; col < tileWidth * 4; col += 4)
+                    {
+                        padded[dstRow + col + 0] = b;
+                        padded[dstRow + col + 1] = g;
+                        padded[dstRow + col + 2] = r;
+                        padded[dstRow + col + 3] = a;
+                    }
+                }
+            }
+
+            if (safeH > 0 && safeH < tileHeight)
+            {
+                int lastRow = (safeH - 1) * tileWidth * 4;
+                int rowsToFill = tileHeight - safeH;
+                for (int row = 0; row < rowsToFill; row++)
+                    Buffer.BlockCopy(padded, lastRow, padded, (safeH + row) * tileWidth * 4, tileWidth * 4);
+            }
             return padded;
         }
 
