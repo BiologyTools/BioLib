@@ -9769,18 +9769,22 @@ namespace BioLib
             {
                 byte* sourcePtr = (byte*)bitmapData.Scan0.ToPointer();
                 byte* destPtr = (byte*)skBitmap.GetPixels().ToPointer();
+                int srcStride = bitmapData.Stride;
+                int dstStride = skBitmap.RowBytes;
 
                 for (int y = 0; y < height; y++)
                 {
+                    byte* srcRow = sourcePtr + (y * srcStride);
+                    byte* dstRow = destPtr + (y * dstStride);
+
                     for (int x = 0; x < width; x++)
                     {
-                        destPtr[0] = sourcePtr[0]; // Blue
-                        destPtr[1] = sourcePtr[1]; // Green
-                        destPtr[2] = sourcePtr[2]; // Red
-                        destPtr[3] = 255;          // Alpha (fully opaque)
-
-                        sourcePtr += 3;
-                        destPtr += 4;
+                        int src = x * 3;
+                        int dst = x * 4;
+                        dstRow[dst + 0] = srcRow[src + 0]; // Blue
+                        dstRow[dst + 1] = srcRow[src + 1]; // Green
+                        dstRow[dst + 2] = srcRow[src + 2]; // Red
+                        dstRow[dst + 3] = 255;             // Alpha (fully opaque)
                     }
                 }
             }
