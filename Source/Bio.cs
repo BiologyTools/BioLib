@@ -1986,12 +1986,17 @@ namespace BioLib
         {
             get
             {
+                int v = 0;
                 if (SlideBase != null)
-                    return OpenSlideGTK.TileUtil.GetLevel(SlideBase.Schema.Resolutions, Resolution);
+                    v = OpenSlideGTK.TileUtil.GetLevel(SlideBase.Schema.Resolutions, Resolution);
                 else if (OpenSlideBase != null)
-                    return OpenSlideGTK.TileUtil.GetLevel(OpenSlideBase.Schema.Resolutions, Resolution);
+                    v = OpenSlideGTK.TileUtil.GetLevel(OpenSlideBase.Schema.Resolutions, Resolution);
                 else
-                    return LevelFromResolution(Resolution);
+                    v = LevelFromResolution(Resolution);
+                if (v < Resolutions.Count)
+                    return v;
+                else
+                    return 0;
             }
             set
             {
@@ -2030,7 +2035,7 @@ namespace BioLib
         {
             get
             {
-                return Buffers[0].RGBChannelsCount;
+                return Resolutions[0].RGBChannelsCount;
             }
         }
         public int bitsPerPixel
@@ -4059,6 +4064,8 @@ namespace BioLib
         public float GetValueRGB(ZCT coord, int x, int y, int RGBindex)
         {
             int i = GetFrameIndex(coord.Z, coord.C, coord.T);
+            if (x >= SizeX && y >= SizeY)
+                return 0;
             return Buffers[i].GetValue(x, y, RGBindex);
         }
         /// This function returns the value of the pixel at the specified coordinates in the specified
@@ -5307,7 +5314,7 @@ namespace BioLib
                             {
                                 Bitmap bmp = b.GetTile(b.GetFrameIndex(z, c, t), b.level, tileX, tileY, tileSizeX, tileSizeY).Result;
                                 b.Buffers.Add(bmp);
-                                bmp.Stats = Statistics.FromBytes(bmp);
+                                try { bmp.Stats = Statistics.FromBytes(bmp); } catch { }
                             }
                         }
                     }
@@ -5328,7 +5335,7 @@ namespace BioLib
                         }
                         Bitmap inf = new Bitmap(file, SizeX, SizeY, b.Resolutions[series].PixelFormat, bytes, new ZCT(0, 0, 0), p, null, b.littleEndian, inter);
                         b.Buffers.Add(inf);
-                        inf.Stats = Statistics.FromBytes(inf);
+                        try { inf.Stats = Statistics.FromBytes(inf); } catch { }
                     }
                 }
                 image.Close();
@@ -10049,7 +10056,7 @@ namespace BioLib
                         {
                             byte[] bm = this.imRead.openBytes(Coords[z, c, t]);
                             Bitmap bmp = new Bitmap(w, h, Resolutions[Level].PixelFormat, bm, new ZCT(z, c, t), "");
-                            bmp.Stats = Statistics.FromBytes(bmp);
+                            try { bmp.Stats = Statistics.FromBytes(bmp); } catch { }
                             Buffers.Add(bmp);
                         }
                     }
@@ -11238,5 +11245,6 @@ namespace BioLib
         }
     }
 }
+
 
 
