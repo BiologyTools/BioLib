@@ -9307,6 +9307,8 @@ namespace BioLib
                     //Application.DoEvents();
                 } while (!Initialized);
             var meta = (IMetadata)((OMEXMLService)new ServiceFactory().getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
+            if (reader.getCurrentFile() != null)
+                reader.close();
             reader.setMetadataStore((MetadataStore)meta);
             file = file.Replace("\\", "/");
             try
