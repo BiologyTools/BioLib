@@ -740,8 +740,9 @@ namespace BioLib
    
         /// <summary>
         /// Pads a raw BGRA edge-tile buffer (curW x curH x 4 bytes) into a full
-        /// tileWidth x tileHeight x 4 byte buffer, zero-filling pixels outside
-        /// the image boundary. Interior tiles are returned as-is.
+        /// tileWidth x tileHeight x 4 byte buffer. Pixels outside the image
+        /// boundary must stay zero; extending the last row/column visibly warps
+        /// slides at the right and bottom edges.
         /// </summary>
         private static byte[] PadToBgra(byte[] src, int curW, int curH, int tileWidth, int tileHeight)
         {
@@ -765,29 +766,6 @@ namespace BioLib
                 int dstRow = row * tileWidth * 4;
                 if (copyWBytes > 0)
                     Buffer.BlockCopy(src, srcRow, padded, dstRow, copyWBytes);
-
-                if (curW > 0 && copyWBytes > 0 && copyWBytes < tileWidth * 4)
-                {
-                    byte b = padded[dstRow + copyWBytes - 4];
-                    byte g = padded[dstRow + copyWBytes - 3];
-                    byte r = padded[dstRow + copyWBytes - 2];
-                    byte a = padded[dstRow + copyWBytes - 1];
-                    for (int col = copyWBytes; col < tileWidth * 4; col += 4)
-                    {
-                        padded[dstRow + col + 0] = b;
-                        padded[dstRow + col + 1] = g;
-                        padded[dstRow + col + 2] = r;
-                        padded[dstRow + col + 3] = a;
-                    }
-                }
-            }
-
-            if (safeH > 0 && safeH < tileHeight)
-            {
-                int lastRow = (safeH - 1) * tileWidth * 4;
-                int rowsToFill = tileHeight - safeH;
-                for (int row = 0; row < rowsToFill; row++)
-                    Buffer.BlockCopy(padded, lastRow, padded, (safeH + row) * tileWidth * 4, tileWidth * 4);
             }
             return padded;
         }

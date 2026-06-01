@@ -22,9 +22,12 @@ namespace BioLib
             Source = source.file;
             SlideImage = im;
             Image = im;
-            double minUnitsPerPixel;
-            if (source.PhysicalSizeX < source.PhysicalSizeY) minUnitsPerPixel = source.PhysicalSizeX; else minUnitsPerPixel = source.PhysicalSizeY;
-            MinUnitsPerPixel = UseRealResolution ? minUnitsPerPixel : 1;
+            double baseUnitsPerPixel = source.PhysicalSizeX > 0
+                ? source.PhysicalSizeX
+                : source.PhysicalSizeY > 0
+                    ? source.PhysicalSizeY
+                    : 1;
+            MinUnitsPerPixel = UseRealResolution ? baseUnitsPerPixel : 1;
             if (MinUnitsPerPixel <= 0) MinUnitsPerPixel = 1;
             var height = SlideImage.Dimensions.Height;
             var width = SlideImage.Dimensions.Width;

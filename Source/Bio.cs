@@ -1979,6 +1979,7 @@ namespace BioLib
         public List<Resolution> Resolutions = new List<Resolution>();
         public List<AForge.Bitmap> Buffers = new List<AForge.Bitmap>();
         public List<NetVips.Image> vipPages = new List<NetVips.Image>();
+        public int PyramidNativeLevelCount { get; set; } = 0;
 
         int level = 0;
         int wellIndex = 0;
@@ -2306,6 +2307,205 @@ namespace BioLib
         {
             return Resolutions[0].PhysicalSizeX * GetLevelDownsample(level);
         }
+
+        private static void AppendSyntheticPyramidResolutions(BioImage image)
+        {
+            if (image == null)
+                return;
+
+            int nativeLevelCount = image.PyramidNativeLevelCount > 0
+                ? Math.Min(image.PyramidNativeLevelCount, image.Resolutions.Count)
+                : image.Resolutions.Count;
+
+            if (nativeLevelCount <= 1 || image.Resolutions.Count > nativeLevelCount)
+                return;
+
+            var prev = image.Resolutions[nativeLevelCount - 1];
+            double downsample = image.GetLevelDownsample(nativeLevelCount - 1);
+            double baseWidth = image.Resolutions[0].SizeX;
+            double baseHeight = image.Resolutions[0].SizeY;
+
+            while (true)
+            {
+                downsample *= 2.0;
+                int width = Math.Max(1, (int)Math.Ceiling(baseWidth / downsample));
+                int height = Math.Max(1, (int)Math.Ceiling(baseHeight / downsample));
+                prev = new Resolution(
+                    width,
+                    height,
+                    prev.PixelFormat,
+                    prev.PhysicalSizeX * 2,
+                    prev.PhysicalSizeY * 2,
+                    prev.PhysicalSizeZ,
+                    prev.StageSizeX,
+                    prev.StageSizeY,
+                    prev.StageSizeZ);
+                image.Resolutions.Add(prev);
+                if (width == 1 && height == 1)
+                    break;
+            }
+        }
+
+        private static Bitmap ResizeBitmap(Bitmap source, int width, int height)
+        {
+            if (source == null)
+                return null;
+
+            if (source.Width == width && source.Height == height)
+                return source;
+
+            try
+            {
+                BaseResizeFilter resize = new ResizeBilinear(width, height);
+                return resize.Apply(source);
+            }
+            catch
+            {
+                try
+                {
+                    BaseResizeFilter resize = new ResizeNearestNeighbor(width, height);
+                    return resize.Apply(source);
+                }
+                catch
+                {
+                    return source;
+                }
+            }
+        }
+
+        private async Task<Bitmap> GetSyntheticPyramidTileAsync(
+            int index,
+            int level,
+            int tilex,
+            int tiley,
+            int tileSizeX,
+            int tileSizeY,
+            AForge.ZCT? coordinateOverride,
+            bool returnRaw)
+        {
+            int nativeLevelCount = PyramidNativeLevelCount > 0
+                ? Math.Min(PyramidNativeLevelCount, Resolutions.Count)
+                : Resolutions.Count;
+
+            if (nativeLevelCount <= 0 || level < nativeLevelCount || level >= Resolutions.Count)
+                return null;
+
+            int sourceLevel = nativeLevelCount - 1;
+            int sourceLevelWidth = Math.Max(1, Resolutions[sourceLevel].SizeX);
+            int sourceLevelHeight = Math.Max(1, Resolutions[sourceLevel].SizeY);
+            int targetLevelWidth = Math.Max(1, Resolutions[level].SizeX);
+            int targetLevelHeight = Math.Max(1, Resolutions[level].SizeY);
+
+            double scaleX = (double)sourceLevelWidth / targetLevelWidth;
+            double scaleY = (double)sourceLevelHeight / targetLevelHeight;
+
+            int targetX = Math.Max(0, tilex);
+            int targetY = Math.Max(0, tiley);
+            int overlapW = Math.Max(0, Math.Min(tileSizeX, targetLevelWidth - targetX));
+            int overlapH = Math.Max(0, Math.Min(tileSizeY, targetLevelHeight - targetY));
+            if (overlapW <= 0 || overlapH <= 0)
+            {
+                var blankFmt = Resolutions[Math.Clamp(level, 0, Resolutions.Count - 1)].PixelFormat;
+                int blankBpp = GetBytesPerPixel(blankFmt);
+                return new Bitmap(ID, tileSizeX, tileSizeY, blankFmt, new byte[tileSizeX * tileSizeY * blankBpp], new ZCT(), index, null, true, true);
+            }
+
+            int targetX2 = Math.Min(targetLevelWidth, targetX + tileSizeX);
+            int targetY2 = Math.Min(targetLevelHeight, targetY + tileSizeY);
+            int sourceX = Math.Max(0, (int)Math.Round(targetX * scaleX));
+            int sourceY = Math.Max(0, (int)Math.Round(targetY * scaleY));
+            int sourceX2 = Math.Max(sourceX + 1, (int)Math.Round(targetX2 * scaleX));
+            int sourceY2 = Math.Max(sourceY + 1, (int)Math.Round(targetY2 * scaleY));
+            int sourceW = Math.Max(1, sourceX2 - sourceX);
+            int sourceH = Math.Max(1, sourceY2 - sourceY);
+
+            if (sourceX >= sourceLevelWidth || sourceY >= sourceLevelHeight)
+            {
+                var blankFmt = Resolutions[Math.Clamp(level, 0, Resolutions.Count - 1)].PixelFormat;
+                int blankBpp = GetBytesPerPixel(blankFmt);
+                return new Bitmap(ID, tileSizeX, tileSizeY, blankFmt, new byte[tileSizeX * tileSizeY * blankBpp], new ZCT(), index, null, true, true);
+            }
+
+            sourceW = Math.Min(sourceW, Math.Max(1, sourceLevelWidth - sourceX));
+            sourceH = Math.Min(sourceH, Math.Max(1, sourceLevelHeight - sourceY));
+
+            Bitmap sourceTile;
+            if (openSlideImage != null || OpenSlideBase != null)
+            {
+                var slide = openSlideImage ?? OpenSlideBase.SlideImage;
+                double sourceDownsample = GetLevelDownsample(sourceLevel);
+                long level0X = (long)Math.Round(sourceX * sourceDownsample);
+                long level0Y = (long)Math.Round(sourceY * sourceDownsample);
+                byte[] sourceBytes = slide.ReadRegion(sourceLevel, level0X, level0Y, sourceW, sourceH);
+                if (sourceBytes == null || sourceBytes.Length == 0)
+                    return null;
+
+                sourceTile = new Bitmap(
+                    ID,
+                    sourceW,
+                    sourceH,
+                    AForge.PixelFormat.Format32bppArgb,
+                    sourceBytes,
+                    new ZCT(),
+                    index,
+                    null,
+                    true,
+                    true);
+            }
+            else
+            {
+                sourceTile = await GetTile(
+                    index,
+                    sourceLevel,
+                    sourceX,
+                    sourceY,
+                    sourceW,
+                    sourceH,
+                    coordinateOverride,
+                    returnRaw).ConfigureAwait(false);
+            }
+
+            if (sourceTile == null)
+                return null;
+
+            if (overlapW == tileSizeX && overlapH == tileSizeY && sourceTile.Width == tileSizeX && sourceTile.Height == tileSizeY)
+                return sourceTile;
+
+            try
+            {
+                Bitmap resized = ResizeBitmap(sourceTile, overlapW, overlapH);
+                var pixelFormat = sourceTile.PixelFormat;
+                var tileCoord = sourceTile.Coordinate;
+                var tilePlane = sourceTile.Plane;
+                bool littleEndian = sourceTile.LittleEndian;
+                int bytesPerPixel = GetBytesPerPixel(pixelFormat);
+                byte[] output = new byte[tileSizeX * tileSizeY * bytesPerPixel];
+                if (resized != null && resized.Bytes != null)
+                {
+                    for (int row = 0; row < overlapH; row++)
+                    {
+                        int srcOffset = row * overlapW * bytesPerPixel;
+                        int dstOffset = row * tileSizeX * bytesPerPixel;
+                        Buffer.BlockCopy(resized.Bytes, srcOffset, output, dstOffset, overlapW * bytesPerPixel);
+                    }
+                }
+
+                if (!ReferenceEquals(resized, sourceTile) && resized != null)
+                    resized.Dispose();
+                if (sourceTile != null)
+                    sourceTile.Dispose();
+                return new Bitmap(ID, tileSizeX, tileSizeY, pixelFormat, output, tileCoord, index, tilePlane, littleEndian, true);
+            }
+            catch
+            {
+                if (sourceTile != null)
+                    sourceTile.Dispose();
+                var blankFmt = Resolutions[Math.Clamp(level, 0, Resolutions.Count - 1)].PixelFormat;
+                int blankBpp = GetBytesPerPixel(blankFmt);
+                return new Bitmap(ID, tileSizeX, tileSizeY, blankFmt, new byte[tileSizeX * tileSizeY * blankBpp], new ZCT(), index, null, true, true);
+            }
+        }
+
         public string ID
         {
             get { return id; }
@@ -7507,6 +7707,8 @@ namespace BioLib
             }
             if (b.Resolutions.Count == 0)
                 b.Resolutions.AddRange(ress);
+            b.PyramidNativeLevelCount = b.Resolutions.Count;
+            AppendSyntheticPyramidResolutions(b);
             try
             {
                 string s = b.meta.getStageLabelName(serie);
@@ -8354,6 +8556,10 @@ namespace BioLib
         public async Task<Bitmap> GetTile(int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY, AForge.ZCT? coordinateOverride, bool returnRaw = false)
         {
             BioImage b = this;
+            Bitmap syntheticTile = await GetSyntheticPyramidTileAsync(index, level, tilex, tiley, tileSizeX, tileSizeY, coordinateOverride, returnRaw).ConfigureAwait(false);
+            if (syntheticTile != null)
+                return syntheticTile;
+
             if (b.Filename.Contains(".zarr"))
             {
                 if (zarrReader == null)
@@ -8783,6 +8989,22 @@ namespace BioLib
                 else
                     vips = false;
             }
+            // Prefer the synthetic-level-aware OpenSlide wrapper when available.
+            if (b.OpenSlideBase != null)
+            {
+                TileInfo tf = new TileInfo();
+                int tileCol = (int)Math.Floor((double)tilex / Math.Max(1, tileSizeX));
+                int tileRow = (int)Math.Floor((double)tiley / Math.Max(1, tileSizeY));
+                tf.Index = new TileIndex(tileCol, tileRow, level);
+
+                byte[] bts = b.OpenSlideBase.GetTile(tf);
+                if (bts == null)
+                    return null;
+
+                bts = NormalizeArgbTileBytes(bts, tileSizeX, tileSizeY);
+                Bitmap bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0);
+                return bm;
+            }
             //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
             if (b.openSlideImage != null)
             {
@@ -8791,6 +9013,7 @@ namespace BioLib
                 long level0Y = (long)Math.Round(tiley * downsample);
 
                 byte[] bts = b.openSlideImage.ReadRegion(level, level0X, level0Y, tileSizeX, tileSizeY);
+                bts = NormalizeArgbTileBytes(bts, tileSizeX, tileSizeY);
                 Bitmap bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0);
                 if (returnRaw)
                     return bm;
@@ -9032,6 +9255,35 @@ namespace BioLib
                 PixelFormat.Format64bppPArgb => 8,
                 _ => 1
             };
+        }
+
+        private static byte[] NormalizeArgbTileBytes(byte[] bytes, int width, int height)
+        {
+            int expectedLength = Math.Max(0, width) * Math.Max(0, height) * 4;
+            if (expectedLength == 0)
+                return Array.Empty<byte>();
+
+            if (bytes == null || bytes.Length == 0)
+            {
+                byte[] opaqueBlank = new byte[expectedLength];
+                for (int i = 3; i < opaqueBlank.Length; i += 4)
+                    opaqueBlank[i] = 255;
+                return opaqueBlank;
+            }
+
+            if (bytes.Length == expectedLength)
+                return bytes;
+
+            byte[] normalized = new byte[expectedLength];
+            Buffer.BlockCopy(bytes, 0, normalized, 0, Math.Min(bytes.Length, normalized.Length));
+
+            for (int i = 3; i < normalized.Length; i += 4)
+            {
+                if (normalized[i] == 0)
+                    normalized[i] = 255;
+            }
+
+            return normalized;
         }
 
         private static ushort SnapUsedBitCeiling(ushort value)
