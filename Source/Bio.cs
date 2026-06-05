@@ -2317,10 +2317,15 @@ namespace BioLib
                 ? Math.Min(image.PyramidNativeLevelCount, image.Resolutions.Count)
                 : image.Resolutions.Count;
 
-            if (nativeLevelCount <= 1 || image.Resolutions.Count > nativeLevelCount)
+            if (nativeLevelCount <= 0 || nativeLevelCount > image.Resolutions.Count)
                 return;
 
-            var prev = image.Resolutions[nativeLevelCount - 1];
+            const int syntheticMinDimension = 1024;
+            var lastNative = image.Resolutions[nativeLevelCount - 1];
+            if (lastNative.SizeX <= syntheticMinDimension && lastNative.SizeY <= syntheticMinDimension)
+                return;
+
+            var prev = lastNative;
             double downsample = image.GetLevelDownsample(nativeLevelCount - 1);
             double baseWidth = image.Resolutions[0].SizeX;
             double baseHeight = image.Resolutions[0].SizeY;
@@ -2341,7 +2346,7 @@ namespace BioLib
                     prev.StageSizeY,
                     prev.StageSizeZ);
                 image.Resolutions.Add(prev);
-                if (width == 1 && height == 1)
+                if (width <= syntheticMinDimension && height <= syntheticMinDimension)
                     break;
             }
         }
@@ -4367,39 +4372,44 @@ namespace BioLib
         /// @return A filtered image.
         public Bitmap GetFiltered(int ind, IntRange r, IntRange g, IntRange b)
         {
-            if (Buffers[ind].PixelFormat == PixelFormat.Float)
+            if (Buffers.Count > 0)
             {
-                if (Statistics.StackMax <= 1)
+                if (Buffers[ind].PixelFormat == PixelFormat.Float)
                 {
-                    Bitmap bm = Buffers[ind].GetImageRGBA(true);
-                    return bm;
+                    if (Statistics.StackMax <= 1)
+                    {
+                        Bitmap bm = Buffers[ind].GetImageRGBA(true);
+                        return bm;
+                    }
+                    else
+                    {
+                        BioImage.filter8.InRed = MapIntRangeToByteRange(r);
+                        BioImage.filter8.InGreen = MapIntRangeToByteRange(g);
+                        BioImage.filter8.InBlue = MapIntRangeToByteRange(b);
+                        Bitmap bm = BioImage.filter8.Apply(Buffers[ind].GetImageRGBA(false));
+                        return bm;
+                    }
                 }
                 else
-                {
-                    BioImage.filter8.InRed = MapIntRangeToByteRange(r);
-                    BioImage.filter8.InGreen = MapIntRangeToByteRange(g);
-                    BioImage.filter8.InBlue = MapIntRangeToByteRange(b);
-                    Bitmap bm = BioImage.filter8.Apply(Buffers[ind].GetImageRGBA(false));
-                    return bm;
-                }
+                    if (Buffers[ind].BitsPerPixel > 8)
+                    {
+                        BioImage.filter16.InRed = r;
+                        BioImage.filter16.InGreen = g;
+                        BioImage.filter16.InBlue = b;
+                        Bitmap bm = BioImage.filter16.Apply(Buffers[ind]);
+                        return bm;
+                    }
+                    else
+                    {
+                        // set ranges
+                        BioImage.filter8.InRed = r;
+                        BioImage.filter8.InGreen = g;
+                        BioImage.filter8.InBlue = b;
+                        return BioImage.filter8.Apply(Buffers[ind]);
+                    }
             }
             else
-            if (Buffers[ind].BitsPerPixel > 8)
-            {
-                BioImage.filter16.InRed = r;
-                BioImage.filter16.InGreen = g;
-                BioImage.filter16.InBlue = b;
-                Bitmap bm = BioImage.filter16.Apply(Buffers[ind]);
-                return bm;
-            }
-            else
-            {
-                // set ranges
-                BioImage.filter8.InRed = r;
-                BioImage.filter8.InGreen = g;
-                BioImage.filter8.InBlue = b;
-                return BioImage.filter8.Apply(Buffers[ind]);
-            }
+                return null;
         }
         /// It takes an image, and returns a channel of that image
         /// 
@@ -9360,29 +9370,36 @@ namespace BioLib
         /// @param bit16 true = 16 bit, false = 8 bit
         public void StackThreshold(bool bit16)
         {
-            if (bit16)
+            try
             {
-                for (int ch = 0; ch < Channels.Count; ch++)
+                if (bit16)
                 {
-                    for (int i = 0; i < Channels[ch].range.Length; i++)
+                    for (int ch = 0; ch < Channels.Count; ch++)
                     {
-                        Channels[ch].range[i].Min = (int)Channels[ch].stats[i].StackMin;
-                        Channels[ch].range[i].Max = (int)Channels[ch].stats[i].StackMax;
+                        for (int i = 0; i < Channels[ch].range.Length; i++)
+                        {
+                            Channels[ch].range[i].Min = (int)Channels[ch].stats[i].StackMin;
+                            Channels[ch].range[i].Max = (int)Channels[ch].stats[i].StackMax;
+                        }
+                        Channels[ch].BitsPerPixel = 16;
                     }
-                    Channels[ch].BitsPerPixel = 16;
+                }
+                else
+                {
+                    for (int ch = 0; ch < Channels.Count; ch++)
+                    {
+                        for (int i = 0; i < Channels[ch].range.Length; i++)
+                        {
+                            Channels[ch].range[i].Min = (int)Channels[ch].stats[i].StackMin;
+                            Channels[ch].range[i].Max = (int)Channels[ch].stats[i].StackMax;
+                        }
+                        Channels[ch].BitsPerPixel = 8;
+                    }
                 }
             }
-            else
+            catch (Exception e)
             {
-                for (int ch = 0; ch < Channels.Count; ch++)
-                {
-                    for (int i = 0; i < Channels[ch].range.Length; i++)
-                    {
-                        Channels[ch].range[i].Min = (int)Channels[ch].stats[i].StackMin;
-                        Channels[ch].range[i].Max = (int)Channels[ch].stats[i].StackMax;
-                    }
-                    Channels[ch].BitsPerPixel = 8;
-                }
+
             }
             Recorder.AddLine("BioLib.Images.GetImage(\"" + id + "\").StackThreshold(" + bit16.ToString().ToLower() + ");", true);
         }
@@ -11186,6 +11203,8 @@ namespace BioLib
                 statistics = new Statistics(false);
             for (int i = 0; i < b.Buffers.Count; i++)
             {
+                if(b.Buffers[i] == null)
+                { continue; }
                 if (b.Buffers[i].Stats == null || updateImageStats)
                     b.Buffers[i].Stats = Statistics.FromBytes(b.Buffers[i]);
                 if (b.Buffers[i].RGBChannelsCount == 1)
@@ -11200,6 +11219,8 @@ namespace BioLib
             }
             for (int c = 0; c < b.Channels.Count; c++)
             {
+                if (b.Buffers[0] == null)
+                { continue; }
                 Statistics[] sts = new Statistics[b.Buffers[0].RGBChannelsCount];
                 for (int i = 0; i < b.Buffers[0].RGBChannelsCount; i++)
                 {
@@ -11499,6 +11520,8 @@ namespace BioLib
         }
     }
 }
+
+
 
 
 
