@@ -5274,6 +5274,7 @@ namespace BioLib
 
         public int ZarrDisplayMax { get; set; }
         public ushort ZarrDisplayMin { get; set; }
+        internal readonly object ZarrDisplayRangeSync = new object();
 
         public List<PlaneResult> planes = new List<PlaneResult>();
         /// The OpenFile function opens a BioImage file, reads its metadata, and loads the image
@@ -5760,6 +5761,20 @@ namespace BioLib
             }
 
             b.Plate = wp;
+        }
+        /// <summary>
+        /// Opens an OME-Zarr store and converts it into a BioImage.
+        /// This is the direct entry point for callers that want a BioLib image
+        /// instead of working with ZarrNET nodes.
+        /// </summary>
+        public static async Task<BioImage> OpenZarrAsync(
+            string source,
+            int multiscaleIndex = 0,
+            int datasetIndex = 0,
+            string? id = null,
+            CancellationToken ct = default)
+        {
+            return await ZarrConversion.OpenAsBioImageAsync(source, multiscaleIndex, datasetIndex, id, ct).ConfigureAwait(false);
         }
         public static async Task<BioImage> OpenURL(
         string url,
@@ -8725,8 +8740,7 @@ namespace BioLib
                         if (red != null && green != null && blue != null &&
                             red.DataType == "uint8" && green.DataType == "uint8" && blue.DataType == "uint8")
                         {
-                            int rgbPlaneW = (int)red.Shape[red.Shape.Length - 1];
-                            int rgbPlaneH = (int)red.Shape[red.Shape.Length - 2];
+                            GetRegionDimensions(red, actualW, actualH, out int rgbPlaneW, out int rgbPlaneH);
                             int pixelCount = rgbPlaneW * rgbPlaneH;
                             byte[] rgbPixels = new byte[pixelCount * 4];
                             int copyCount = Math.Min(pixelCount,
@@ -8772,36 +8786,20 @@ namespace BioLib
 
                 if (planef.DataType == "uint16")
                 {
-                    int planeW = (int)planef.Shape[planef.Shape.Length - 1];
-                    int planeH = (int)planef.Shape[planef.Shape.Length - 2];
+                    GetRegionDimensions(planef, actualW, actualH, out int planeW, out int planeH);
                     int srcStride = planeW * 2;
                     int dstStride = tileSizeX * 2;
                     byte[] tileData = new byte[tileSizeY * dstStride];
-                    int rMin2 = 0, rMax2 = ushort.MaxValue;
-
-                    if (b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                        b.ZarrDisplayMax > b.ZarrDisplayMin)
-                    {
-                        rMin2 = b.ZarrDisplayMin;
-                        rMax2 = (ushort)b.ZarrDisplayMax;
-                        if (rMax2 <= rMin2)
-                        {
-                            rMin2 = 0;
-                            rMax2 = ushort.MaxValue;
-                        }
-
-                        int copyH = Math.Min(actualH, planeH);
-                        int copyWBytes = Math.Min(actualW, planeW) * 2;
+                    int copyH = Math.Min(actualH, planeH);
+                    int copyWBytes = Math.Min(actualW, planeW) * 2;
 
                     for (int row = 0; row < copyH; row++)
                     {
-                        int srcRow = row * srcStride;
-                        int dstRow = row * dstStride;
                         Buffer.BlockCopy(
-                                planef.Data,
-                                srcRow,
-                                tileData,
-                                dstRow,
+                            planef.Data,
+                            row * srcStride,
+                            tileData,
+                            row * dstStride,
                             Math.Min(copyWBytes, dstStride));
                     }
 
@@ -8819,6 +8817,25 @@ namespace BioLib
                             true,
                             true);
                         return bm;
+                    }
+
+                    if (b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0)
+                        b.EnsureZarrDisplayRange(planef.Data, true, planeW, planeH);
+
+                    int rMin2 = 0;
+                    int rMax2 = ushort.MaxValue;
+                    lock (b.ZarrDisplayRangeSync)
+                    {
+                        if (b.ZarrDisplayMax > b.ZarrDisplayMin)
+                        {
+                            rMin2 = b.ZarrDisplayMin;
+                            rMax2 = (ushort)b.ZarrDisplayMax;
+                        }
+                    }
+                    if (rMax2 <= rMin2)
+                    {
+                        rMin2 = 0;
+                        rMax2 = ushort.MaxValue;
                     }
 
                     byte[] bgra = new byte[tileSizeX * tileSizeY * 4];
@@ -8849,73 +8866,12 @@ namespace BioLib
                         true,
                         true);
                 }
-
-                int copyH2 = Math.Min(actualH, planeH);
-                int copyWBytes2 = Math.Min(actualW, planeW) * 2;
-
-                    for (int row = 0; row < copyH2; row++)
-                    {
-                        int srcRow = row * srcStride;
-                        int dstRow = row * dstStride;
-                        Buffer.BlockCopy(
-                            planef.Data,
-                            srcRow,
-                            tileData,
-                            dstRow,
-                            Math.Min(copyWBytes2, dstStride));
-                    }
-
-                    if (returnRaw)
-                    {
-                        Bitmap bm2 = new Bitmap(
-                            "",
-                            tileSizeX,
-                            tileSizeY,
-                            AForge.PixelFormat.Format16bppGrayScale,
-                            tileData,
-                            tileCoord,
-                            index,
-                            null,
-                            true,
-                            true);
-                        return bm2;
-                    }
-
-                    byte[] bgra2 = new byte[tileSizeX * tileSizeY * 4];
-                    float scale2 = rMax2 > rMin2 ? 255f / (rMax2 - rMin2) : 1f;
-                    int pixels2 = tileSizeX * tileSizeY;
-                    int srcPixelCount2 = Math.Min(pixels2, tileData.Length / 2);
-                    for (int i = 0; i < srcPixelCount2; i++)
-                    {
-                        int s = i * 2;
-                        ushort v = (ushort)(tileData[s] | (tileData[s + 1] << 8));
-                        byte g = (byte)System.Math.Clamp((v - rMin2) * scale2, 0f, 255f);
-                        int d = i * 4;
-                        bgra2[d + 0] = g;
-                        bgra2[d + 1] = g;
-                        bgra2[d + 2] = g;
-                        bgra2[d + 3] = 255;
-                    }
-
-                    return new Bitmap(
-                        "",
-                        tileSizeX,
-                        tileSizeY,
-                        AForge.PixelFormat.Format32bppArgb,
-                        bgra2,
-                        tileCoord,
-                        index,
-                        null,
-                        true,
-                        true);
-                }
                 else if (planef.DataType == "uint8")
                 {
                     PixelFormat fmt = AForge.PixelFormat.Format8bppIndexed;
                     int elementSize = 1;
                     int dstStride = tileSizeX * elementSize;
-                    int planeW = (int)planef.Shape[planef.Shape.Length - 1];
-                    int planeH = (int)planef.Shape[planef.Shape.Length - 2];
+                    GetRegionDimensions(planef, actualW, actualH, out int planeW, out int planeH);
                     int srcStride = planeW * elementSize;
 
                     byte[] tileData = new byte[tileSizeY * dstStride];
@@ -9067,13 +9023,21 @@ namespace BioLib
                         return null;
                     byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
                 var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, true);
+                    if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale &&
+                        b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        b.EnsureZarrDisplayRange(bytesr, littleEndian, sx, sy);
+                    }
+
                     int rMin3 = 0, rMax3 = 0;
                     if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale &&
-                        b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                        b.ZarrDisplayMax > b.ZarrDisplayMin)
+                        b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        rMin3 = b.ZarrDisplayMin;
-                        rMax3 = b.ZarrDisplayMax;
+                        lock (b.ZarrDisplayRangeSync)
+                        {
+                            rMin3 = b.ZarrDisplayMin;
+                            rMax3 = b.ZarrDisplayMax;
+                        }
                     }
                     else if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale)
                     {
@@ -9166,6 +9130,39 @@ namespace BioLib
                     return new byte[fallbackBytes];
                 }
 
+                int bytesPerPixel = (Resolutions[Math.Clamp(pyramidLevel, 0, Resolutions.Count - 1)].PixelFormat == AForge.PixelFormat.Format16bppGrayScale) ? 2 : 1;
+                GetRegionDimensions(planef, actualW, actualH, out int planeW, out int planeH);
+
+                int copyW = actualW;
+                int copyH = actualH;
+                if (planeW > 0)
+                    copyW = Math.Min(copyW, planeW);
+                if (planeH > 0)
+                    copyH = Math.Min(copyH, planeH);
+
+                if (planeW > 0 && planeH > 0 && copyW > 0 && copyH > 0)
+                {
+                    int srcStride = planeW * bytesPerPixel;
+                    int dstStride = copyW * bytesPerPixel;
+                    byte[] cropped = new byte[copyW * copyH * bytesPerPixel];
+                    int copyRowBytes = Math.Min(dstStride, srcStride);
+                    for (int row = 0; row < copyH; row++)
+                    {
+                        int srcRow = row * srcStride;
+                        int dstRow = row * dstStride;
+                        if (srcRow >= planef.Data.Length)
+                            break;
+                        Buffer.BlockCopy(
+                            planef.Data,
+                            srcRow,
+                            cropped,
+                            dstRow,
+                            Math.Min(copyRowBytes, planef.Data.Length - srcRow));
+                    }
+
+                    return cropped;
+                }
+
                 return planef.Data;
             }
 
@@ -9199,6 +9196,34 @@ namespace BioLib
 
             using Bitmap tile = await GetTile(index, level, tilex, tiley, tileSizeX, tileSizeY, coordinateOverride, true).ConfigureAwait(false);
             return tile?.Bytes;
+        }
+
+        private static void GetRegionDimensions(RegionResult region, int fallbackWidth, int fallbackHeight, out int width, out int height)
+        {
+            width = Math.Max(1, fallbackWidth);
+            height = Math.Max(1, fallbackHeight);
+
+            if (region?.Shape == null || region.Shape.Length == 0)
+                return;
+
+            if (region.Axes != null && region.Axes.Length == region.Shape.Length)
+            {
+                for (int i = 0; i < region.Axes.Length; i++)
+                {
+                    string axisName = region.Axes[i].Name?.ToLowerInvariant() ?? string.Empty;
+                    if (axisName == "x")
+                        width = (int)Math.Max(1, region.Shape[i]);
+                    else if (axisName == "y")
+                        height = (int)Math.Max(1, region.Shape[i]);
+                }
+                return;
+            }
+
+            if (region.Shape.Length >= 2)
+            {
+                width = (int)Math.Max(1, region.Shape[^1]);
+                height = (int)Math.Max(1, region.Shape[^2]);
+            }
         }
 
         private static void SwapBytePairsInPlace(byte[] data)
@@ -9340,6 +9365,29 @@ namespace BioLib
             displayMin = 0;
             displayMax = SnapUsedBitCeiling(rawMax);
             return true;
+        }
+
+        internal void EnsureZarrDisplayRange(byte[] bytes, bool littleEndian, int width, int height)
+        {
+            if (bytes == null || bytes.Length < 2 || width <= 0 || height <= 0)
+                return;
+
+            lock (ZarrDisplayRangeSync)
+            {
+                if (ZarrDisplayMax > ZarrDisplayMin)
+                    return;
+
+                if (TrySeedZarrDisplayRange(bytes, littleEndian, width, height, out ushort displayMin, out ushort displayMax))
+                {
+                    ZarrDisplayMin = displayMin;
+                    ZarrDisplayMax = displayMax;
+                }
+                else
+                {
+                    ZarrDisplayMin = 0;
+                    ZarrDisplayMax = ushort.MaxValue;
+                }
+            }
         }
         private bool IsEmpty(byte[] bts)
         {
@@ -11520,6 +11568,8 @@ namespace BioLib
         }
     }
 }
+
+
 
 
 

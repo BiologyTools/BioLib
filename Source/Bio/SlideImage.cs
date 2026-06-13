@@ -24,6 +24,34 @@ namespace BioLib
     {
         public BioImage BioImage { get; set; }
 
+        private static void GetRegionDimensions(RegionResult region, int fallbackWidth, int fallbackHeight, out int width, out int height)
+        {
+            width = Math.Max(1, fallbackWidth);
+            height = Math.Max(1, fallbackHeight);
+
+            if (region?.Shape == null || region.Shape.Length == 0)
+                return;
+
+            if (region.Axes != null && region.Axes.Length == region.Shape.Length)
+            {
+                for (int i = 0; i < region.Axes.Length; i++)
+                {
+                    string axisName = region.Axes[i].Name?.ToLowerInvariant() ?? string.Empty;
+                    if (axisName == "x")
+                        width = (int)Math.Max(1, region.Shape[i]);
+                    else if (axisName == "y")
+                        height = (int)Math.Max(1, region.Shape[i]);
+                }
+                return;
+            }
+
+            if (region.Shape.Length >= 2)
+            {
+                width = (int)Math.Max(1, region.Shape[^1]);
+                height = (int)Math.Max(1, region.Shape[^2]);
+            }
+        }
+
 
         /// <summary>
         /// Quickly determine whether a whole slide image is recognized.
@@ -387,47 +415,30 @@ namespace BioLib
 
                 // Convert raw pixel data to BGRA (4 bytes/pixel) which is what
                 // the tile renderer expects.
-                // IMPORTANT: allocate and copy only clampedW × clampedH pixels.
-                // resultW/resultH from the zarr reader may equal the full chunk size
-                // (256×256) even for boundary tiles — those extra pixels lie outside
-                // the image and contain data from another plane, causing the noise strip.
+                // Use the plane's explicit Width/Height metadata instead of
+                // guessing from Shape order. Some Zarr datasets expose axes in
+                // a non-standard order, but PlaneResult already resolves the
+                // spatial dimensions for us.
                 int copyW = (int)Math.Min(clampedW, width);
                 int copyH = (int)Math.Min(clampedH, height);
+                GetRegionDimensions(result, copyW, copyH, out int sourceW, out int sourceH);
+                copyW = Math.Min(copyW, sourceW);
+                copyH = Math.Min(copyH, sourceH);
+
                 int pixelCount  = copyW * copyH;
                 byte[] bgra     = new byte[pixelCount * 4];
                 bool is16       = result.DataType == "uint16";
-                int srcStride   = copyW * (is16 ? 2 : 1);
+                int bytesPerPixel = is16 ? 2 : 1;
+                int srcStride   = sourceW * bytesPerPixel;
                 int dstStride   = copyW * 4;
 
-                // For 16-bit: use a shared display range so all tiles normalize
-                // consistently and produce no visible seams.
-                // The range is computed once from the first tile and cached on BioImage.
-                ushort normMin = 0, normMax = ushort.MaxValue;
                 if (is16 && result.Data.Length >= 2)
-                {
-                    if (BioImage.ZarrDisplayMax == 0)
-                    {
-                        // First tile — scan to establish the shared range.
-                        ushort scanMin = ushort.MaxValue, scanMax = 0;
-                        for (int row = 0; row < copyH; row++)
-                            for (int col = 0; col < copyW; col++)
-                            {
-                                int off = row * srcStride + col * 2;
-                                if (off + 1 >= result.Data.Length) continue;
-                                ushort v = (ushort)(result.Data[off] | (result.Data[off + 1] << 8));
-                                if (v < scanMin) scanMin = v;
-                                if (v > scanMax) scanMax = v;
-                            }
-                        if (scanMax > 0)
-                        {
-                            uint ceiling = 1;
-                            while (ceiling - 1 < scanMax && ceiling < (1u << 16))
-                                ceiling <<= 1;
+                    BioImage.EnsureZarrDisplayRange(result.Data, true, sourceW, sourceH);
 
-                            BioImage.ZarrDisplayMin = 0;
-                            BioImage.ZarrDisplayMax = (ushort)Math.Min(ushort.MaxValue, ceiling - 1);
-                        }
-                    }
+                ushort normMin = 0;
+                ushort normMax = ushort.MaxValue;
+                lock (BioImage.ZarrDisplayRangeSync)
+                {
                     if (BioImage.ZarrDisplayMax > BioImage.ZarrDisplayMin)
                     {
                         normMin = BioImage.ZarrDisplayMin;
@@ -439,7 +450,7 @@ namespace BioLib
                 {
                     for (int col = 0; col < copyW; col++)
                     {
-                        int srcOff = row * srcStride + col * (is16 ? 2 : 1);
+                        int srcOff = row * srcStride + col * bytesPerPixel;
                         int dstOff = row * dstStride + col * 4;
                         byte gray;
                         if (is16)
@@ -482,38 +493,54 @@ namespace BioLib
                 int w = (int)width;
                 int h = (int)height;
                 byte[] bgra = new byte[w * h * 4];
-                int min = ushort.MaxValue;
-                int max = ushort.MinValue;
-                if (BioImage != null && BioImage.ZarrDisplayMax > BioImage.ZarrDisplayMin)
+                if (BioImage != null)
+                    BioImage.EnsureZarrDisplayRange(raw, true, w, h);
+
+                int min = 0;
+                int max = ushort.MaxValue;
+                if (BioImage != null)
                 {
-                    min = BioImage.ZarrDisplayMin;
-                    max = BioImage.ZarrDisplayMax;
-                }
-                else
-                {
-                    int valueCount = Math.Min(w * h, raw.Length / 2);
-                    for (int i = 0; i < valueCount; i++)
+                    lock (BioImage.ZarrDisplayRangeSync)
                     {
-                        int s = i * 2;
-                        ushort v = (ushort)(raw[s] | (raw[s + 1] << 8));
-                        if (v < min) min = v;
-                        if (v > max) max = v;
+                        if (BioImage.ZarrDisplayMax > BioImage.ZarrDisplayMin)
+                        {
+                            min = BioImage.ZarrDisplayMin;
+                            max = BioImage.ZarrDisplayMax;
+                        }
                     }
                 }
                 if (max <= min)
                     max = min + 1;
                 float scale = 255f / (max - min);
-                int rawPixels = Math.Min(w * h, raw.Length / 2);
-                for (int i = 0; i < rawPixels; i++)
+                int rawPixels = raw.Length / 2;
+                int sourceW = Math.Max(1, w);
+                int sourceH = Math.Max(1, h);
+                int square = (int)Math.Round(Math.Sqrt(rawPixels));
+                if (square > 0 && square * square == rawPixels)
                 {
-                    int s = i * 2;
-                    ushort v = (ushort)(raw[s] | (raw[s + 1] << 8));
-                    byte g = (byte)System.Math.Clamp((v - min) * scale, 0f, 255f);
-                    int d = i * 4;
-                    bgra[d + 0] = g;
-                    bgra[d + 1] = g;
-                    bgra[d + 2] = g;
-                    bgra[d + 3] = 255;
+                    sourceW = square;
+                    sourceH = square;
+                }
+
+                int copyH = Math.Min(h, sourceH);
+                int copyW = Math.Min(w, sourceW);
+                for (int row = 0; row < copyH; row++)
+                {
+                    int srcRow = row * sourceW * 2;
+                    int dstRow = row * w * 4;
+                    for (int col = 0; col < copyW; col++)
+                    {
+                        int s = srcRow + col * 2;
+                        if (s + 1 >= raw.Length)
+                            break;
+                        ushort v = (ushort)(raw[s] | (raw[s + 1] << 8));
+                        byte g = (byte)System.Math.Clamp((v - min) * scale, 0f, 255f);
+                        int d = dstRow + col * 4;
+                        bgra[d + 0] = g;
+                        bgra[d + 1] = g;
+                        bgra[d + 2] = g;
+                        bgra[d + 3] = 255;
+                    }
                 }
                 return bgra;
             }
@@ -542,23 +569,20 @@ namespace BioLib
                 byte[] src = bts.Bytes;
                 byte[] bgra = new byte[w * h * 4];
                 bool littleEndian = bts.LittleEndian;
-                int min = ushort.MaxValue;
-                int max = ushort.MinValue;
-                if (BioImage != null && BioImage.ZarrDisplayMax > BioImage.ZarrDisplayMin)
+                if (BioImage != null)
+                    BioImage.EnsureZarrDisplayRange(src, littleEndian, w, h);
+
+                int min = 0;
+                int max = ushort.MaxValue;
+                if (BioImage != null)
                 {
-                    min = BioImage.ZarrDisplayMin;
-                    max = BioImage.ZarrDisplayMax;
-                }
-                else
-                {
-                    for (int i = 0; i < w * h; i++)
+                    lock (BioImage.ZarrDisplayRangeSync)
                     {
-                        int s = i * 2;
-                        ushort v = littleEndian
-                            ? (ushort)(src[s] | (src[s + 1] << 8))
-                            : (ushort)(src[s + 1] | (src[s] << 8));
-                        if (v < min) min = v;
-                        if (v > max) max = v;
+                        if (BioImage.ZarrDisplayMax > BioImage.ZarrDisplayMin)
+                        {
+                            min = BioImage.ZarrDisplayMin;
+                            max = BioImage.ZarrDisplayMax;
+                        }
                     }
                 }
                 if (max <= min)
@@ -645,4 +669,5 @@ namespace BioLib
         #endregion
     }
 }
+
 
