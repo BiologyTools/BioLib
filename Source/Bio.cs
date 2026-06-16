@@ -2479,7 +2479,7 @@ namespace BioLib
             try
             {
                 Bitmap resized = ResizeBitmap(sourceTile, overlapW, overlapH);
-                var pixelFormat = sourceTile.PixelFormat;
+                var pixelFormat = resized?.PixelFormat ?? sourceTile.PixelFormat;
                 var tileCoord = sourceTile.Coordinate;
                 var tilePlane = sourceTile.Plane;
                 bool littleEndian = sourceTile.LittleEndian;
@@ -2487,11 +2487,18 @@ namespace BioLib
                 byte[] output = new byte[tileSizeX * tileSizeY * bytesPerPixel];
                 if (resized != null && resized.Bytes != null)
                 {
+                    int srcStride = resized.Stride > 0 ? resized.Stride : overlapW * bytesPerPixel;
+                    int dstStride = tileSizeX * bytesPerPixel;
+                    int copyRowBytes = Math.Min(overlapW * bytesPerPixel, Math.Min(srcStride, dstStride));
                     for (int row = 0; row < overlapH; row++)
                     {
-                        int srcOffset = row * overlapW * bytesPerPixel;
-                        int dstOffset = row * tileSizeX * bytesPerPixel;
-                        Buffer.BlockCopy(resized.Bytes, srcOffset, output, dstOffset, overlapW * bytesPerPixel);
+                        int srcOffset = row * srcStride;
+                        int dstOffset = row * dstStride;
+                        if (srcOffset >= resized.Bytes.Length)
+                            break;
+
+                        int available = resized.Bytes.Length - srcOffset;
+                        Buffer.BlockCopy(resized.Bytes, srcOffset, output, dstOffset, Math.Min(copyRowBytes, available));
                     }
                 }
 
