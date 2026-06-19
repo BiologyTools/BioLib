@@ -326,7 +326,7 @@ namespace BioLib
                 updatePixbuf = true;
                 updateColored = true;
             }
-            public Mask(float[] fts, int width, int height, double physX, double physY, double x, double y, bool useFloatStorage = false)
+            public Mask(float[] fts, int width, int height, double physX, double physY, double x, double y, bool useFloatStorage = false, bool absolutePosition = false)
             {
                 this.width = width;
                 this.height = height;
@@ -346,21 +346,40 @@ namespace BioLib
                 {
                     byte[] bt = ConvertFloatMaskToBytesCropped(fts, width, height, out int cropWidth, out int cropHeight, out int startX, out int startY);
                     maskBytes = bt;
-                    X = startX;
-                    Y = startY;
+                    X = absolutePosition ? (x / physX) : startX;
+                    Y = absolutePosition ? (y / physY) : startY;
                     this.width = cropWidth;
                     this.height = cropHeight;
                 }
             }
-            public Mask(byte[] fts, int width, int height, double physX, double physY, double x, double y)
+            public Mask(byte[] fts, int width, int height, double physX, double physY, double x, double y, bool absolutePosition = false, bool preserveDimensions = false)
             {
                 PhysicalSizeX = physX;
                 PhysicalSizeY = physY;
-                maskBytes = CropByteMask(fts, width, height, out int cropWidth, out int cropHeight, out int startX, out int startY);
-                this.width = cropWidth;
-                this.height = cropHeight;
-                this.X = (x / physX) + startX;
-                this.Y = (y / physY) + startY;
+                if (preserveDimensions)
+                {
+                    maskBytes = fts ?? Array.Empty<byte>();
+                    this.width = width;
+                    this.height = height;
+                    this.X = x / physX;
+                    this.Y = y / physY;
+                }
+                else
+                {
+                    maskBytes = CropByteMask(fts, width, height, out int cropWidth, out int cropHeight, out int startX, out int startY);
+                    this.width = cropWidth;
+                    this.height = cropHeight;
+                    if (absolutePosition)
+                    {
+                        this.X = x / physX;
+                        this.Y = y / physY;
+                    }
+                    else
+                    {
+                        this.X = (x / physX) + startX;
+                        this.Y = (y / physY) + startY;
+                    }
+                }
             }
             public Gdk.Pixbuf Pixbuf
             {
@@ -530,14 +549,59 @@ namespace BioLib
 
                 return (min, max);
             }
-            private byte[] GetBytesCropped()
+            public byte[] GetBytesCropped()
             {
+                return GetBytesCropped(out _, out _, out _, out _);
+            }
+
+            public byte[] GetBytesCropped(int imageWidth, int imageHeight, out int cropWidth, out int cropHeight, out int startX, out int startY)
+            {
+                if (maskBytes != null)
+                {
+                    // If this mask buffer still represents a full-size image mask,
+                    // crop it down before serializing so the payload stays compact
+                    // and the ROI position is preserved by the saved metadata.
+                    if (imageWidth > 0 && imageHeight > 0 && maskBytes.Length == imageWidth * imageHeight && width == imageWidth && height == imageHeight)
+                        return CropByteMask(maskBytes, imageWidth, imageHeight, out cropWidth, out cropHeight, out startX, out startY);
+
+                    cropWidth = this.Width;
+                    cropHeight = this.Height;
+                    startX = 0;
+                    startY = 0;
+                    return (byte[])maskBytes.Clone();
+                }
+
+                return GetBytesCropped(out cropWidth, out cropHeight, out startX, out startY);
+            }
+
+            public byte[] GetBytesCropped(out int cropWidth, out int cropHeight, out int startX, out int startY)
+            {
+                if (maskBytes != null)
+                {
+                    cropWidth = this.Width;
+                    cropHeight = this.Height;
+                    startX = 0;
+                    startY = 0;
+                    return (byte[])maskBytes.Clone();
+                }
+
                 if (mask == null)
-                    return maskBytes ?? Array.Empty<byte>();
+                {
+                    cropWidth = width;
+                    cropHeight = height;
+                    startX = (int)Math.Round(X);
+                    startY = (int)Math.Round(Y);
+                    return Array.Empty<byte>();
+                }
 
                 // Crop the mask using a threshold of 0
-                var cropResult = CropFullImageMask(mask, this.Width, this.Height, 0.0f);
-                float[] croppedMask = cropResult.croppedMask;
+                var floatCropResult = CropFullImageMask(mask, this.Width, this.Height, 0.0f);
+                float[] croppedMask = floatCropResult.croppedMask;
+
+                cropWidth = floatCropResult.cropWidth;
+                cropHeight = floatCropResult.cropHeight;
+                startX = floatCropResult.startX;
+                startY = floatCropResult.startY;
 
                 // Handle empty mask case
                 if (croppedMask == null || croppedMask.Length == 0)
@@ -547,8 +611,6 @@ namespace BioLib
                 var (min, max) = GetMinAndMax(croppedMask);
                 min = 0;
                 // Prepare the byte array for the normalized output
-                int cropWidth = cropResult.cropWidth;
-                int cropHeight = cropResult.cropHeight;
                 byte[] bytes = new byte[cropWidth * cropHeight];
 
                 // If the crop is a binary mask (all positive values identical),
@@ -564,10 +626,6 @@ namespace BioLib
                                 bytes[index] = 255;
                         }
                     }
-                    X = cropResult.startX;
-                    Y = cropResult.startY;
-                    width = cropWidth;
-                    height = cropHeight;
                     return bytes;
                 }
 
@@ -585,10 +643,6 @@ namespace BioLib
                         }
                     }
                 }
-                X = cropResult.startX;
-                Y = cropResult.startY;
-                width = cropWidth;
-                height = cropHeight;
                 return bytes;
             }
             public byte[] GetBytes()
@@ -690,6 +744,62 @@ namespace BioLib
                     }
                 }
                 return rgbaBytes;
+            }
+
+            public byte[] GetFullImageBytes(int fullWidth, int fullHeight)
+            {
+                byte[] cropped = GetBytes();
+                if (cropped == null || cropped.Length == 0 || fullWidth <= 0 || fullHeight <= 0)
+                    return Array.Empty<byte>();
+
+                int cropWidth = Width;
+                int cropHeight = Height;
+                if (cropWidth <= 0 || cropHeight <= 0)
+                    return Array.Empty<byte>();
+
+                if (cropped.Length == (long)fullWidth * fullHeight &&
+                    (int)Math.Round(X) == 0 &&
+                    (int)Math.Round(Y) == 0 &&
+                    cropWidth == fullWidth &&
+                    cropHeight == fullHeight)
+                {
+                    return cropped;
+                }
+
+                byte[] full = new byte[fullWidth * fullHeight];
+                int offsetX = (int)Math.Round(X);
+                int offsetY = (int)Math.Round(Y);
+
+                for (int row = 0; row < cropHeight; row++)
+                {
+                    int destY = offsetY + row;
+                    if (destY < 0 || destY >= fullHeight)
+                        continue;
+
+                    int sourceIndex = row * cropWidth;
+                    int destX = offsetX;
+                    int copyWidth = cropWidth;
+
+                    if (destX < 0)
+                    {
+                        sourceIndex -= destX;
+                        copyWidth += destX;
+                        destX = 0;
+                    }
+
+                    if (destX >= fullWidth || copyWidth <= 0)
+                        continue;
+
+                    if (destX + copyWidth > fullWidth)
+                        copyWidth = fullWidth - destX;
+
+                    if (sourceIndex < 0 || sourceIndex + copyWidth > cropped.Length)
+                        continue;
+
+                    Buffer.BlockCopy(cropped, sourceIndex, full, destY * fullWidth + destX, copyWidth);
+                }
+
+                return full;
             }
 
             /// <summary>
@@ -1038,24 +1148,24 @@ namespace BioLib
             an.closed = true;
             return an;
         }
-        public static ROI CreateMask(ZCT coord, float[] mask, int width, int height, PointD loc, double physicalX, double physicalY, bool useFloatStorage = false)
+        public static ROI CreateMask(ZCT coord, float[] mask, int width, int height, PointD loc, double physicalX, double physicalY, bool useFloatStorage = false, bool absolutePosition = false)
         {
             ROI an = new ROI();
             an.coord = coord;
             an.type = Type.Mask;
-            an.roiMask = new Mask(mask, width, height, physicalX, physicalY, loc.X, loc.Y, useFloatStorage);
+            an.roiMask = new Mask(mask, width, height, physicalX, physicalY, loc.X, loc.Y, useFloatStorage, absolutePosition);
             an.AddPoint(loc);
-            an.BoundingBox = new RectangleD(loc.X + (an.roiMask.X * an.roiMask.PhysicalSizeX), loc.Y + (an.roiMask.Y * an.roiMask.PhysicalSizeY), width, height);
+            an.BoundingBox = new RectangleD(loc.X, loc.Y, width * physicalX, height * physicalY);
             return an;
         }
-        public static ROI CreateMask(ZCT coord, Byte[] mask, int width, int height, PointD loc, double physicalX, double physicalY)
+        public static ROI CreateMask(ZCT coord, Byte[] mask, int width, int height, PointD loc, double physicalX, double physicalY, bool absolutePosition = false, bool preserveDimensions = false)
         {
             ROI an = new ROI();
             an.coord = coord;
             an.type = Type.Mask;
-            an.roiMask = new Mask(mask, width, height, physicalX, physicalY, loc.X, loc.Y);
+            an.roiMask = new Mask(mask, width, height, physicalX, physicalY, loc.X, loc.Y, absolutePosition, preserveDimensions);
             an.AddPoint(loc);
-            an.BoundingBox = new RectangleD(loc.X + (an.roiMask.X * an.roiMask.PhysicalSizeX), loc.Y + (an.roiMask.Y * an.roiMask.PhysicalSizeY), width, height);
+            an.BoundingBox = new RectangleD(loc.X, loc.Y, width * physicalX, height * physicalY);
             return an;
         }
         // Calculate the center point of the ROI
@@ -1198,16 +1308,16 @@ namespace BioLib
 
                         case ROI.Type.Mask:
                             {
-                                if (an.roiMask == null)
-                                    continue;
+                            if (an.roiMask == null)
+                                continue;
 
-                                var m = new MaskData(
-                                    an.roiMask.X,
-                                    an.roiMask.Y,
-                                    an.roiMask.Width,
-                                    an.roiMask.Height,
-                                    an.roiMask.GetBytes()
-                                );
+                            var m = new MaskData(
+                                an.roiMask.X,
+                                an.roiMask.Y,
+                                an.roiMask.Width,
+                                an.roiMask.Height,
+                                an.roiMask.GetBytes()
+                            );
 
                                 m.setZ(an.coord.Z);
                                 m.setC(an.coord.C);
@@ -1409,16 +1519,16 @@ namespace BioLib
 
                     case ROI.Type.Mask:
                         {
-                            if (an.roiMask == null)
-                                break;
+                        if (an.roiMask == null)
+                            break;
 
-                            var m = new MaskData(
-                                an.roiMask.X,
-                                an.roiMask.Y,
-                                an.roiMask.Width,
-                                an.roiMask.Height,
-                                an.roiMask.GetBytes()
-                            );
+                        var m = new MaskData(
+                            an.roiMask.X,
+                            an.roiMask.Y,
+                            an.roiMask.Width,
+                            an.roiMask.Height,
+                            an.roiMask.GetBytes()
+                        );
 
                             m.setZ(an.coord.Z);
                             m.setC(an.coord.C);
@@ -1667,8 +1777,8 @@ namespace BioLib
                 }
 
                 // Mask bounding box IN PHYSICAL COORDINATES
-                double physX = roiMask.X + minX * roiMask.PhysicalSizeX;
-                double physY = roiMask.Y + minY * roiMask.PhysicalSizeY;
+                double physX = (roiMask.X * roiMask.PhysicalSizeX) + minX * roiMask.PhysicalSizeX;
+                double physY = (roiMask.Y * roiMask.PhysicalSizeY) + minY * roiMask.PhysicalSizeY;
 
                 double physW = (maxX - minX + 1) * roiMask.PhysicalSizeX;
                 double physH = (maxY - minY + 1) * roiMask.PhysicalSizeY;

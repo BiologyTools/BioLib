@@ -6547,10 +6547,9 @@ namespace BioLib
 
                 foreach (ROI an in d)
                 {
-                    if (an.roiID == "")
-                        omexml.setROIID("ROI:" + i.ToString() + ":" + serie, i);
-                    else
-                        omexml.setROIID(an.roiID, i);
+                    string roiId = an.roiID == "" ? "ROI:" + i.ToString() + ":" + serie : an.roiID;
+                    omexml.setROIID(roiId, i);
+                    omexml.setImageROIRef(roiId, serie, i);
                     if (an.roiName != "")
                         omexml.setROIName(an.roiName, i);
                     else
@@ -6750,17 +6749,26 @@ namespace BioLib
                     else
                     if (an.type == ROI.Type.Mask || an.roiMask != null)
                     {
+                        double physX = an.roiMask.PhysicalSizeX > 0 ? an.roiMask.PhysicalSizeX : (b.PhysicalSizeX > 0 ? b.PhysicalSizeX : 1.0);
+                        double physY = an.roiMask.PhysicalSizeY > 0 ? an.roiMask.PhysicalSizeY : (b.PhysicalSizeY > 0 ? b.PhysicalSizeY : 1.0);
+                        byte[] bts = an.roiMask.GetBytesCropped(b.SizeX, b.SizeY, out int cropWidth, out int cropHeight, out int startX, out int startY);
+                        if (bts == null || bts.Length == 0)
+                            continue;
+
+                        double maskX = an.X + (startX * physX);
+                        double maskY = an.Y + (startY * physY);
+
                         if (an.id != "")
                             omexml.setMaskID(an.id, shapeIndex, serie);
                         else
                             omexml.setMaskID("Shape:" + shapeIndex + ":" + serie, shapeIndex, serie);
-                        omexml.setMaskX(java.lang.Double.valueOf(b.ToImageSpaceX(b.StageSizeX + (an.roiMask.X * an.roiMask.PhysicalSizeX))), shapeIndex, serie);
-                        omexml.setMaskY(java.lang.Double.valueOf(b.ToImageSpaceY(b.StageSizeY + (an.roiMask.Y * an.roiMask.PhysicalSizeY))), shapeIndex, serie);
+                        omexml.setMaskX(java.lang.Double.valueOf(maskX), shapeIndex, serie);
+                        omexml.setMaskY(java.lang.Double.valueOf(maskY), shapeIndex, serie);
                         omexml.setMaskTheZ(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.Z)), shapeIndex, serie);
                         omexml.setMaskTheC(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.C)), shapeIndex, serie);
                         omexml.setMaskTheT(new NonNegativeInteger(java.lang.Integer.valueOf(an.coord.T)), shapeIndex, serie);
-                        omexml.setMaskWidth(new java.lang.Double(an.roiMask.Width * an.roiMask.PhysicalSizeX), shapeIndex, serie);
-                        omexml.setMaskHeight(new java.lang.Double(an.roiMask.Height * an.roiMask.PhysicalSizeY), shapeIndex, serie);
+                        omexml.setMaskWidth(new java.lang.Double(cropWidth * physX), shapeIndex, serie);
+                        omexml.setMaskHeight(new java.lang.Double(cropHeight * physY), shapeIndex, serie);
                         if (an.Text != "")
                             omexml.setMaskText(an.Text, shapeIndex, serie);
                         else
@@ -6774,7 +6782,6 @@ namespace BioLib
                         omexml.setMaskStrokeWidth(sw, shapeIndex, serie);
                         ome.xml.model.primitives.Color colf = new ome.xml.model.primitives.Color(an.fillColor.R, an.fillColor.G, an.fillColor.B, an.fillColor.A);
                         omexml.setMaskFillColor(colf, shapeIndex, serie);
-                        byte[] bts = an.roiMask.GetBytes();
                         omexml.setMaskBinData(bts, shapeIndex, serie);
                         omexml.setMaskBinDataBigEndian(new java.lang.Boolean(!BitConverter.IsLittleEndian), shapeIndex, serie);
                         omexml.setMaskBinDataLength(new NonNegativeLong(new java.lang.Long(bts.Length)), shapeIndex, serie);
@@ -7507,6 +7514,107 @@ namespace BioLib
         /// @param tileSizeY The tileSizeY parameter is the height of each tile in pixels when tiling
         /// the images. <summary>
         /// The function "OpenOME" opens a bioimage file, with options to specify the series, whether to
+        private static (int Width, int Height) GetMaskDimensionsForOmeMask(BioImage image, byte[] maskBytes, double maskPhysicalWidth, double maskPhysicalHeight)
+        {
+            if (maskBytes == null || maskBytes.Length == 0)
+                return (0, 0);
+
+            int width = 0;
+            int height = 0;
+
+            if (image != null)
+            {
+                if (image.PhysicalSizeX > 0 && maskPhysicalWidth > 0)
+                    width = (int)Math.Round(maskPhysicalWidth / image.PhysicalSizeX);
+                if (image.PhysicalSizeY > 0 && maskPhysicalHeight > 0)
+                    height = (int)Math.Round(maskPhysicalHeight / image.PhysicalSizeY);
+            }
+
+            if (width > 0 && height > 0 && (long)width * height == maskBytes.Length)
+                return (width, height);
+
+            if (image != null && image.SizeX > 0 && image.SizeY > 0 && (long)image.SizeX * image.SizeY == maskBytes.Length)
+                return (image.SizeX, image.SizeY);
+
+            if (width > 0 && maskBytes.Length % width == 0)
+                return (width, maskBytes.Length / width);
+
+            if (height > 0 && maskBytes.Length % height == 0)
+                return (maskBytes.Length / height, height);
+
+            double aspect = 1.0;
+            if (maskPhysicalWidth > 0 && maskPhysicalHeight > 0)
+                aspect = maskPhysicalWidth / maskPhysicalHeight;
+            else if (image != null && image.SizeX > 0 && image.SizeY > 0)
+                aspect = (double)image.SizeX / image.SizeY;
+
+            int bestWidth = maskBytes.Length;
+            int bestHeight = 1;
+            double bestScore = double.MaxValue;
+            int maxFactor = (int)Math.Sqrt(maskBytes.Length);
+
+            for (int factor = 1; factor <= maxFactor; factor++)
+            {
+                if (maskBytes.Length % factor != 0)
+                    continue;
+
+                int candidateHeight = factor;
+                int candidateWidth = maskBytes.Length / factor;
+                double ratio = (double)candidateWidth / candidateHeight;
+                double score = Math.Abs(ratio - aspect);
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestWidth = candidateWidth;
+                    bestHeight = candidateHeight;
+                }
+
+                candidateHeight = candidateWidth;
+                candidateWidth = factor;
+                ratio = (double)candidateWidth / candidateHeight;
+                score = Math.Abs(ratio - aspect);
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestWidth = candidateWidth;
+                    bestHeight = candidateHeight;
+                }
+            }
+
+            return (bestWidth, bestHeight);
+        }
+
+        private static byte[] ExpandMaskBytes(byte[] croppedMask, int croppedWidth, int croppedHeight, int fullWidth, int fullHeight, int offsetX, int offsetY)
+        {
+            if (croppedMask == null || croppedMask.Length == 0 || croppedWidth <= 0 || croppedHeight <= 0 || fullWidth <= 0 || fullHeight <= 0)
+                return Array.Empty<byte>();
+
+            byte[] fullMask = new byte[fullWidth * fullHeight];
+            for (int y = 0; y < croppedHeight; y++)
+            {
+                int dy = offsetY + y;
+                if (dy < 0 || dy >= fullHeight)
+                    continue;
+
+                int srcRow = y * croppedWidth;
+                int dstRow = dy * fullWidth;
+                for (int x = 0; x < croppedWidth; x++)
+                {
+                    int dx = offsetX + x;
+                    if (dx < 0 || dx >= fullWidth)
+                        continue;
+
+                    int src = srcRow + x;
+                    if (src >= croppedMask.Length)
+                        break;
+                    fullMask[dstRow + dx] = croppedMask[src];
+                }
+            }
+
+            return fullMask;
+        }
         public static BioImage OpenOME(string file, int serie, bool tab, bool addToImages, bool tile, int tilex, int tiley, int tileSizeX, int tileSizeY, bool useOpenSlide = true)
         {
             if (file == null || file == "")
@@ -7535,6 +7643,8 @@ namespace BioLib
             {
                 reader.close();
                 reader.setMetadataStore(b.meta);
+                reader.setOriginalMetadataPopulated(true);
+                reader.setMetadataFiltered(false);
                 try
                 {
                     Status = "Opening file " + b.Filename;
@@ -7776,7 +7886,31 @@ namespace BioLib
                 for (int sc = 0; sc < scount; sc++)
                 {
                     Status = "Reading ROI " + (sc + 1).ToString() + "/" + scount;
-                    string typ = b.meta.getShapeType(im, sc);
+                    co = new ZCT(0, 0, 0);
+                    string typ;
+                    try
+                    {
+                        typ = b.meta.getShapeType(im, sc);
+                    }
+                    catch
+                    {
+                        typ = null;
+                    }
+                    if (string.IsNullOrWhiteSpace(typ))
+                    {
+                        try
+                        {
+                            byte[] maskProbe = b.meta.getMaskBinData(im, sc);
+                            if (maskProbe != null && maskProbe.Length > 0)
+                                typ = "Mask";
+                        }
+                        catch
+                        {
+                            // ignore and fall through
+                        }
+                    }
+                    if (string.IsNullOrWhiteSpace(typ))
+                        continue;
                     ROI an = new ROI();
                     an.roiID = roiID;
                     an.roiName = roiName;
@@ -7838,7 +7972,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getLineTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
                         an.Text = b.meta.getLineText(im, sc);
                         ome.units.quantity.Length fl = b.meta.getLineFontSize(im, sc);
                         if (fl != null)
@@ -7875,7 +8009,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getRectangleTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
 
                         an.Text = b.meta.getRectangleText(im, sc);
                         ome.units.quantity.Length fl = b.meta.getRectangleFontSize(im, sc);
@@ -7920,7 +8054,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getEllipseTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
                         an.Text = b.meta.getEllipseText(im, sc);
                         ome.units.quantity.Length fl = b.meta.getEllipseFontSize(im, sc);
                         if (fl != null)
@@ -7961,7 +8095,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getPolygonTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
                         an.Text = b.meta.getPolygonText(im, sc);
                         ome.units.quantity.Length fl = b.meta.getPolygonFontSize(im, sc);
                         if (fl != null)
@@ -8000,7 +8134,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getPolylineTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
                         an.Text = b.meta.getPolylineText(im, sc);
                         ome.units.quantity.Length fl = b.meta.getPolylineFontSize(im, sc);
                         if (fl != null)
@@ -8032,7 +8166,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getLabelTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
 
                         ome.units.quantity.Length fl = b.meta.getLabelFontSize(im, sc);
                         if (fl != null)
@@ -8062,10 +8196,43 @@ namespace BioLib
                         double w = b.meta.getMaskWidth(im, sc).doubleValue();
                         double x = b.meta.getMaskX(im, sc).doubleValue();
                         double y = b.meta.getMaskY(im, sc).doubleValue();
-                        an = ROI.CreateMask(co, bts, (int)Math.Round(w / b.PhysicalSizeX), (int)Math.Round(h / b.PhysicalSizeY), new PointD(x * b.PhysicalSizeX, y * b.PhysicalSizeY), b.PhysicalSizeX, b.PhysicalSizeY);
+                        if (bts == null || bts.Length == 0)
+                            continue;
+                        int rawMaskWidth = (int)Math.Round(w);
+                        int rawMaskHeight = (int)Math.Round(h);
+                        double physX = b.PhysicalSizeX > 0 ? b.PhysicalSizeX : 1.0;
+                        double physY = b.PhysicalSizeY > 0 ? b.PhysicalSizeY : 1.0;
+                        int scaledMaskWidth = (int)Math.Round(w / physX);
+                        int scaledMaskHeight = (int)Math.Round(h / physY);
+                        bool scaledValid = scaledMaskWidth > 0 && scaledMaskHeight > 0 && (long)scaledMaskWidth * scaledMaskHeight == bts.Length;
+                        bool rawValid = rawMaskWidth > 0 && rawMaskHeight > 0 && (long)rawMaskWidth * rawMaskHeight == bts.Length;
+                        int maskWidth = rawMaskWidth;
+                        int maskHeight = rawMaskHeight;
+                        if (!rawValid && scaledValid)
+                        {
+                            maskWidth = scaledMaskWidth;
+                            maskHeight = scaledMaskHeight;
+                        }
+                        else if (!rawValid && !scaledValid)
+                        {
+                            continue;
+                        }
+                        if (maskWidth <= 0 || maskHeight <= 0)
+                        {
+                            continue;
+                        }
+                        an = ROI.CreateMask(
+                            co,
+                            bts,
+                            maskWidth,
+                            maskHeight,
+                            new PointD(x, y),
+                            physX,
+                            physY,
+                            preserveDimensions: true);
                         an.Text = b.meta.getMaskText(im, sc);
                         an.id = b.meta.getMaskID(im, sc);
-                        an.BoundingBox = new RectangleD(an.X, an.Y, an.W, an.H);
+                        an.UpdateBoundingBox();
                         ome.xml.model.primitives.NonNegativeInteger nz = b.meta.getMaskTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
@@ -8075,7 +8242,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = b.meta.getMaskTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
 
                         ome.units.quantity.Length fl = b.meta.getMaskFontSize(im, sc);
                         if (fl != null)
@@ -8094,6 +8261,18 @@ namespace BioLib
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
                     b.Annotations.Add(an);
+                }
+            }
+
+            if (b.Annotations.Count == 0)
+            {
+                try
+                {
+                    b.Annotations.AddRange(OpenOMEROIs(file, serie));
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("Fallback ROI import failed: " + e.Message);
                 }
             }
 
@@ -10601,6 +10780,8 @@ namespace BioLib
             // create format reader
             ImageReader imageReader = new ImageReader();
             imageReader.setMetadataStore(meta);
+            imageReader.setOriginalMetadataPopulated(true);
+            imageReader.setMetadataFiltered(false);
             // initialize file
             file = file.Replace("\\", "/");
             imageReader.setId(file);
@@ -10668,7 +10849,31 @@ namespace BioLib
                 }
                 for (int sc = 0; sc < scount; sc++)
                 {
-                    string type = meta.getShapeType(im, sc);
+                    co = new ZCT(0, 0, 0);
+                    string type;
+                    try
+                    {
+                        type = meta.getShapeType(im, sc);
+                    }
+                    catch
+                    {
+                        type = null;
+                    }
+                    if (string.IsNullOrWhiteSpace(type))
+                    {
+                        try
+                        {
+                            byte[] maskProbe = meta.getMaskBinData(im, sc);
+                            if (maskProbe != null && maskProbe.Length > 0)
+                                type = "Mask";
+                        }
+                        catch
+                        {
+                            // ignore and fall through
+                        }
+                    }
+                    if (string.IsNullOrWhiteSpace(type))
+                        continue;
                     ROI an = new ROI();
                     an.roiID = roiID;
                     an.roiName = roiName;
@@ -10725,7 +10930,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = meta.getLineTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
                         an.Text = meta.getLineText(im, sc);
                         ome.units.quantity.Length fl = meta.getLineFontSize(im, sc);
                         if (fl != null)
@@ -10760,7 +10965,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = meta.getRectangleTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
 
                         an.Text = meta.getRectangleText(im, sc);
                         ome.units.quantity.Length fl = meta.getRectangleFontSize(im, sc);
@@ -10802,7 +11007,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = meta.getEllipseTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
                         an.Text = meta.getEllipseText(im, sc);
                         ome.units.quantity.Length fl = meta.getEllipseFontSize(im, sc);
                         if (fl != null)
@@ -10841,7 +11046,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = meta.getPolygonTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
                         an.Text = meta.getPolygonText(im, sc);
                         ome.units.quantity.Length fl = meta.getPolygonFontSize(im, sc);
                         if (fl != null)
@@ -10878,7 +11083,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = meta.getPolylineTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
                         an.Text = meta.getPolylineText(im, sc);
                         ome.units.quantity.Length fl = meta.getPolylineFontSize(im, sc);
                         if (fl != null)
@@ -10909,7 +11114,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = meta.getLabelTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
 
                         ome.units.quantity.Length fl = meta.getLabelFontSize(im, sc);
                         if (fl != null)
@@ -10933,9 +11138,43 @@ namespace BioLib
                     {
                         byte[] bts = meta.getMaskBinData(im, sc);
                         bool end = meta.getMaskBinDataBigEndian(im, sc).booleanValue();
-                        an = ROI.CreateMask(co, bts, (int)(an.W * physicalSizeX), (int)(an.H * physicalSizeY), new PointD(stageSizeX, stageSizeY), physicalSizeX, physicalSizeY);
+                        double h = meta.getMaskHeight(im, sc).doubleValue();
+                        double w = meta.getMaskWidth(im, sc).doubleValue();
+                        double x = meta.getMaskX(im, sc).doubleValue();
+                        double y = meta.getMaskY(im, sc).doubleValue();
+                        int rawMaskWidth = (int)Math.Round(w);
+                        int rawMaskHeight = (int)Math.Round(h);
+                        int scaledMaskWidth = (int)Math.Round(w / physicalSizeX);
+                        int scaledMaskHeight = (int)Math.Round(h / physicalSizeY);
+                        bool scaledValid = scaledMaskWidth > 0 && scaledMaskHeight > 0 && (long)scaledMaskWidth * scaledMaskHeight == bts.Length;
+                        bool rawValid = rawMaskWidth > 0 && rawMaskHeight > 0 && (long)rawMaskWidth * rawMaskHeight == bts.Length;
+                        int maskWidth = rawMaskWidth;
+                        int maskHeight = rawMaskHeight;
+                        if (!rawValid && scaledValid)
+                        {
+                            maskWidth = scaledMaskWidth;
+                            maskHeight = scaledMaskHeight;
+                        }
+                        else if (!rawValid && !scaledValid)
+                        {
+                            continue;
+                        }
+                        if (maskWidth <= 0 || maskHeight <= 0)
+                        {
+                            continue;
+                        }
+                        an = ROI.CreateMask(
+                            co,
+                            bts,
+                            maskWidth,
+                            maskHeight,
+                            new PointD(x, y),
+                            physicalSizeX,
+                            physicalSizeY,
+                            preserveDimensions: true);
                         an.Text = meta.getMaskText(im, sc);
                         an.id = meta.getMaskID(im, sc);
+                        an.UpdateBoundingBox();
                         ome.xml.model.primitives.NonNegativeInteger nz = meta.getMaskTheZ(im, sc);
                         if (nz != null)
                             co.Z = nz.getNumberValue().intValue();
@@ -10945,7 +11184,7 @@ namespace BioLib
                         ome.xml.model.primitives.NonNegativeInteger nt = meta.getMaskTheT(im, sc);
                         if (nt != null)
                             co.T = nt.getNumberValue().intValue();
-                        an.coord = co;
+                        an.coord = new ZCT(co.Z, co.C, co.T);
 
                         ome.units.quantity.Length fl = meta.getMaskFontSize(im, sc);
                         if (fl != null)
@@ -10963,6 +11202,7 @@ namespace BioLib
                         if (colf != null)
                             an.fillColor = Color.FromArgb(colf.getAlpha(), colf.getRed(), colf.getGreen(), colf.getBlue());
                     }
+                    Annotations.Add(an);
                 }
             }
 
@@ -11575,6 +11815,8 @@ namespace BioLib
         }
     }
 }
+
+
 
 
 
