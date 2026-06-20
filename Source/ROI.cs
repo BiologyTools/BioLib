@@ -887,6 +887,7 @@ namespace BioLib
         public ROI Copy()
         {
             ROI copy = new ROI();
+            copy.type = type;
             copy.id = id;
             copy.roiID = roiID;
             copy.roiName = roiName;
@@ -894,18 +895,30 @@ namespace BioLib
             copy.strokeWidth = strokeWidth;
             copy.strokeColor = strokeColor;
             copy.fillColor = fillColor;
-            copy.Points = Points;
+            copy.Points.AddRange(Points);
             copy.Selected = Selected;
             copy.shapeIndex = shapeIndex;
             copy.closed = closed;
             copy.family = family;
             copy.fontSize = fontSize;
             copy.slant = slant;
-            copy.selectBoxs = selectBoxs;
+            copy.selectBoxs.AddRange(selectBoxs);
             copy.BoundingBox = BoundingBox;
             copy.isFilled = isFilled;
             copy.coord = coord;
             copy.selectedPoints = selectedPoints;
+            if (roiMask != null)
+            {
+                copy.roiMask = new Mask(
+                    roiMask.GetBytes(),
+                    roiMask.Width,
+                    roiMask.Height,
+                    roiMask.PhysicalSizeX,
+                    roiMask.PhysicalSizeY,
+                    roiMask.X * roiMask.PhysicalSizeX,
+                    roiMask.Y * roiMask.PhysicalSizeY,
+                    preserveDimensions: true);
+            }
 
             return copy;
         }
@@ -932,6 +945,18 @@ namespace BioLib
             copy.isFilled = isFilled;
             copy.coord = cord;
             copy.selectedPoints = selectedPoints;
+            if (roiMask != null)
+            {
+                copy.roiMask = new Mask(
+                    roiMask.GetBytes(),
+                    roiMask.Width,
+                    roiMask.Height,
+                    roiMask.PhysicalSizeX,
+                    roiMask.PhysicalSizeY,
+                    roiMask.X * roiMask.PhysicalSizeX,
+                    roiMask.Y * roiMask.PhysicalSizeY,
+                    preserveDimensions: true);
+            }
             return copy;
         }
         public string Text

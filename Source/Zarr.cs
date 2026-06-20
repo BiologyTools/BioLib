@@ -1160,8 +1160,12 @@ namespace BioLib
             if (sizeX == 0 || sizeY == 0)
                 return result;
 
+            int baseWidth = b.Resolutions.Count > 0 ? b.Resolutions[0].SizeX : b.SizeX;
+            int baseHeight = b.Resolutions.Count > 0 ? b.Resolutions[0].SizeY : b.SizeY;
             double physX = b.PhysicalSizeX > 0 ? b.PhysicalSizeX : 1.0;
             double physY = b.PhysicalSizeY > 0 ? b.PhysicalSizeY : 1.0;
+            physX *= sizeX > 0 ? baseWidth / (double)sizeX : 1.0;
+            physY *= sizeY > 0 ? baseHeight / (double)sizeY : 1.0;
 
             int shapeIdx = 0;
 

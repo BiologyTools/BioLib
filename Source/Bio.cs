@@ -7536,12 +7536,6 @@ namespace BioLib
             if (image != null && image.SizeX > 0 && image.SizeY > 0 && (long)image.SizeX * image.SizeY == maskBytes.Length)
                 return (image.SizeX, image.SizeY);
 
-            if (width > 0 && maskBytes.Length % width == 0)
-                return (width, maskBytes.Length / width);
-
-            if (height > 0 && maskBytes.Length % height == 0)
-                return (maskBytes.Length / height, height);
-
             double aspect = 1.0;
             if (maskPhysicalWidth > 0 && maskPhysicalHeight > 0)
                 aspect = maskPhysicalWidth / maskPhysicalHeight;
@@ -8198,29 +8192,15 @@ namespace BioLib
                         double y = b.meta.getMaskY(im, sc).doubleValue();
                         if (bts == null || bts.Length == 0)
                             continue;
-                        int rawMaskWidth = (int)Math.Round(w);
-                        int rawMaskHeight = (int)Math.Round(h);
-                        double physX = b.PhysicalSizeX > 0 ? b.PhysicalSizeX : 1.0;
-                        double physY = b.PhysicalSizeY > 0 ? b.PhysicalSizeY : 1.0;
-                        int scaledMaskWidth = (int)Math.Round(w / physX);
-                        int scaledMaskHeight = (int)Math.Round(h / physY);
-                        bool scaledValid = scaledMaskWidth > 0 && scaledMaskHeight > 0 && (long)scaledMaskWidth * scaledMaskHeight == bts.Length;
-                        bool rawValid = rawMaskWidth > 0 && rawMaskHeight > 0 && (long)rawMaskWidth * rawMaskHeight == bts.Length;
-                        int maskWidth = rawMaskWidth;
-                        int maskHeight = rawMaskHeight;
-                        if (!rawValid && scaledValid)
-                        {
-                            maskWidth = scaledMaskWidth;
-                            maskHeight = scaledMaskHeight;
-                        }
-                        else if (!rawValid && !scaledValid)
-                        {
-                            continue;
-                        }
+                        var maskDimensions = GetMaskDimensionsForOmeMask(b, bts, w, h);
+                        int maskWidth = maskDimensions.Width;
+                        int maskHeight = maskDimensions.Height;
                         if (maskWidth <= 0 || maskHeight <= 0)
                         {
                             continue;
                         }
+                        double physX = w > 0 ? w / maskWidth : (b.PhysicalSizeX > 0 ? b.PhysicalSizeX : 1.0);
+                        double physY = h > 0 ? h / maskHeight : (b.PhysicalSizeY > 0 ? b.PhysicalSizeY : 1.0);
                         an = ROI.CreateMask(
                             co,
                             bts,
@@ -11142,35 +11122,23 @@ namespace BioLib
                         double w = meta.getMaskWidth(im, sc).doubleValue();
                         double x = meta.getMaskX(im, sc).doubleValue();
                         double y = meta.getMaskY(im, sc).doubleValue();
-                        int rawMaskWidth = (int)Math.Round(w);
-                        int rawMaskHeight = (int)Math.Round(h);
-                        int scaledMaskWidth = (int)Math.Round(w / physicalSizeX);
-                        int scaledMaskHeight = (int)Math.Round(h / physicalSizeY);
-                        bool scaledValid = scaledMaskWidth > 0 && scaledMaskHeight > 0 && (long)scaledMaskWidth * scaledMaskHeight == bts.Length;
-                        bool rawValid = rawMaskWidth > 0 && rawMaskHeight > 0 && (long)rawMaskWidth * rawMaskHeight == bts.Length;
-                        int maskWidth = rawMaskWidth;
-                        int maskHeight = rawMaskHeight;
-                        if (!rawValid && scaledValid)
-                        {
-                            maskWidth = scaledMaskWidth;
-                            maskHeight = scaledMaskHeight;
-                        }
-                        else if (!rawValid && !scaledValid)
-                        {
-                            continue;
-                        }
+                        var maskDimensions = GetMaskDimensionsForOmeMask(null, bts, w, h);
+                        int maskWidth = maskDimensions.Width;
+                        int maskHeight = maskDimensions.Height;
                         if (maskWidth <= 0 || maskHeight <= 0)
                         {
                             continue;
                         }
+                        double maskPhysX = w > 0 ? w / maskWidth : physicalSizeX;
+                        double maskPhysY = h > 0 ? h / maskHeight : physicalSizeY;
                         an = ROI.CreateMask(
                             co,
                             bts,
                             maskWidth,
                             maskHeight,
                             new PointD(x, y),
-                            physicalSizeX,
-                            physicalSizeY,
+                            maskPhysX,
+                            maskPhysY,
                             preserveDimensions: true);
                         an.Text = meta.getMaskText(im, sc);
                         an.id = meta.getMaskID(im, sc);
