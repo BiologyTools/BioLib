@@ -31,14 +31,25 @@ namespace BioLib
             if (MinUnitsPerPixel <= 0) MinUnitsPerPixel = 1;
             var height = SlideImage.Dimensions.Height;
             var width = SlideImage.Dimensions.Width;
+            double stageX = 0;
+            double stageY = 0;
+            if (source.Resolutions != null && source.Resolutions.Count > 0)
+            {
+                stageX = source.Resolutions[0].StageSizeX;
+                stageY = source.Resolutions[0].StageSizeY;
+            }
             //ExternInfo = GetInfo();
             Schema = new TileSchema
             {
                 YAxis = YAxis.OSM,
                 Format = "jpg",
-                Extent = new Extent(0, -height * MinUnitsPerPixel, width * MinUnitsPerPixel, 0),
-                OriginX = 0,
-                OriginY = 0,
+                Extent = new Extent(
+                    stageX,
+                    -(stageY + (height * MinUnitsPerPixel)),
+                    stageX + (width * MinUnitsPerPixel),
+                    -stageY),
+                OriginX = stageX,
+                OriginY = stageY,
             };
             InitResolutions(Schema.Resolutions, 256, 256);
         }
@@ -86,13 +97,20 @@ namespace BioLib
             GetFieldDims(fieldLevels[0], out w0, out h0);
             Log($"[RebuildSchemaForWell] field fi={fi}, level0 w={w0} h={h0}, levels={fieldLevels.Count}");
 
+            double stageX = b.Resolutions.Count > 0 ? b.Resolutions[0].StageSizeX : 0;
+            double stageY = b.Resolutions.Count > 0 ? b.Resolutions[0].StageSizeY : 0;
+
             var newSchema = new BruTile.TileSchema
             {
                 YAxis    = BruTile.YAxis.OSM,
                 Format   = "jpg",
-                Extent   = new BruTile.Extent(0, -h0, w0, 0),
-                OriginX  = 0,
-                OriginY  = 0,
+                Extent   = new BruTile.Extent(
+                    stageX,
+                    -(stageY + (h0 * b.PhysicalSizeY)),
+                    stageX + (w0 * b.PhysicalSizeX),
+                    -stageY),
+                OriginX  = stageX,
+                OriginY  = stageY,
             };
 
             for (int lev = 0; lev < fieldLevels.Count; lev++)
@@ -170,12 +188,20 @@ namespace BioLib
                 var tileWidth  = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
                 var tileHeight = Schema.Resolutions[tileInfo.Index.Level].TileHeight;
 
-                var curLevelOffsetXPixel = tileInfo.Extent.MinX / r;
-                var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / r;
+                // Tile extents are expressed in translated stage/world space, but
+                // the underlying Zarr pixels still start at image-local 0,0.
+                // Subtract the schema origin here so stage translation affects
+                // placement only, not the pixel read offset.
+                var schemaExtent = Schema.Extent;
 
-                // Use actual level pixel dimensions from BioImage — Schema.Extent is in
-                // raw level-0 pixels but UnitsPerPixel is in microns, so Extent / r
-                // gives the wrong level-N pixel count.
+                // Tile placement uses translated world-space extents, but the
+                // underlying Zarr/OME pixels are still addressed on the tile grid.
+                // Derive the read origin from the tile index so translation does
+                // not introduce a fractional-pixel bias at the image edge.
+                var curLevelOffsetXPixel = tileInfo.Index.Col * tileWidth;
+                var curLevelOffsetYPixel = tileInfo.Index.Row * tileHeight;
+
+                // Use actual level pixel dimensions from BioImage.
                 int lev = tileInfo.Index.Level;
                 var levelPixelW = (long)(lev < SlideImage.BioImage.Resolutions.Count
                     ? SlideImage.BioImage.Resolutions[lev].SizeX
@@ -184,9 +210,28 @@ namespace BioLib
                     ? SlideImage.BioImage.Resolutions[lev].SizeY
                     : Math.Round(Schema.Extent.Height / r));
 
+                long readX = (long)curLevelOffsetXPixel;
+                long readY = (long)curLevelOffsetYPixel;
+
+                int curTileWidth  = tileWidth;
+                int curTileHeight = tileHeight;
+
+                // Trim any part of the request that falls outside the image on
+                // the left/top instead of asking the Zarr reader to pad with black.
+                if (readX < 0)
+                {
+                    curTileWidth += (int)readX;
+                    readX = 0;
+                }
+                if (readY < 0)
+                {
+                    curTileHeight += (int)readY;
+                    readY = 0;
+                }
+
                 // Clamp tile read size so we never request pixels past the image boundary.
-                var curTileWidth  = (int)Math.Max(0, Math.Min(tileWidth,  levelPixelW - (long)curLevelOffsetXPixel));
-                var curTileHeight = (int)Math.Max(0, Math.Min(tileHeight, levelPixelH - (long)curLevelOffsetYPixel));
+                curTileWidth  = (int)Math.Max(0, Math.Min(curTileWidth,  levelPixelW - readX));
+                curTileHeight = (int)Math.Max(0, Math.Min(curTileHeight, levelPixelH - readY));
 
                 // Guard against fully OOB tiles
                 if (curTileWidth <= 0 || curTileHeight <= 0)
@@ -202,7 +247,7 @@ namespace BioLib
 
                 var bgraData = SlideImage.ReadRegion(
                     tileInfo.Index.Level, coord,
-                    (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel,
+                    readX, readY,
                     curTileWidth, curTileHeight);
 
                 if (bgraData == null || bgraData.Length == 0)

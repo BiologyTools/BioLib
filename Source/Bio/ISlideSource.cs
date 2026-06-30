@@ -515,11 +515,11 @@ namespace BioLib
                                 if (tileData != null)
                                 {
                                     // Calculate actual tile dimensions (edge tiles may be smaller)
-                                    var curTileWidth = (int)(t.Extent.MaxX > Schema.Extent.Width
-                                        ? schemaTileWidth - (t.Extent.MaxX - Schema.Extent.Width) / curUnitsPerPixel
+                                    var curTileWidth = (int)(t.Extent.MaxX > Schema.Extent.MaxX
+                                        ? schemaTileWidth - (t.Extent.MaxX - Schema.Extent.MaxX) / curUnitsPerPixel
                                         : schemaTileWidth);
-                                    var curTileHeight = (int)(-t.Extent.MinY > Schema.Extent.Height
-                                        ? schemaTileHeight - (-t.Extent.MinY - Schema.Extent.Height) / curUnitsPerPixel
+                                    var curTileHeight = (int)(t.Extent.MinY < Schema.Extent.MinY
+                                        ? schemaTileHeight - (Schema.Extent.MinY - t.Extent.MinY) / curUnitsPerPixel
                                         : schemaTileHeight);
 
                                     // Validate dimensions against actual data
@@ -785,8 +785,11 @@ namespace BioLib
             var r = Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
             var tileWidth = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
             var tileHeight = Schema.Resolutions[tileInfo.Index.Level].TileHeight;
-            var curLevelOffsetXPixel = tileInfo.Extent.MinX / r;
-            var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / r;
+            // Use the tile index grid directly. World-space translation is only
+            // for placement; the underlying pixel read should remain anchored to
+            // the tile's integer grid to avoid edge bias on translated Zarrs.
+            var curLevelOffsetXPixel = tileInfo.Index.Col * tileWidth;
+            var curLevelOffsetYPixel = tileInfo.Index.Row * tileHeight;
 
             // Use actual level pixel dimensions from BioImage when available.
             // Some Zarr-backed images can be initialized before BioImage.Resolutions
@@ -800,9 +803,26 @@ namespace BioLib
                 ? bioResolutions[lev0].SizeY
                 : Math.Round(Schema.Extent.Height / r));
 
+            long readX = (long)curLevelOffsetXPixel;
+            long readY = (long)curLevelOffsetYPixel;
+
+            int curTileWidth = tileWidth;
+            int curTileHeight = tileHeight;
+
+            if (readX < 0)
+            {
+                curTileWidth += (int)readX;
+                readX = 0;
+            }
+            if (readY < 0)
+            {
+                curTileHeight += (int)readY;
+                readY = 0;
+            }
+
             // Clamp tile size so we never read past the image boundary.
-            var curTileWidth  = (int)Math.Max(0, Math.Min(tileWidth,  levelPixelW - (long)curLevelOffsetXPixel));
-            var curTileHeight = (int)Math.Max(0, Math.Min(tileHeight, levelPixelH - (long)curLevelOffsetYPixel));
+            curTileWidth  = (int)Math.Max(0, Math.Min(curTileWidth,  levelPixelW - readX));
+            curTileHeight = (int)Math.Max(0, Math.Min(curTileHeight, levelPixelH - readY));
 
             // Guard: tile origin is at or beyond the image — return black.
             if (curTileWidth <= 0 || curTileHeight <= 0)
@@ -812,7 +832,7 @@ namespace BioLib
                 return empty;
             }
 
-            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, tileInfo.Coordinate, ct);
+            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, readX, readY, curTileWidth, curTileHeight, tileInfo.Coordinate, ct);
             TraceTile("[SlideSourceBase.GetTileAsync(TileInformation)] end", tileInfo, coord, sw.ElapsedMilliseconds, bgraData != null ? $"bytes={bgraData.Length}" : "tile=null");
             if (bgraData == null)
                 return null;
@@ -836,8 +856,8 @@ namespace BioLib
             var r = Schema.Resolutions[tileInfo.Index.Level].UnitsPerPixel;
             var tileWidth = Schema.Resolutions[tileInfo.Index.Level].TileWidth;
             var tileHeight = Schema.Resolutions[tileInfo.Index.Level].TileHeight;
-            var curLevelOffsetXPixel = tileInfo.Extent.MinX / r;
-            var curLevelOffsetYPixel = -tileInfo.Extent.MaxY / r;
+            var curLevelOffsetXPixel = tileInfo.Index.Col * tileWidth;
+            var curLevelOffsetYPixel = tileInfo.Index.Row * tileHeight;
 
             // Use actual level pixel dimensions from BioImage when available.
             // Some Zarr-backed images can be initialized before BioImage.Resolutions
@@ -851,9 +871,26 @@ namespace BioLib
                 ? bioResolutions[levIdx].SizeY
                 : Math.Round(Schema.Extent.Height / r));
 
+            long readX2 = (long)curLevelOffsetXPixel;
+            long readY2 = (long)curLevelOffsetYPixel;
+
+            int curTileWidth  = tileWidth;
+            int curTileHeight = tileHeight;
+
+            if (readX2 < 0)
+            {
+                curTileWidth += (int)readX2;
+                readX2 = 0;
+            }
+            if (readY2 < 0)
+            {
+                curTileHeight += (int)readY2;
+                readY2 = 0;
+            }
+
             // Clamp tile size so we never read past the image boundary.
-            var curTileWidth  = (int)Math.Max(0, Math.Min(tileWidth,  levelPixelW - (long)curLevelOffsetXPixel));
-            var curTileHeight = (int)Math.Max(0, Math.Min(tileHeight, levelPixelH - (long)curLevelOffsetYPixel));
+            curTileWidth  = (int)Math.Max(0, Math.Min(curTileWidth,  levelPixelW - readX2));
+            curTileHeight = (int)Math.Max(0, Math.Min(curTileHeight, levelPixelH - readY2));
 
             // Guard: tile origin is at or beyond the image — return black.
             if (curTileWidth <= 0 || curTileHeight <= 0)
@@ -863,7 +900,7 @@ namespace BioLib
                 return empty;
             }
 
-            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, (long)curLevelOffsetXPixel, (long)curLevelOffsetYPixel, curTileWidth, curTileHeight, coord, ct);
+            var bgraData = await Image.ReadRegionAsync(tileInfo.Index.Level, readX2, readY2, curTileWidth, curTileHeight, coord, ct);
             TraceTile("[SlideSourceBase.GetTileAsync(BruTile.TileInfo)] end", tileInfo.Index, coord, tileInfo.Extent, sw.ElapsedMilliseconds, bgraData != null ? $"bytes={bgraData.Length}" : "tile=null");
             if (bgraData == null)
                 return null;

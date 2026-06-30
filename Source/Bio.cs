@@ -5884,18 +5884,25 @@ namespace BioLib
                     double physicalSizeX = 1.0;
                     double physicalSizeY = 1.0;
                     double physicalSizeZ = 1.0;
+                    double stageSizeX = 0.0;
+                    double stageSizeY = 0.0;
+                    double stageSizeZ = 0.0;
 
-                    var levelScales = await TryReadZarrLevelPhysicalSizesAsync(url, b.levels.Count).ConfigureAwait(false);
-                    if (i < levelScales.Length)
+                    var levelTransforms = await TryReadZarrLevelTransformsAsync(url, b.levels.Count).ConfigureAwait(false);
+                    if (i < levelTransforms.Length)
                     {
-                        physicalSizeX = levelScales[i].X;
-                        physicalSizeY = levelScales[i].Y;
-                        physicalSizeZ = levelScales[i].Z;
+                        physicalSizeX = levelTransforms[i].ScaleX;
+                        physicalSizeY = levelTransforms[i].ScaleY;
+                        physicalSizeZ = levelTransforms[i].ScaleZ;
+                        stageSizeX = levelTransforms[i].StageX;
+                        stageSizeY = levelTransforms[i].StageY;
+                        stageSizeZ = levelTransforms[i].StageZ;
                     }
 
                     b.Resolutions.Add(new Resolution(
                         width, height, pixelFormat,
-                        physicalSizeX, physicalSizeY, physicalSizeZ, 0, 0, 0));
+                        physicalSizeX, physicalSizeY, physicalSizeZ,
+                        stageSizeX, stageSizeY, stageSizeZ));
                 }
 
                 // -----------------------------------------------------------------
@@ -6153,26 +6160,26 @@ namespace BioLib
             return fallback;
         }
 
-        private static async Task<(double X, double Y, double Z)[]> TryReadZarrLevelPhysicalSizesAsync(string source, int levelCount)
+        private static async Task<(double ScaleX, double ScaleY, double ScaleZ, double StageX, double StageY, double StageZ)[]> TryReadZarrLevelTransformsAsync(string source, int levelCount)
         {
-            var scales = Enumerable.Repeat((1.0, 1.0, 1.0), Math.Max(0, levelCount)).ToArray();
+            var transformsByLevel = Enumerable.Repeat((1.0, 1.0, 1.0, 0.0, 0.0, 0.0), Math.Max(0, levelCount)).ToArray();
 
             try
             {
                 string? json = await ReadZarrMetadataJsonAsync(source).ConfigureAwait(false);
                 if (string.IsNullOrWhiteSpace(json))
-                    return scales;
+                    return transformsByLevel;
 
                 using var doc = JsonDocument.Parse(json);
                 if (!TryGetRootMultiscales(doc.RootElement, out var multiscales))
-                    return scales;
+                    return transformsByLevel;
 
                 if (multiscales.ValueKind != JsonValueKind.Array || multiscales.GetArrayLength() == 0)
-                    return scales;
+                    return transformsByLevel;
 
                 var multiscale = multiscales[0];
                 if (!multiscale.TryGetProperty("datasets", out var datasets) || datasets.ValueKind != JsonValueKind.Array)
-                    return scales;
+                    return transformsByLevel;
 
                 int count = Math.Min(levelCount, datasets.GetArrayLength());
                 for (int i = 0; i < count; i++)
@@ -6185,36 +6192,72 @@ namespace BioLib
                         continue;
                     }
 
-                    var transform = transforms[0];
-                    if (!transform.TryGetProperty("scale", out var scale) || scale.ValueKind != JsonValueKind.Array || scale.GetArrayLength() == 0)
-                        continue;
+                    double scaleX = 1.0;
+                    double scaleY = 1.0;
+                    double scaleZ = 1.0;
+                    double stageX = 0.0;
+                    double stageY = 0.0;
+                    double stageZ = 0.0;
 
-                    double x = ReadScaleComponent(scale, scale.GetArrayLength() - 1);
-                    double y = ReadScaleComponent(scale, Math.Max(0, scale.GetArrayLength() - 2));
-                    double z = scale.GetArrayLength() >= 3
-                        ? ReadScaleComponent(scale, scale.GetArrayLength() - 3)
-                        : 1.0;
+                    foreach (var transform in transforms.EnumerateArray())
+                    {
+                        if (transform.TryGetProperty("scale", out var scale) &&
+                            scale.ValueKind == JsonValueKind.Array &&
+                            scale.GetArrayLength() > 0)
+                        {
+                            scaleX = ReadScaleComponent(scale, scale.GetArrayLength() - 1);
+                            scaleY = ReadScaleComponent(scale, Math.Max(0, scale.GetArrayLength() - 2));
+                            scaleZ = scale.GetArrayLength() >= 3
+                                ? ReadScaleComponent(scale, scale.GetArrayLength() - 3)
+                                : 1.0;
+                        }
 
-                    if (x > 0 && y > 0)
-                        scales[i] = (x, y, z > 0 ? z : 1.0);
+                        if (transform.TryGetProperty("translation", out var translation) &&
+                            translation.ValueKind == JsonValueKind.Array &&
+                            translation.GetArrayLength() > 0)
+                        {
+                            stageX = ReadTransformComponent(translation, translation.GetArrayLength() - 1, 0.0);
+                            stageY = ReadTransformComponent(translation, Math.Max(0, translation.GetArrayLength() - 2), 0.0);
+                            stageZ = translation.GetArrayLength() >= 3
+                                ? ReadTransformComponent(translation, translation.GetArrayLength() - 3, 0.0)
+                                : 0.0;
+                        }
+                    }
+
+                    if (scaleX > 0 && scaleY > 0)
+                        transformsByLevel[i] = (scaleX, scaleY, scaleZ > 0 ? scaleZ : 1.0, stageX, stageY, stageZ);
                 }
             }
             catch
             {
             }
 
-            return scales;
+            return transformsByLevel;
         }
 
         private static async Task<string?> ReadZarrMetadataJsonAsync(string source)
         {
             try
             {
-                if (source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                    source.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                string httpSource = source;
+                if (source.StartsWith("s3://", StringComparison.OrdinalIgnoreCase))
+                {
+                    httpSource = "https://uk1s3.embassy.ebi.ac.uk/" + source.Substring("s3://".Length).TrimStart('/');
+                }
+
+                if (httpSource.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                    httpSource.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                 {
                     using var http = new HttpClient();
-                    return await http.GetStringAsync(source.TrimEnd('/') + "/zarr.json").ConfigureAwait(false);
+                    string root = httpSource.TrimEnd('/');
+                    try
+                    {
+                        return await http.GetStringAsync(root + "/zarr.json").ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        return await http.GetStringAsync(root + "/.zattrs").ConfigureAwait(false);
+                    }
                 }
 
                 string metadataPath = source;
@@ -6229,6 +6272,12 @@ namespace BioLib
 
                 if (File.Exists(metadataPath))
                     return await File.ReadAllTextAsync(metadataPath).ConfigureAwait(false);
+
+                string zattrsPath = Directory.Exists(source)
+                    ? Path.Combine(source, ".zattrs")
+                    : Path.Combine(source, ".zattrs");
+                if (File.Exists(zattrsPath))
+                    return await File.ReadAllTextAsync(zattrsPath).ConfigureAwait(false);
             }
             catch
             {
@@ -6263,6 +6312,17 @@ namespace BioLib
                 return value;
 
             return 1.0;
+        }
+
+        private static double ReadTransformComponent(JsonElement transformArray, int index, double fallback)
+        {
+            if (index < 0 || index >= transformArray.GetArrayLength())
+                return fallback;
+
+            if (transformArray[index].ValueKind == JsonValueKind.Number && transformArray[index].TryGetDouble(out double value))
+                return value;
+
+            return fallback;
         }
 
         private static bool AxisMatches(string actualName, string expectedName)
@@ -8201,12 +8261,13 @@ namespace BioLib
                         }
                         double physX = w > 0 ? w / maskWidth : (b.PhysicalSizeX > 0 ? b.PhysicalSizeX : 1.0);
                         double physY = h > 0 ? h / maskHeight : (b.PhysicalSizeY > 0 ? b.PhysicalSizeY : 1.0);
+                        PointD stageLoc = b.ToStageSpace(new PointD(x, y));
                         an = ROI.CreateMask(
                             co,
                             bts,
                             maskWidth,
                             maskHeight,
-                            new PointD(x, y),
+                            stageLoc,
                             physX,
                             physY,
                             preserveDimensions: true);
@@ -9284,7 +9345,7 @@ namespace BioLib
                     tileCoord = Buffers[index].Coordinate;
 
                 var planef = await activeLevels[pyramidLevel].ReadTileAsync(
-                    tilex, tiley, tileSizeX, tileSizeY,
+                    tilex, tiley, actualW, actualH,
                     z: tileCoord.Z,
                     c: tileCoord.C,
                     t: tileCoord.T).ConfigureAwait(false);
@@ -11131,12 +11192,13 @@ namespace BioLib
                         }
                         double maskPhysX = w > 0 ? w / maskWidth : physicalSizeX;
                         double maskPhysY = h > 0 ? h / maskHeight : physicalSizeY;
+                        PointD stageLoc = ToStageSpace(new PointD(x, y), physicalSizeX, physicalSizeY, volume.Location.X, volume.Location.Y);
                         an = ROI.CreateMask(
                             co,
                             bts,
                             maskWidth,
                             maskHeight,
-                            new PointD(x, y),
+                            stageLoc,
                             maskPhysX,
                             maskPhysY,
                             preserveDimensions: true);

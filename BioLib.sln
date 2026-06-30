@@ -1,11 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.4.33403.182
+# Visual Studio Version 18
+VisualStudioVersion = 18.4.11626.88 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BioLib", "BioLib.csproj", "{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BioLibTest", "..\BioLibTest\BioLibTest.csproj", "{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BioLibTest", "..\BioLibTest\BioLibTest.csproj", "{C20067DA-DA5F-49B5-9462-8A5E533A0B5D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,14 +23,14 @@ Global
 		{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}.Release|x64.ActiveCfg = Release|x64
 		{C79A1F5E-A0C2-4E2A-9C15-3319B313B3DC}.Release|x64.Build.0 = Release|x64
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Debug|x64.ActiveCfg = Debug|x64
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Debug|x64.Build.0 = Debug|x64
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Release|x64.ActiveCfg = Release|x64
-		{D1A09EE7-3C89-4A11-BEA3-7E902B30C986}.Release|x64.Build.0 = Release|x64
+		{C20067DA-DA5F-49B5-9462-8A5E533A0B5D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C20067DA-DA5F-49B5-9462-8A5E533A0B5D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C20067DA-DA5F-49B5-9462-8A5E533A0B5D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C20067DA-DA5F-49B5-9462-8A5E533A0B5D}.Debug|x64.Build.0 = Debug|Any CPU
+		{C20067DA-DA5F-49B5-9462-8A5E533A0B5D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C20067DA-DA5F-49B5-9462-8A5E533A0B5D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C20067DA-DA5F-49B5-9462-8A5E533A0B5D}.Release|x64.ActiveCfg = Release|Any CPU
+		{C20067DA-DA5F-49B5-9462-8A5E533A0B5D}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
