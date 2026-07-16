@@ -187,9 +187,9 @@ namespace BioLib
                 // Populate the stack with 16-bit images
                 for (int t = 0; t < bm.SizeT; t++)
                 {
-                    for (int c = 0; c < bm.SizeC; c++)
+                    for (int z = 0; z < bm.SizeZ; z++)
                     {
-                        for (int z = 0; z < bm.SizeZ; z++)
+                        for (int c = 0; c < bm.SizeC; c++)
                         {
                             short[] pixels = ConvertByteArrayToShortArray(bm.Buffers[bm.GetFrameIndex(z, c, t)].Bytes, true);
                             ImageProcessor ip = new ShortProcessor(bm.SizeX, bm.SizeY, pixels, java.awt.image.ColorModel.getRGBdefault());
@@ -209,9 +209,9 @@ namespace BioLib
                 IndexColorModel colorModel = new IndexColorModel(8, 256, grayscale, grayscale, grayscale);
                 for (int t = 0; t < bm.SizeT; t++)
                 {
-                    for (int c = 0; c < bm.SizeC; c++)
+                    for (int z = 0; z < bm.SizeZ; z++)
                     {
-                        for (int z = 0; z < bm.SizeZ; z++)
+                        for (int c = 0; c < bm.SizeC; c++)
                         {
                             ImageProcessor ip = new ByteProcessor(bm.SizeX, bm.SizeY, bm.Buffers[bm.GetFrameIndex(z, c, t)].Bytes, colorModel);
                             ims.addSlice("Z" + z + "C" + c + "T" + t, ip);
@@ -223,9 +223,9 @@ namespace BioLib
             {
                 for (int t = 0; t < bm.SizeT; t++)
                 {
-                    for (int c = 0; c < bm.SizeC; c++)
+                    for (int z = 0; z < bm.SizeZ; z++)
                     {
-                        for (int z = 0; z < bm.SizeZ; z++)
+                        for (int c = 0; c < bm.SizeC; c++)
                         {
                             byte[] bts = bm.Buffers[bm.GetFrameIndex(z, c, t)].Bytes;
                             // Convert the byte array to an int array for the RGB processor
@@ -248,9 +248,9 @@ namespace BioLib
             {
                 for (int t = 0; t < bm.SizeT; t++)
                 {
-                    for (int c = 0; c < bm.SizeC; c++)
+                    for (int z = 0; z < bm.SizeZ; z++)
                     {
-                        for (int z = 0; z < bm.SizeZ; z++)
+                        for (int c = 0; c < bm.SizeC; c++)
                         {
                             byte[] bts = bm.Buffers[bm.GetFrameIndex(z, c, t)].Bytes;
                             // Convert the byte array to an int array for the ColorProcessor
@@ -276,9 +276,9 @@ namespace BioLib
                 // Populate the stack with 16-bit images
                 for (int t = 0; t < bm.SizeT; t++)
                 {
-                    for (int c = 0; c < bm.SizeC; c++)
+                    for (int z = 0; z < bm.SizeZ; z++)
                     {
-                        for (int z = 0; z < bm.SizeZ; z++)
+                        for (int c = 0; c < bm.SizeC; c++)
                         {
                             short[] pixels = ConvertByteArrayToShortArray(bm.Buffers[bm.GetFrameIndex(z, c, t)].Bytes, true);
                             ImageProcessor ip = new ShortProcessor(bm.SizeX, bm.SizeY, pixels, java.awt.image.ColorModel.getRGBdefault());
@@ -290,6 +290,10 @@ namespace BioLib
             ImagePlus imp = new ImagePlus(bm.ID, ims);
             imp.setDimensions(bm.SizeC, bm.SizeZ, bm.SizeT);
             return imp;
+        }
+        private static int GetHyperStackSliceIndex(ImagePlus pl, int z, int c, int t)
+        {
+            return pl.getStackIndex(c + 1, z + 1, t + 1) - 1;
         }
         public static bool isRGB(ImagePlus image)
         {
@@ -323,12 +327,14 @@ namespace BioLib
             int frs = pl.getNFrames();
             int rgb = (int)(pl.getBytesPerPixel() * 8);
             bool isrgb = isRGB(pl);
-            bm.UpdateCoords(slices, chs, frs, BioImage.Order.TCZ);
+            bm.StackOrder = BioImage.Order.ZCT;
+            bm.UpdateCoords(slices, chs, frs, BioImage.Order.ZCT);
+            AForge.Bitmap[] outputBuffers = new AForge.Bitmap[Math.Max(1, slices * chs * frs)];
             for (int t = 0; t < frs; t++)
             {
-                for (int c = 0; c < chs; c++)
+                for (int z = 0; z < slices; z++)
                 {
-                    for (int z = 0; z < slices; z++)
+                    for (int c = 0; c < chs; c++)
                     {
                         AForge.Bitmap bmp;
                         if (!isrgb)
@@ -336,39 +342,36 @@ namespace BioLib
                             if (rgb > 8)
                             {
                                 bmp = new AForge.Bitmap(st.getWidth(), st.getHeight(), AForge.PixelFormat.Format16bppGrayScale);
-                                bm.Buffers.Add(bmp);
                             }
                             else
                             {
                                 bmp = new AForge.Bitmap(st.getWidth(), st.getHeight(), AForge.PixelFormat.Format8bppIndexed);
-                                bm.Buffers.Add(bmp);
                             }
                         }
                         else
                         {
                             bmp = new AForge.Bitmap(st.getWidth(), st.getHeight(), AForge.PixelFormat.Format24bppRgb);
-                            bm.Buffers.Add(bmp);
                         }
                         int ind = bm.GetFrameIndex(z, c, t);
+                        int stackIndex = GetHyperStackSliceIndex(pl, z, c, t);
+                        outputBuffers[ind] = bmp;
                         if (!isrgb)
                         {
                             for (int y = 0; y < pl.getHeight(); y++)
                             {
                                 for (int x = 0; x < pl.getWidth(); x++)
                                 {
-                                    double d = st.getVoxel(x, y, ind);
-                                    if (bm.Buffers[0].PixelFormat == PixelFormat.Format16bppGrayScale)
+                                    double d = st.getVoxel(x, y, stackIndex);
+                                    if (bmp.PixelFormat == PixelFormat.Format16bppGrayScale)
                                         bmp.SetValue(x, y, (ushort)d);
-                                    else if (bm.Buffers[0].PixelFormat == PixelFormat.Format8bppIndexed)
+                                    else if (bmp.PixelFormat == PixelFormat.Format8bppIndexed)
                                         bmp.SetValue(x, y, (byte)d);
                                 }
                             }
                         }
                         else
                         {
-                            int[] rgbPixels = getRGBPixelsFromSlice(st, ind);
-                            // Get the ImageProcessor for the specified slice
-                            ImageProcessor ip = st.getProcessor(ind + 1); // ImageStack uses 1-based indexing
+                            ImageProcessor ip = st.getProcessor(stackIndex + 1); // ImageStack uses 1-based indexing
                             // Cast to ColorProcessor to access RGB data
                             ColorProcessor colorProcessor = (ColorProcessor)ip;
                             for (int y = 0; y < pl.getHeight(); y++)
@@ -389,6 +392,7 @@ namespace BioLib
                     }
                 }
             }
+            bm.Buffers.AddRange(outputBuffers.Where(buf => buf != null));
             for (int t = 0; t < chs; t++)
             {
                 if (isrgb)
@@ -604,7 +608,7 @@ namespace BioLib
                 Fiji.bioformats = bioformats;
                 resultInNewTabs = resultInNewTab;
                 bioImage = b;
-                Task<BioImage> t = new Task<BioImage>(RunImageJ);
+                Task<BioImage> t = new Task<BioImage>(() => RunImageJ());
                 t.Start();
                 t.Wait();
                 BioLib.Recorder.Record($"Fiji.RunOnImageFiji({b}, \"{con}\", {index}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
@@ -680,7 +684,7 @@ namespace BioLib
         static bool resultInNewTabs;
         static BioImage bioImage;
         private static readonly object imageJRunLock = new object();
-        public static BioImage RunOnImageInProcess(BioImage b, string con, bool headless, bool bioformats, bool resultInNewTab)
+        public static BioImage RunOnImageInProcess(BioImage b, string con, bool headless, bool bioformats, bool resultInNewTab, bool registerWithImages = true)
         {
             lock (imageJRunLock)
             {
@@ -690,11 +694,11 @@ namespace BioLib
                 Fiji.bioformats = bioformats;
                 resultInNewTabs = resultInNewTab;
                 bioImage = b;
-                return RunImageJ();
+                return RunImageJ(registerWithImages);
             }
         }
 
-        private static BioImage RunImageJ()
+        private static BioImage RunImageJ(bool registerWithImages = true)
         {
             ImagePlus ip = GetImagePlus(bioImage);
             WindowManager.setTempCurrentImage(ip);
@@ -709,8 +713,9 @@ namespace BioLib
                 Console.WriteLine(e.Message.ToString());
                 return null;
             }
-            Images.AddImage(b);
-            string s = Images.GetImageName(b.Filename);
+            string s = registerWithImages ? Images.GetImageName(b.Filename) : b.Filename;
+            if (registerWithImages)
+                Images.AddImage(b);
             b.Filename = s;
             b.ID = s;
             return b;

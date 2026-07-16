@@ -320,33 +320,48 @@ namespace BioLib
             int lastSizeX = int.MaxValue;
             int lastSizeY = int.MaxValue;
             bool haveLast = false;
-            var basePixelFormat = root.Resolutions.Count > 0 ? root.Resolutions[0].PixelFormat : DetermineSourcePixelFormat(root);
+            var basePixelFormat = DetermineSourcePixelFormat(root);
 
-            for (int lvl = 0; lvl < root.Resolutions.Count; lvl++)
+            for (int lvl = 0; lvl < levels.Length; lvl++)
             {
-                var res = root.Resolutions[lvl];
-                if (res.SizeX <= 0 || res.SizeY <= 0)
+                BioImage levelImage = levels[lvl];
+                if (levelImage == null)
                     continue;
 
-                if (haveLast && res.PixelFormat != basePixelFormat)
-                    break;
-
-                if (haveLast && (res.SizeX > lastSizeX || res.SizeY > lastSizeY))
-                    break;
-
-                if (haveLast && res.SizeX == lastSizeX && res.SizeY == lastSizeY)
+                int levelWidth =
+                    levelImage.Resolutions.Count > 0 && levelImage.Resolutions[0].SizeX > 0
+                        ? levelImage.Resolutions[0].SizeX
+                        : levelImage.SizeX;
+                int levelHeight =
+                    levelImage.Resolutions.Count > 0 && levelImage.Resolutions[0].SizeY > 0
+                        ? levelImage.Resolutions[0].SizeY
+                        : levelImage.SizeY;
+                if (levelWidth <= 0 || levelHeight <= 0)
                     continue;
 
-                double dsample = root.GetLevelDownsample(lvl);
+                var levelPixelFormat = DetermineSourcePixelFormat(levelImage);
+                if (haveLast && levelPixelFormat != basePixelFormat)
+                    break;
+
+                if (haveLast && (levelWidth > lastSizeX || levelHeight > lastSizeY))
+                    break;
+
+                if (haveLast && levelWidth == lastSizeX && levelHeight == lastSizeY)
+                    continue;
+
+                double dsample = root.SizeX > 0 ? (double)root.SizeX / levelWidth : 1.0;
                 if (!double.IsFinite(dsample) || dsample <= 0)
                     dsample = 1.0;
 
-                levelDescriptors.Add(new ResolutionLevelDescriptor(res.SizeX, res.SizeY, dsample));
-                Log($"[SaveZarr] level={lvl} size={res.SizeX}x{res.SizeY} downsample={dsample} fmt={res.PixelFormat}");
-                lastSizeX = res.SizeX;
-                lastSizeY = res.SizeY;
+                levelDescriptors.Add(new ResolutionLevelDescriptor(levelWidth, levelHeight, dsample));
+                Log($"[SaveZarr] level={lvl} size={levelWidth}x{levelHeight} downsample={dsample} fmt={levelPixelFormat}");
+                lastSizeX = levelWidth;
+                lastSizeY = levelHeight;
                 haveLast = true;
             }
+
+            if (levelDescriptors.Count == 0)
+                levelDescriptors.Add(new ResolutionLevelDescriptor(root.SizeX, root.SizeY, 1.0));
 
             // Fallback: if there is somehow no Resolutions list, use the image dims.
             var coord = new ZarrNET.Core.ZCT(root.SizeZ, root.SizeC, root.SizeT);

@@ -2014,11 +2014,12 @@ namespace BioLib
         {
             get
             {
-                // For Zarr sources the full backing path/URL must be preserved so the
-                // reader can reopen the same container later. Returning only the
-                // basename breaks local .zarr reopening when the working directory
-                // does not match the image location.
-                if (file != null && (file.StartsWith("https://") || file.StartsWith("http://") || file.StartsWith("s3://") || file.Contains(".zarr")))
+                if (filename != null && filename != "")
+                    return filename;
+                if (file != null && (file.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                                     file.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                                     file.StartsWith("s3://", StringComparison.OrdinalIgnoreCase) ||
+                                     file.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0))
                 {
                     return file;
                 }
@@ -2029,6 +2030,27 @@ namespace BioLib
             set
             {
                 filename = value;
+            }
+        }
+        public string SourceFile
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(file))
+                    return file;
+                return Filename;
+            }
+        }
+        public bool IsZarrSource
+        {
+            get
+            {
+                string source = SourceFile;
+                return !string.IsNullOrWhiteSpace(source) &&
+                    (source.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                     source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                     source.StartsWith("s3://", StringComparison.OrdinalIgnoreCase) ||
+                     source.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0);
             }
         }
         public int[] rgbChannels = new int[3] { 0, 1, 2 };
@@ -6079,7 +6101,7 @@ namespace BioLib
                 b.Channels.Add(pixelFormat switch
                 {
                     PixelFormat.Format8bppIndexed    => new Channel(0, 8, 1),
-                    PixelFormat.Format16bppGrayScale => new Channel(0, 16, 2),
+                    PixelFormat.Format16bppGrayScale => new Channel(0, 16, 1),
                     PixelFormat.Format24bppRgb       => new Channel(0, bitsPerChannel, 3),
                     PixelFormat.Format48bppRgb       => new Channel(0, bitsPerChannel, 3),
                     _ => throw new NotSupportedException()
@@ -6089,7 +6111,8 @@ namespace BioLib
                 // Coordinate bookkeeping
                 // -----------------------------------------------------------------
 
-                b.UpdateCoords(b.sizeZ, b.sizeC, b.sizeT);
+                b.StackOrder = Order.ZCT;
+                b.UpdateCoords(b.sizeZ, b.sizeC, b.sizeT, Order.ZCT);
                 b.Coordinate = coord;
 
                 AutoThreshold(b, false);
@@ -6503,24 +6526,26 @@ namespace BioLib
                 omexml.setImageID($"Image:{serie}", serie);
                 omexml.setPixelsID($"Pixels:{serie}", serie);
 
-                // Pixel layout and type
+                PixelFormat saveFormat =
+                    b.Buffers.Count > 0 ? b.Buffers[0].PixelFormat :
+                    (b.Resolutions.Count > 0 ? b.Resolutions[Math.Clamp(b.Level, 0, b.Resolutions.Count - 1)].PixelFormat : PixelFormat.Format8bppIndexed);
+                bool packedRgb =
+                    saveFormat == PixelFormat.Format24bppRgb ||
+                    saveFormat == PixelFormat.Format48bppRgb ||
+                    saveFormat == PixelFormat.Format32bppArgb ||
+                    saveFormat == PixelFormat.Format32bppPArgb ||
+                    saveFormat == PixelFormat.Format32bppRgb ||
+                    saveFormat == PixelFormat.Format64bppArgb ||
+                    saveFormat == PixelFormat.Format64bppPArgb;
+                int bytesPerPixel = GetBytesPerPixel(saveFormat);
+                bool sixteenBit = bytesPerPixel == 2 || bytesPerPixel == 6 || bytesPerPixel == 8;
+
+                // Pixel layout and type must match the actual plane bytes we hand to Bio-Formats.
                 omexml.setPixelsDimensionOrder(ome.xml.model.enums.DimensionOrder.XYCZT, serie);
-                // Keep the OME interleaving flag aligned with the actual pixel layout.
-                // Packed RGB buffers are interleaved; split-channel stacks are not.
-                omexml.setPixelsInterleaved(java.lang.Boolean.valueOf(
-                    b.Buffers.Count > 0 &&
-                    (b.Buffers[0].PixelFormat == PixelFormat.Format24bppRgb ||
-                     b.Buffers[0].PixelFormat == PixelFormat.Format48bppRgb ||
-                     b.Buffers[0].PixelFormat == PixelFormat.Format32bppArgb ||
-                     b.Buffers[0].PixelFormat == PixelFormat.Format32bppPArgb ||
-                     b.Buffers[0].PixelFormat == PixelFormat.Format32bppRgb ||
-                     b.Buffers[0].PixelFormat == PixelFormat.Format64bppArgb ||
-                     b.Buffers[0].PixelFormat == PixelFormat.Format64bppPArgb)),
+                omexml.setPixelsInterleaved(java.lang.Boolean.valueOf(packedRgb), serie);
+                omexml.setPixelsType(
+                    sixteenBit ? ome.xml.model.enums.PixelType.UINT16 : ome.xml.model.enums.PixelType.UINT8,
                     serie);
-                if (b.bitsPerPixel > 8)
-                    omexml.setPixelsType(ome.xml.model.enums.PixelType.UINT16, serie);
-                else
-                    omexml.setPixelsType(ome.xml.model.enums.PixelType.UINT8, serie);
 
                 // Sizes (must be PositiveInteger)
                 omexml.setPixelsSizeX(new ome.xml.model.primitives.PositiveInteger(java.lang.Integer.valueOf(b.SizeX)), serie);
@@ -6571,8 +6596,8 @@ namespace BioLib
                     string channelId = $"Channel:{c}:{serie}";
                     omexml.setChannelID(channelId, serie, c); // Fixed: swapped parameters - should be (id, imageIndex, channelIndex)
 
-                    // Samples per pixel: if unknown default to 1
-                    int spp = (ch.range != null && ch.range.Length > 0) ? ch.range.Length : 1;
+                    // Samples per pixel must reflect the serialized channel layout, not stale copied metadata.
+                    int spp = 1;
                     omexml.setChannelSamplesPerPixel(new ome.xml.model.primitives.PositiveInteger(java.lang.Integer.valueOf(spp)), serie, c);
 
                     omexml.setChannelName(ch.Name ?? channelId, serie, c);
@@ -8599,16 +8624,16 @@ namespace BioLib
         {
             // Ensure the zarr reader and plate structure are initialised.
             if (zarrReader == null)
-                zarrReader = await OmeZarrReader.OpenAsync(Filename).ConfigureAwait(false);
+                zarrReader = await OmeZarrReader.OpenAsync(SourceFile).ConfigureAwait(false);
 
             if (multiscale == null)
             {
-                var (ms, plateNode) = await ResolveMultiscaleAsync(zarrReader, Filename).ConfigureAwait(false);
+                var (ms, plateNode) = await ResolveMultiscaleAsync(zarrReader, SourceFile).ConfigureAwait(false);
                 multiscale = ms;
                 zarrPlate  = plateNode;
 
                 if (plateNode != null && Plate == null)
-                    await BuildZarrWellPlate(this, plateNode, Filename).ConfigureAwait(false);
+                    await BuildZarrWellPlate(this, plateNode, SourceFile).ConfigureAwait(false);
             }
 
             // Validate field index bounds.
@@ -8793,7 +8818,7 @@ namespace BioLib
                 rMax1 = Channels[chIdx].RangeR.Max;
             }
             if (fmt == PixelFormat.Format16bppGrayScale &&
-                Filename != null && Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                IsZarrSource &&
                 ZarrDisplayMax > ZarrDisplayMin)
             {
                 rMin1 = ZarrDisplayMin;
@@ -8812,20 +8837,20 @@ namespace BioLib
             if (syntheticTile != null)
                 return syntheticTile;
 
-            if (b.Filename.Contains(".zarr"))
+            if (b.IsZarrSource)
             {
                 if (zarrReader == null)
-                    zarrReader = await OmeZarrReader.OpenAsync(b.Filename);
+                    zarrReader = await OmeZarrReader.OpenAsync(b.SourceFile);
 
                 if (multiscale == null)
                 {
-                    var (ms, plateNode) = await ResolveMultiscaleAsync(zarrReader, b.Filename).ConfigureAwait(false);
+                    var (ms, plateNode) = await ResolveMultiscaleAsync(zarrReader, b.SourceFile).ConfigureAwait(false);
                     multiscale = ms;
                     imagef     = ms;   // keep imagef in sync with multiscale
                     zarrPlate  = plateNode;
 
                     if (plateNode != null && Plate == null)
-                        await BuildZarrWellPlate(b, plateNode, b.Filename).ConfigureAwait(false);
+                        await BuildZarrWellPlate(b, plateNode, b.SourceFile).ConfigureAwait(false);
                 }
 
                 // For HCS plates, ZarrWellLevels[b.Level] holds the levels for the
@@ -8854,7 +8879,7 @@ namespace BioLib
                                 {
                                     // well.ID == wellMeta.Path (e.g. "A/1")
                                     // sample.ID == fieldIdx as string (e.g. "0")
-                                    fieldUrl = b.Filename.TrimEnd('/') + "/"
+                                    fieldUrl = b.SourceFile.TrimEnd('/') + "/"
                                              + well.ID.Trim('/') + "/"
                                              + sample.ID;
                                     break;
@@ -9046,7 +9071,7 @@ namespace BioLib
                         return bm;
                     }
 
-                    if (b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (b.IsZarrSource)
                         b.EnsureZarrDisplayRange(planef.Data, true, planeW, planeH);
 
                     int rMin2 = 0;
@@ -9251,14 +9276,14 @@ namespace BioLib
                     byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
                 var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, true);
                     if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale &&
-                        b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0)
+                        b.IsZarrSource)
                     {
                         b.EnsureZarrDisplayRange(bytesr, littleEndian, sx, sy);
                     }
 
                     int rMin3 = 0, rMax3 = 0;
                     if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale &&
-                        b.Filename != null && b.Filename.IndexOf(".zarr", StringComparison.OrdinalIgnoreCase) >= 0)
+                        b.IsZarrSource)
                     {
                         lock (b.ZarrDisplayRangeSync)
                         {
@@ -9294,20 +9319,20 @@ namespace BioLib
 
         public async Task<byte[]> GetTileBytesRaw(int index, int level, int tilex, int tiley, int tileSizeX, int tileSizeY, AForge.ZCT? coordinateOverride = null)
         {
-            if (Filename != null && Filename.Contains(".zarr"))
+            if (IsZarrSource)
             {
                 if (zarrReader == null)
-                    zarrReader = await OmeZarrReader.OpenAsync(Filename);
+                    zarrReader = await OmeZarrReader.OpenAsync(SourceFile);
 
                 if (multiscale == null)
                 {
-                    var (ms, plateNode) = await ResolveMultiscaleAsync(zarrReader, Filename).ConfigureAwait(false);
+                    var (ms, plateNode) = await ResolveMultiscaleAsync(zarrReader, SourceFile).ConfigureAwait(false);
                     multiscale = ms;
                     imagef = ms;
                     zarrPlate = plateNode;
 
                     if (plateNode != null && Plate == null)
-                        await BuildZarrWellPlate(this, plateNode, Filename).ConfigureAwait(false);
+                        await BuildZarrWellPlate(this, plateNode, SourceFile).ConfigureAwait(false);
                 }
 
                 List<ResolutionLevelNode> activeLevels;

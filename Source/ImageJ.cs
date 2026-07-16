@@ -2,9 +2,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Cryptography;
 using CSScripting;
 using Gtk;
 using AForge;
@@ -28,6 +30,31 @@ namespace BioLib
         }
         public static List<Process> processes = new List<Process>();
         private static Random rng = new Random();
+        private static readonly object extractionCacheLock = new object();
+        private static readonly Dictionary<string, BioImage> extractionCache = new Dictionary<string, BioImage>();
+        private static readonly LinkedList<string> extractionCacheOrder = new LinkedList<string>();
+        private const int MaxExtractionCacheEntries = 6;
+        private const int MaxRemoteExtractionParallelism = 6;
+        private const int MaxLocalExtractionParallelism = 3;
+
+        private sealed class PyramidExtractionRequest
+        {
+            public int Level;
+            public int X;
+            public int Y;
+            public int Width;
+            public int Height;
+            public double StageX;
+            public double StageY;
+            public bool IsCurrentViewOnly;
+            public string Description;
+        }
+
+        private static int GetExtractionParallelism(BioImage image)
+        {
+            int cap = IsRemotePyramidalSource(image) ? MaxRemoteExtractionParallelism : MaxLocalExtractionParallelism;
+            return Math.Max(1, Math.Min(cap, Environment.ProcessorCount));
+        }
         /// <summary>
         /// The function "RunMacro" runs a macro file with specified parameters using the ImageJ
         /// software.
@@ -242,13 +269,186 @@ namespace BioLib
         }
 
         private static BioImage lastRunOutput;
+        private static bool TryGetPyramidLevelGeometry(BioImage b, int level, out Resolution res, out int width, out int height, out double unitsPerPixel)
+        {
+            res = default;
+            width = 0;
+            height = 0;
+            unitsPerPixel = 0;
+
+            if (b == null || b.Resolutions.Count == 0)
+                return false;
+
+            level = Math.Clamp(level, 0, b.Resolutions.Count - 1);
+            res = b.Resolutions[level];
+            int schemaWidth = 0;
+            int schemaHeight = 0;
+            unitsPerPixel = res.PhysicalSizeX;
+
+            if (b.OpenSlideBase?.Schema?.Resolutions != null && b.OpenSlideBase.Schema.Resolutions.Count > level)
+            {
+                var schemaRes = b.OpenSlideBase.Schema.Resolutions[level];
+                schemaWidth = GetIntProperty(schemaRes, "Width", "SizeX");
+                schemaHeight = GetIntProperty(schemaRes, "Height", "SizeY");
+                unitsPerPixel = schemaRes.UnitsPerPixel;
+            }
+            else if (b.SlideBase?.Schema?.Resolutions != null && b.SlideBase.Schema.Resolutions.Count > level)
+            {
+                var schemaRes = b.SlideBase.Schema.Resolutions[level];
+                schemaWidth = GetIntProperty(schemaRes, "Width", "SizeX");
+                schemaHeight = GetIntProperty(schemaRes, "Height", "SizeY");
+                unitsPerPixel = schemaRes.UnitsPerPixel;
+            }
+
+            width = schemaWidth > 0 ? schemaWidth : (res.SizeX > 0 ? res.SizeX : b.SizeX);
+            height = schemaHeight > 0 ? schemaHeight : (res.SizeY > 0 ? res.SizeY : b.SizeY);
+            return width > 0 && height > 0;
+        }
+        private static bool IsRemotePyramidalSource(BioImage b)
+        {
+            if (b == null || !b.IsZarrSource)
+                return false;
+
+            string source = b.SourceFile;
+            return !string.IsNullOrWhiteSpace(source) &&
+                (source.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                 source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                 source.StartsWith("s3://", StringComparison.OrdinalIgnoreCase));
+        }
+        private static PyramidExtractionRequest BuildExtractionRequest(BioImage b, int level, bool currentViewOnly)
+        {
+            if (!TryGetPyramidLevelGeometry(b, level, out Resolution res, out int levelWidth, out int levelHeight, out double schemaUnitsPerPixel))
+                return null;
+
+            double physX = res.PhysicalSizeX > 0 ? res.PhysicalSizeX : Math.Max(schemaUnitsPerPixel, 1.0);
+            double physY = res.PhysicalSizeY > 0 ? res.PhysicalSizeY : physX;
+
+            var request = new PyramidExtractionRequest
+            {
+                Level = Math.Clamp(level, 0, b.Resolutions.Count - 1),
+                X = 0,
+                Y = 0,
+                Width = levelWidth,
+                Height = levelHeight,
+                StageX = res.StageSizeX,
+                StageY = res.StageSizeY,
+                IsCurrentViewOnly = false,
+                Description = $"pyramid level {level + 1}/{b.Resolutions.Count}"
+            };
+
+            if (!currentViewOnly)
+                return request;
+
+            if (b.PyramidalSize.Width <= 1 || b.PyramidalSize.Height <= 1)
+                return request;
+
+            double viewUnitsPerPixel = b.Resolution > 0 ? b.Resolution : physX;
+            double viewWorldX = b.PyramidalOrigin.X;
+            double viewWorldY = b.PyramidalOrigin.Y;
+            double viewWorldW = Math.Max(1, b.PyramidalSize.Width) * viewUnitsPerPixel;
+            double viewWorldH = Math.Max(1, b.PyramidalSize.Height) * (b.Resolution > 0 ? b.Resolution : physY);
+
+            int x = (int)Math.Floor((viewWorldX - res.StageSizeX) / physX);
+            int y = (int)Math.Floor((viewWorldY - res.StageSizeY) / physY);
+            int w = (int)Math.Ceiling(viewWorldW / physX);
+            int h = (int)Math.Ceiling(viewWorldH / physY);
+
+            x = Math.Max(0, x);
+            y = Math.Max(0, y);
+            w = Math.Min(levelWidth - x, Math.Max(1, w));
+            h = Math.Min(levelHeight - y, Math.Max(1, h));
+
+            if (w <= 0 || h <= 0)
+                return request;
+
+            long fullArea = Math.Max(1L, (long)levelWidth * levelHeight);
+            long regionArea = Math.Max(1L, (long)w * h);
+            if (regionArea * 10 >= fullArea * 9)
+                return request;
+
+            request.X = x;
+            request.Y = y;
+            request.Width = w;
+            request.Height = h;
+            request.StageX = res.StageSizeX + (x * physX);
+            request.StageY = res.StageSizeY + (y * physY);
+            request.IsCurrentViewOnly = true;
+            request.Description = $"visible region of level {level + 1}/{b.Resolutions.Count}";
+            return request;
+        }
+        private static string GetExtractionCacheKey(BioImage source, PyramidExtractionRequest request)
+        {
+            string raw = string.Join("|",
+                source?.SourceFile ?? source?.ID ?? string.Empty,
+                request.Level,
+                request.X,
+                request.Y,
+                request.Width,
+                request.Height,
+                source?.SizeZ ?? 0,
+                source?.SizeC ?? 0,
+                source?.SizeT ?? 0);
+
+            byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(raw));
+            StringBuilder sb = new StringBuilder(hash.Length * 2);
+            for (int i = 0; i < hash.Length; i++)
+                sb.Append(hash[i].ToString("x2"));
+            return sb.ToString();
+        }
+        private static BioImage TryGetCachedExtraction(string cacheKey)
+        {
+            if (string.IsNullOrWhiteSpace(cacheKey))
+                return null;
+
+            lock (extractionCacheLock)
+            {
+                if (!extractionCache.TryGetValue(cacheKey, out BioImage cached) || cached == null)
+                    return null;
+
+                var node = extractionCacheOrder.Find(cacheKey);
+                if (node != null)
+                {
+                    extractionCacheOrder.Remove(node);
+                    extractionCacheOrder.AddLast(node);
+                }
+                return cached;
+            }
+        }
+        private static void StoreCachedExtraction(string cacheKey, BioImage image)
+        {
+            if (string.IsNullOrWhiteSpace(cacheKey) || image == null)
+                return;
+
+            lock (extractionCacheLock)
+            {
+                if (extractionCache.ContainsKey(cacheKey))
+                    return;
+
+                extractionCache[cacheKey] = image;
+                extractionCacheOrder.AddLast(cacheKey);
+                while (extractionCacheOrder.Count > MaxExtractionCacheEntries)
+                {
+                    string evictedKey = extractionCacheOrder.First.Value;
+                    extractionCacheOrder.RemoveFirst();
+                    if (extractionCache.TryGetValue(evictedKey, out BioImage evicted) && evicted != null)
+                    {
+                        try
+                        {
+                            evicted.Dispose();
+                        }
+                        catch
+                        {
+                        }
+                    }
+                    extractionCache.Remove(evictedKey);
+                }
+            }
+        }
         /// <summary>
-        /// Copies a pyramidal BioImage to a temporary Zarr dataset, then extracts
-        /// a single resolution level from that Zarr-backed copy for Fiji.
-        /// The full pyramid stays intact on disk while Fiji still receives the
-        /// requested level as a regular single-resolution BioImage.
+        /// Extracts either a full pyramid level or the currently visible region
+        /// from a pyramidal BioImage and returns it as a single-resolution image.
         /// </summary>
-        private static async Task<BioImage> PreparePyramidalLevelImage(BioImage b, int level, string tempZarr)
+        private static async Task<BioImage> PreparePyramidalLevelImage(BioImage b, int level, bool currentViewOnly)
         {
             if (b == null)
                 return null;
@@ -256,57 +456,52 @@ namespace BioLib
                 return b;
 
             level = Math.Clamp(level, 0, b.Resolutions.Count - 1);
-
-            if (Directory.Exists(tempZarr))
-                Directory.Delete(tempZarr, true);
-
-            Console.WriteLine($"[ImageJ.PreparePyramidalLevelImage] saving full pyramid to {tempZarr}");
-
-            BioImage pyrlevel = BioImage.CopyInfo(b, true, true);
-            Resolution res = pyrlevel.Resolutions[level];
-            int schemaWidth = 0;
-            int schemaHeight = 0;
-            double schemaUnitsPerPixel = res.PhysicalSizeX;
-            if (b.OpenSlideBase?.Schema?.Resolutions != null && b.OpenSlideBase.Schema.Resolutions.Count > level)
-            {
-                var schemaRes = b.OpenSlideBase.Schema.Resolutions[level];
-                schemaWidth = GetIntProperty(schemaRes, "Width", "SizeX");
-                schemaHeight = GetIntProperty(schemaRes, "Height", "SizeY");
-                schemaUnitsPerPixel = schemaRes.UnitsPerPixel;
-            }
-            else if (b.SlideBase?.Schema?.Resolutions != null && b.SlideBase.Schema.Resolutions.Count > level)
-            {
-                var schemaRes = b.SlideBase.Schema.Resolutions[level];
-                schemaWidth = GetIntProperty(schemaRes, "Width", "SizeX");
-                schemaHeight = GetIntProperty(schemaRes, "Height", "SizeY");
-                schemaUnitsPerPixel = schemaRes.UnitsPerPixel;
-            }
-
-            int width = schemaWidth > 0 ? schemaWidth : (res.SizeX > 0 ? res.SizeX : b.SizeX);
-            int height = schemaHeight > 0 ? schemaHeight : (res.SizeY > 0 ? res.SizeY : b.SizeY);
-            if (width <= 0 || height <= 0)
+            PyramidExtractionRequest request = BuildExtractionRequest(b, level, currentViewOnly);
+            if (request == null)
                 return null;
 
-            if (level < pyrlevel.Resolutions.Count)
+            string cacheKey = IsRemotePyramidalSource(b) ? GetExtractionCacheKey(b, request) : null;
+            if (!string.IsNullOrWhiteSpace(cacheKey))
             {
-                Resolution fixedRes = pyrlevel.Resolutions[level];
-                fixedRes.SizeX = width;
-                fixedRes.SizeY = height;
-                fixedRes.PhysicalSizeX = res.PhysicalSizeX;
-                fixedRes.PhysicalSizeY = res.PhysicalSizeY;
-                fixedRes.PhysicalSizeZ = res.PhysicalSizeZ;
-                fixedRes.StageSizeX = res.StageSizeX;
-                fixedRes.StageSizeY = res.StageSizeY;
-                fixedRes.StageSizeZ = res.StageSizeZ;
-                pyrlevel.Resolutions[level] = fixedRes;
+                BioImage cached = TryGetCachedExtraction(cacheKey);
+                if (cached != null)
+                {
+                    ReportProgress(100, $"Using cached {request.Description}");
+                    return cached;
+                }
             }
 
+            Console.WriteLine($"[ImageJ.PreparePyramidalLevelImage] extracting {request.Description} from {b.ID}");
+            BioImage.Status = $"Extracting {request.Description}";
+
+            if (!TryGetPyramidLevelGeometry(b, level, out Resolution res, out _, out _, out double schemaUnitsPerPixel))
+                return null;
+
+            BioImage pyrlevel = BioImage.CopyInfo(b, true, true);
+            Resolution fixedRes = pyrlevel.Resolutions[level];
+            fixedRes.SizeX = request.Width;
+            fixedRes.SizeY = request.Height;
+            fixedRes.PhysicalSizeX = res.PhysicalSizeX;
+            fixedRes.PhysicalSizeY = res.PhysicalSizeY;
+            fixedRes.PhysicalSizeZ = res.PhysicalSizeZ;
+            fixedRes.StageSizeX = request.StageX;
+            fixedRes.StageSizeY = request.StageY;
+            fixedRes.StageSizeZ = res.StageSizeZ;
+            pyrlevel.Resolutions.Clear();
+            pyrlevel.Resolutions.Add(fixedRes);
+
             pyrlevel.PyramidalOrigin = new PointD(0, 0);
-            pyrlevel.PyramidalSize = new AForge.Size(width, height);
-            pyrlevel.Resolution = schemaUnitsPerPixel;
-            pyrlevel.Level = level;
+            pyrlevel.PyramidalSize = new AForge.Size(request.Width, request.Height);
+            pyrlevel.Resolution = schemaUnitsPerPixel > 0 ? schemaUnitsPerPixel : fixedRes.PhysicalSizeX;
+            pyrlevel.Level = 0;
+            pyrlevel.StackOrder = BioImage.Order.ZCT;
+            pyrlevel.UpdateCoords(b.SizeZ, b.SizeC, b.SizeT, BioImage.Order.ZCT);
+            pyrlevel.Volume = new VolumeD(
+                new Point3D(request.StageX, request.StageY, fixedRes.StageSizeZ),
+                new Point3D(request.Width * fixedRes.PhysicalSizeX, request.Height * fixedRes.PhysicalSizeY, Math.Max(1, b.SizeZ) * fixedRes.PhysicalSizeZ));
 
             pyrlevel.Buffers.Clear();
+            var planes = new List<(int Sequence, int Index, int Z, int C, int T)>(Math.Max(1, b.SizeT * b.SizeC * b.SizeZ));
             for (int t = 0; t < b.SizeT; t++)
             {
                 for (int c = 0; c < b.SizeC; c++)
@@ -317,21 +512,56 @@ namespace BioLib
                         if (index < 0)
                             continue;
 
-                        var tile = await b.GetTile(
-                            index, level,
-                            0, 0, width, height,
-                            new AForge.ZCT(z, c, t),
-                            true).ConfigureAwait(false);
-
-                        if (tile != null)
-                            pyrlevel.Buffers.Add(tile);
+                        planes.Add((planes.Count, index, z, c, t));
                     }
                 }
+            }
+
+            int totalPlanes = planes.Count;
+            if (totalPlanes == 0)
+                return null;
+
+            Bitmap[] extractedPlanes = new Bitmap[totalPlanes];
+            int loadedPlanes = 0;
+            int parallelism = GetExtractionParallelism(b);
+            using (SemaphoreSlim gate = new SemaphoreSlim(parallelism, parallelism))
+            {
+                Task[] extractionTasks = planes.Select(async plane =>
+                {
+                    await gate.WaitAsync().ConfigureAwait(false);
+                    try
+                    {
+                        extractedPlanes[plane.Sequence] = await b.GetTile(
+                            plane.Index, level,
+                            request.X, request.Y, request.Width, request.Height,
+                            new AForge.ZCT(plane.Z, plane.C, plane.T),
+                            true).ConfigureAwait(false);
+
+                        int completedPlanes = Interlocked.Increment(ref loadedPlanes);
+                        ReportProgress(
+                            (completedPlanes * 100f) / totalPlanes,
+                            $"Extracting {request.Description} plane T{plane.T + 1}/{b.SizeT} Z{plane.Z + 1}/{b.SizeZ} C{plane.C + 1}/{b.SizeC}");
+                    }
+                    finally
+                    {
+                        gate.Release();
+                    }
+                }).ToArray();
+
+                await Task.WhenAll(extractionTasks).ConfigureAwait(false);
+            }
+
+            foreach (Bitmap tile in extractedPlanes)
+            {
+                if (tile != null)
+                    pyrlevel.Buffers.Add(tile);
             }
 
             if (pyrlevel.Buffers.Count == 0)
                 return null;
 
+            if (!string.IsNullOrWhiteSpace(cacheKey))
+                StoreCachedExtraction(cacheKey, pyrlevel);
             return pyrlevel;
         }
 
@@ -360,12 +590,33 @@ namespace BioLib
             return 0;
         }
 
+        private static void ReportProgress(float progress, string status = null)
+        {
+            BioImage.Progress = Math.Max(0f, Math.Min(100f, progress));
+            if (!string.IsNullOrWhiteSpace(status))
+                BioImage.Status = status;
+        }
+        private static BioImage ApplyProcessedResultName(BioImage source, BioImage result)
+        {
+            if (source == null || result == null)
+                return result;
+
+            string sourceName = string.IsNullOrWhiteSpace(source.Filename) ? source.ID : source.Filename;
+            if (string.IsNullOrWhiteSpace(sourceName))
+                return result;
+
+            string friendlyName = Images.GetImageName(Path.GetFileName(sourceName));
+            result.Filename = friendlyName;
+            result.ID = friendlyName;
+            return result;
+        }
+
         /// <summary>
-        /// Runs an ImageJ command on a pyramidal BioImage by saving the full
-        /// pyramid to a temporary Zarr first, then extracting the requested
-        /// level for Fiji processing.
+        /// Runs an ImageJ command on a pyramidal BioImage by extracting the
+        /// requested level, persisting that level as a temporary Zarr dataset,
+        /// then processing it through Fiji.
         /// </summary>
-        private static async Task<BioImage> RunOnPyramidalImageInternal(BioImage b, string con, int level, bool headless, bool onTab, bool bioformats, bool resultInNewTab, bool record)
+        private static async Task<BioImage> RunOnPyramidalImageInternal(BioImage b, string con, int level, bool headless, bool onTab, bool bioformats, bool resultInNewTab, bool record, bool currentViewOnly)
         {
             if (b == null)
                 return null;
@@ -377,10 +628,8 @@ namespace BioLib
             }
 
             Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] start id={b.ID} level={level} bioformats={bioformats}");
-            string tempDir = Path.GetDirectoryName(Environment.ProcessPath);
-            string tempZarr = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".zarr");
-            //Directory.CreateDirectory(tempDir + "/" + tempZarr);
-            BioImage levelImage = await PreparePyramidalLevelImage(b, level, tempZarr).ConfigureAwait(false);
+            ReportProgress(0, $"Preparing pyramid level {level + 1}/{b.Resolutions.Count}");
+            BioImage levelImage = await PreparePyramidalLevelImage(b, level, currentViewOnly).ConfigureAwait(false);
             if (levelImage == null)
             {
                 Console.WriteLine("[ImageJ.RunOnPyramidalImageInternal] level preparation returned null");
@@ -395,35 +644,19 @@ namespace BioLib
                 {
                     BioImage tiled = await RunOnPyramidalLevelTiled(levelImage, b, con, level, headless, resultInNewTab).ConfigureAwait(false);
                     if (record)
-                        Recorder.Record($"ImageJ.RunOnPyramidalImage({b}, \"{con}\", {level}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
+                        Recorder.Record($"ImageJ.RunOnPyramidalImage({b}, \"{con}\", {level}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()}, {currentViewOnly.ToString().ToLower()});");
                     return tiled;
                 }
                 finally
                 {
-                    try
-                    {
-                        if (Directory.Exists(tempZarr))
-                            Directory.Delete(tempZarr, true);
-                    }
-                    catch
-                    {
-                    }
                 }
             }
 
-            string tempPath = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".ome.tif");
-            if (File.Exists(tempPath))
-                File.Delete(tempPath);
-            BioImage.SaveOME(levelImage, tempPath);
-            levelImage.file = tempPath;
-            levelImage.Filename = Path.GetFileName(tempPath);
-            levelImage.ID = Path.GetFileName(tempPath);
-            Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] levelTemp={tempPath} levelId={levelImage.ID}");
-
             try
             {
+                ReportProgress(0, $"Running Fiji on pyramid level {level + 1}/{b.Resolutions.Count}");
                 Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] dispatching level image through IKVM/ImagePlus runner");
-                BioImage bm = Fiji.RunOnImageInProcess(levelImage, con, headless, true, resultInNewTab);
+                BioImage bm = Fiji.RunOnImageInProcess(levelImage, con, headless, true, resultInNewTab, false);
                 if (bm != null && bm.Resolutions.Count > 0 && levelImage.Resolutions.Count > 0)
                 {
                     Resolution srcRes = levelImage.Resolutions[0];
@@ -450,23 +683,15 @@ namespace BioLib
                     bm.Resolutions[0] = outRes;
                     bm.Volume = levelImage.Volume;
                 }
+                ReportProgress(100, $"Completed pyramid level {level + 1}/{b.Resolutions.Count}");
+                bm = ApplyProcessedResultName(b, bm);
                 Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] result={(bm == null ? "null" : bm.ID)}");
                 if (record)
-                    Recorder.Record($"ImageJ.RunOnPyramidalImage({b}, \"{con}\", {level}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
+                    Recorder.Record($"ImageJ.RunOnPyramidalImage({b}, \"{con}\", {level}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()}, {currentViewOnly.ToString().ToLower()});");
                 return bm;
             }
             finally
             {
-                try
-                {
-                    if (Directory.Exists(tempZarr))
-                        Directory.Delete(tempZarr, true);
-                    if (File.Exists(tempPath))
-                        File.Delete(tempPath);
-                }
-                catch
-                {
-                }
             }
         }
 
@@ -560,7 +785,7 @@ namespace BioLib
                         if (tileInput.Buffers.Count == 0)
                             continue;
 
-                        BioImage processed = Fiji.RunOnImageInProcess(tileInput, con, headless, true, resultInNewTab);
+                        BioImage processed = Fiji.RunOnImageInProcess(tileInput, con, headless, true, resultInNewTab, false);
                         if (processed == null || processed.Buffers.Count == 0)
                             continue;
 
@@ -602,7 +827,8 @@ namespace BioLib
                 }
             }
 
-            return await BioImage.OpenFileAsync(tempLevelZarr, 0, false, false).ConfigureAwait(false);
+            BioImage result = await BioImage.OpenFileAsync(tempLevelZarr, 0, false, false).ConfigureAwait(false);
+            return ApplyProcessedResultName(source, result);
         }
 
         private static (int tileW, int tileH) GetLargestSafeTileSize(int width, int height, int bytesPerSample, int planeCount)
@@ -656,13 +882,12 @@ namespace BioLib
         }
 
         /// <summary>
-        /// Runs an ImageJ command on a pyramidal BioImage by preserving the
-        /// source pyramid in a temporary Zarr, then processing the requested
-        /// level as a single-resolution image for Fiji.
+        /// Runs an ImageJ command on a pyramidal BioImage by processing the
+        /// requested level as a single-resolution image for Fiji.
         /// </summary>
-        public static async Task<BioImage> RunOnPyramidalImage(BioImage b, string con, int level, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
+        public static async Task<BioImage> RunOnPyramidalImage(BioImage b, string con, int level, bool headless, bool onTab, bool bioformats, bool resultInNewTab, bool currentViewOnly = false)
         {
-            return await RunOnPyramidalImageInternal(b, con, level, headless, onTab, bioformats, resultInNewTab, true).ConfigureAwait(false);
+            return await RunOnPyramidalImageInternal(b, con, level, headless, onTab, bioformats, resultInNewTab, true, currentViewOnly).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -684,7 +909,8 @@ namespace BioLib
             List<BioImage> results = new List<BioImage>();
             for (int level = 0; level < b.Resolutions.Count; level++)
             {
-                BioImage result = await RunOnPyramidalImageInternal(b, con, level, headless, onTab, bioformats, resultInNewTab, false).ConfigureAwait(false);
+                ReportProgress(0, $"Processing pyramid level {level + 1}/{b.Resolutions.Count}");
+                BioImage result = await RunOnPyramidalImageInternal(b, con, level, headless, onTab, bioformats, resultInNewTab, false, false).ConfigureAwait(false);
                 if (result != null)
                     results.Add(result);
             }
@@ -694,9 +920,13 @@ namespace BioLib
 
             string tempDir = Path.GetDirectoryName(Environment.ProcessPath);
             string tempFile = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + "-pyr.zarr");
+            ReportProgress(0, $"Saving processed pyramid ({results.Count}/{b.Resolutions.Count} levels)");
             await BioImage.SaveOMEZarr(results.ToArray(), tempFile).ConfigureAwait(false);
 
+            ReportProgress(0, "Opening processed pyramid");
             BioImage pyramidal = await BioImage.OpenFileAsync(tempFile, 0, false, false).ConfigureAwait(false);
+            pyramidal = ApplyProcessedResultName(b, pyramidal);
+            ReportProgress(100, "Completed pyramid command");
             Recorder.Record($"ImageJ.RunOnAllPyramidLevels({b}, \"{con}\", {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
             return pyramidal;
         }
