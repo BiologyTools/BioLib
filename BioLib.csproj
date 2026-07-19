@@ -11,14 +11,15 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>4.1.0</AssemblyVersion>
-    <FileVersion>4.1.0</FileVersion>
-    <PackageVersion>4.1.0</PackageVersion>
+    <AssemblyVersion>4.1.1</AssemblyVersion>
+    <FileVersion>4.1.1</FileVersion>
+    <PackageVersion>4.1.1</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; Napari; </PackageTags>
-    <PackageReleaseNotes>Improves BioLib’s Fiji command workflow for pyramidal and remote Zarr images, focusing on correct output format, metadata preservation, and faster pyramid processing. Save pyramidal Fiji command output as OME-Zarr instead of OME-TIFF. Preserve the original BioImage name for generated output. Preserve source ROIs and annotations on result images. Improve progress reporting with elapsed time and estimated completion. Speed up pyramid extraction and Zarr save paths. Fix ZCT coordinate handling for processed pyramid levels.
+    <PackageReleaseNotes>
+		Cache Fiji command options for pyramidal runs and avoid per-level prompts.
 	</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
