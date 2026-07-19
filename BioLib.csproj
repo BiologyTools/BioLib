@@ -18,8 +18,7 @@
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; Napari; </PackageTags>
-    <PackageReleaseNotes>
-		Fixed pyramid resolution detection for OME and CZI files, including multi-series pyramids, and excluded macro/label images from the main resolution ladder. Corrected BioFormats series selection in the non-tiled load path, improved 16-bit and 48bpp image loading, and tightened Zarr export/reload geometry and metadata handling.
+    <PackageReleaseNotes>Improves BioLib’s Fiji command workflow for pyramidal and remote Zarr images, focusing on correct output format, metadata preservation, and faster pyramid processing. Save pyramidal Fiji command output as OME-Zarr instead of OME-TIFF. Preserve the original BioImage name for generated output. Preserve source ROIs and annotations on result images. Improve progress reporting with elapsed time and estimated completion. Speed up pyramid extraction and Zarr save paths. Fix ZCT coordinate handling for processed pyramid levels.
 	</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
