@@ -16,6 +16,7 @@ using System.Text;
 using System.Threading.Tasks;
 using ByteProcessor = FijiNet::ij.process.ByteProcessor;
 using ColorProcessor = FijiNet::ij.process.ColorProcessor;
+using ImageJRecorder = FijiNet::ij.plugin.frame.Recorder;
 using IJ = FijiNet::ij.IJ;
 using ij = FijiNet::ij;
 using ImagePlus = FijiNet::ij.ImagePlus;
@@ -698,6 +699,79 @@ namespace BioLib
             }
         }
 
+        public static bool CanParameterizeInteractiveRunCommand(string con)
+        {
+            return TryExtractBareRunCommand(con, out _);
+        }
+
+        public static bool TryParameterizeInteractiveRunCommand(BioImage previewImage, string con, bool headless, bool resultInNewTab, out string parameterizedCommand)
+        {
+            parameterizedCommand = con;
+            if (previewImage == null || headless || !TryExtractBareRunCommand(con, out string commandName))
+                return false;
+
+            lock (imageJRunLock)
+            {
+                ImageJRecorder recorder = ImageJRecorder.getInstance();
+                bool createdRecorder = false;
+                bool previousRecordInMacros = ImageJRecorder.recordInMacros;
+                try
+                {
+                    if (recorder == null)
+                    {
+                        recorder = new ImageJRecorder(false);
+                        createdRecorder = recorder != null;
+                    }
+
+                    if (recorder == null)
+                        return false;
+
+                    ImageJRecorder.recordInMacros = true;
+                    ImageJRecorder.resetCommandOptions();
+                    string previousText = recorder.getText() ?? string.Empty;
+
+                    cons = con;
+                    indexs = 0;
+                    Fiji.headless = headless;
+                    resultInNewTabs = resultInNewTab;
+                    bioImage = previewImage;
+                    RunImageJ(false);
+
+                    string recordedText = recorder.getText() ?? string.Empty;
+                    if (TryExtractRecordedRunCommand(recordedText, previousText, commandName, out parameterizedCommand))
+                        return true;
+
+                    string options = ImageJRecorder.getCommandOptions() ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(options))
+                        return false;
+
+                    parameterizedCommand = BuildRunCommand(commandName, options);
+                    return true;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"[Fiji.TryParameterizeInteractiveRunCommand] {e.Message}");
+                    parameterizedCommand = con;
+                    return false;
+                }
+                finally
+                {
+                    ImageJRecorder.resetCommandOptions();
+                    ImageJRecorder.recordInMacros = previousRecordInMacros;
+                    if (createdRecorder && recorder != null)
+                    {
+                        try
+                        {
+                            recorder.close();
+                        }
+                        catch
+                        {
+                        }
+                    }
+                }
+            }
+        }
+
         private static BioImage RunImageJ(bool registerWithImages = true)
         {
             ImagePlus ip = GetImagePlus(bioImage);
@@ -720,6 +794,66 @@ namespace BioLib
             b.ID = s;
             return b;
         }
+
+        private static bool TryExtractBareRunCommand(string con, out string commandName)
+        {
+            commandName = null;
+            if (string.IsNullOrWhiteSpace(con))
+                return false;
+
+            string trimmed = con.Trim();
+            const string prefix = "run(\"";
+            const string suffix = "\");";
+            if (!trimmed.StartsWith(prefix, StringComparison.Ordinal) || !trimmed.EndsWith(suffix, StringComparison.Ordinal))
+                return false;
+
+            string body = trimmed.Substring(prefix.Length, trimmed.Length - prefix.Length - suffix.Length);
+            if (body.Contains("\",", StringComparison.Ordinal))
+                return false;
+
+            commandName = body;
+            return !string.IsNullOrWhiteSpace(commandName);
+        }
+
+        private static string BuildRunCommand(string commandName, string options)
+        {
+            string safeCommand = ImageJRecorder.fixString(commandName ?? string.Empty);
+            string safeOptions = ImageJRecorder.fixString(options ?? string.Empty);
+            return $"run(\"{safeCommand}\", \"{safeOptions}\");";
+        }
+
+        private static bool TryExtractRecordedRunCommand(string recorderText, string previousText, string commandName, out string parameterizedCommand)
+        {
+            parameterizedCommand = null;
+            string safeCommand = ImageJRecorder.fixString(commandName ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(safeCommand) || string.IsNullOrWhiteSpace(recorderText))
+                return false;
+
+            string delta = recorderText;
+            if (!string.IsNullOrEmpty(previousText) && recorderText.StartsWith(previousText, StringComparison.Ordinal))
+                delta = recorderText.Substring(previousText.Length);
+
+            string candidatePrefix = $"run(\"{safeCommand}\"";
+            string[] lines = delta.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = lines.Length - 1; i >= 0; i--)
+            {
+                string line = lines[i].Trim();
+                if (!line.StartsWith(candidatePrefix, StringComparison.Ordinal) || !line.EndsWith(");", StringComparison.Ordinal))
+                    continue;
+
+                if (line.Equals($"run(\"{safeCommand}\");", StringComparison.Ordinal))
+                    return false;
+
+                if (line.Equals($"run(\"{safeCommand}\", \"\");", StringComparison.Ordinal))
+                    return false;
+
+                parameterizedCommand = line;
+                return true;
+            }
+
+            return false;
+        }
+
         public async static Task<BioImage> RunOnImage(BioImage b, string con, bool headless, bool onTab, bool useBioformats,bool resultInNewTab)
         {
             if (b != null && b.isPyramidal)

@@ -611,6 +611,33 @@ namespace BioLib
             return result;
         }
 
+        private static int GetCommandCaptureLevel(BioImage b)
+        {
+            if (b == null || b.Resolutions.Count == 0)
+                return 0;
+
+            int level = b.Resolutions.Count - 1;
+            if (b.MacroResolution.HasValue)
+                level = Math.Min(level, Math.Max(0, b.MacroResolution.Value - 1));
+            return Math.Max(0, level);
+        }
+
+        private static async Task<string> TryParameterizePyramidalCommand(BioImage b, string con, bool headless, bool resultInNewTab)
+        {
+            if (b == null || headless || !Fiji.CanParameterizeInteractiveRunCommand(con))
+                return con;
+
+            int captureLevel = GetCommandCaptureLevel(b);
+            ReportProgress(0, $"Configuring Fiji command from pyramid level {captureLevel + 1}/{b.Resolutions.Count}");
+            BioImage previewImage = await PreparePyramidalLevelImage(b, captureLevel, false).ConfigureAwait(false);
+            if (previewImage == null)
+                return con;
+
+            if (Fiji.TryParameterizeInteractiveRunCommand(previewImage, con, headless, resultInNewTab, out string parameterizedCommand))
+                return parameterizedCommand;
+            return con;
+        }
+
         /// <summary>
         /// Runs an ImageJ command on a pyramidal BioImage by extracting the
         /// requested level, persisting that level as a temporary Zarr dataset,
@@ -906,11 +933,12 @@ namespace BioLib
                 return b;
             }
 
+            string effectiveCommand = await TryParameterizePyramidalCommand(b, con, headless, resultInNewTab).ConfigureAwait(false);
             List<BioImage> results = new List<BioImage>();
             for (int level = 0; level < b.Resolutions.Count; level++)
             {
                 ReportProgress(0, $"Processing pyramid level {level + 1}/{b.Resolutions.Count}");
-                BioImage result = await RunOnPyramidalImageInternal(b, con, level, headless, onTab, bioformats, resultInNewTab, false, false).ConfigureAwait(false);
+                BioImage result = await RunOnPyramidalImageInternal(b, effectiveCommand, level, headless, onTab, bioformats, resultInNewTab, false, false).ConfigureAwait(false);
                 if (result != null)
                     results.Add(result);
             }
