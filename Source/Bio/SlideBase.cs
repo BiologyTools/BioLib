@@ -4,9 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.PixelFormats;
 using AForge;
 using ZarrNET.Core.OmeZarr.Nodes;
 using ZarrNET.Core.OmeZarr.Metadata;
@@ -154,26 +151,6 @@ namespace BioLib
             }
             return images;
             */
-        }
-        private static Image<Rgb24> CreateImageFromRgbaData(byte[] rgbaData, int width, int height)
-        {
-            Image<Rgb24> image = new Image<Rgb24>(width, height);
-
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    int index = (y * width + x) * 4;
-                    byte r = rgbaData[index];
-                    byte g = rgbaData[index + 1];
-                    byte b = rgbaData[index + 2];
-                    // byte a = rgbaData[index + 3]; // Alpha channel, not used in Rgb24
-
-                    image[x, y] = new Rgb24(r, g, b);
-                }
-            }
-
-            return image;
         }
         public byte[] GetTile(TileInfo tileInfo, ZCT coord)
         {

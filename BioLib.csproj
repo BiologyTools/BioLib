@@ -37,8 +37,9 @@
     </Content>
   </ItemGroup>
 	<ItemGroup>
+    <PackageReference Include="BioFormats.NET6" Version="9.0.0-pr" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.660" />
-    <PackageReference Include="CS-Script" Version="4.14.9" />
+    <PackageReference Include="CS-Script" Version="4.14.11" />
     <PackageReference Include="Fiji.NET" Version="0.1.0" Aliases="FijiNet" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="NuGet.Build.Tasks.Pack" Version="6.14.0">
@@ -46,12 +47,15 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="OMERO.NET" Version="1.0.5" />
-    <PackageReference Include="SkiaSharp" Version="3.119.4" />
-    <PackageReference Include="SkiaSharp.Views.Gtk3" Version="3.119.4" />
-    <PackageReference Include="ZarrNET" Version="0.6.1" />
+    <PackageReference Include="SkiaSharp" Version="4.151.1" />
   </ItemGroup>
 	<ItemGroup>
 	  <ProjectReference Include="..\OpenSlideSharp\src\OpenSlideSharp\OpenSlideGTK.csproj" />
+	</ItemGroup>
+	<ItemGroup>
+	  <Reference Include="ZarrNET">
+	    <HintPath>..\ZarrNET\bin\Debug\net10.0\ZarrNET.dll</HintPath>
+	  </Reference>
 	</ItemGroup>
   <ItemGroup>
     <None Update="banner.jpg">

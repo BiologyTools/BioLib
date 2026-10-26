@@ -13,7 +13,6 @@ using omero.gateway.facility;
 using omero.gateway.model;
 using omero.model;
 using SkiaSharp;
-using SkiaSharp.Views.Gtk;
 using System;
 using System.Collections.Generic;
 using System.Globalization;

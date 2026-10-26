@@ -4,8 +4,6 @@ using BruTile.Cache;
 using Gdk;
 using OpenSlideGTK;
 using org.checkerframework.common.returnsreceiver.qual;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using System;
 using System.Diagnostics;
 using System.Collections.Generic;
@@ -13,7 +11,6 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using ucar.nc2.@internal.iosp.netcdf3;
-using Image = SixLabors.ImageSharp.Image;
 namespace BioLib
 {
     public class LruCache<TileInformation, TValue>
@@ -576,13 +573,9 @@ namespace BioLib
                     }
                     if (Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
                     {
-                        Image<L16> im16 = ImageUtil.Join16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
+                        using NetVips.Image im16 = ImageUtil.JoinVips16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
                         if (im16 != null)
-                        {
-                            byte[] bts = Get16Bytes(im16);
-                            im16.Dispose();
-                            return bts;
-                        }
+                            return im16.WriteToMemory();
                     }
                     else if (Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
                     {
@@ -599,7 +592,7 @@ namespace BioLib
             }
             try
             {
-                Image im = null;
+                NetVips.Image im = null;
                 List<Tuple<Extent, byte[]>> tiles = new List<Tuple<Extent, byte[]>>();
                 foreach (BruTile.TileInfo t in tileInfos)
                 {
@@ -610,24 +603,20 @@ namespace BioLib
                 }
                 if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format16bppGrayScale)
                 {
-                    im = ImageUtil.Join16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    byte[] bts = Get16Bytes((Image<L16>)im);
-                    im.Dispose();
-                    return bts;
+                    im = ImageUtil.JoinVips16(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
                 }
                 else if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format24bppRgb)
                 {
-                    im = ImageUtil.JoinRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    byte[] bts = GetRgb24Bytes((Image<Rgb24>)im);
-                    im.Dispose();
-                    return bts;
+                    im = ImageUtil.JoinVipsRGB24(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
                 }
                 else if (this.Image.BioImage.Resolutions[curLevel].PixelFormat == PixelFormat.Format8bppIndexed)
                 {
-                    im = ImageUtil.Join8Bit(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
-                    byte[] bts = Get8BitBytes((Image<L8>)im);
-                    im.Dispose();
-                    return bts;
+                    im = ImageUtil.JoinVips8(tiles, srcPixelExtent, new Extent(0, 0, dstPixelWidth, dstPixelHeight));
+                }
+                if (im != null)
+                {
+                    using (im)
+                        return im.WriteToMemory();
                 }
             }
             catch (Exception er)
@@ -636,65 +625,6 @@ namespace BioLib
                 return null;
             }
             return null;
-        }
-
-        public byte[] Get8BitBytes(Image<L8> image)
-        {
-            int width = image.Width;
-            int height = image.Height;
-            byte[] rgbBytes = new byte[width * height]; // 3 bytes per pixel (RGB)
-
-            int byteIndex = 0;
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    L8 pixel = image[x, y];
-                    rgbBytes[byteIndex++] = pixel.PackedValue;
-                }
-            }
-
-            return rgbBytes;
-        }
-        public byte[] GetRgb24Bytes(Image<Rgb24> image)
-        {
-            int width = image.Width;
-            int height = image.Height;
-            byte[] rgbBytes = new byte[width * height * 3]; // 3 bytes per pixel (RGB)
-
-            int byteIndex = 0;
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    Rgb24 pixel = image[x, y];
-                    rgbBytes[byteIndex++] = pixel.B;
-                    rgbBytes[byteIndex++] = pixel.G;
-                    rgbBytes[byteIndex++] = pixel.R;
-                }
-            }
-
-            return rgbBytes;
-        }
-        public byte[] Get16Bytes(Image<L16> image)
-        {
-            int width = image.Width;
-            int height = image.Height;
-            byte[] bytes = new byte[width * height * 2];
-
-            int byteIndex = 0;
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    L16 pixel = image[x, y];
-                    byte[] bts = BitConverter.GetBytes(pixel.PackedValue);
-                    bytes[byteIndex++] = bts[0];
-                    bytes[byteIndex++] = bts[1];
-                }
-            }
-
-            return bytes;
         }
 
         public SlideImage Image { get; set; }
