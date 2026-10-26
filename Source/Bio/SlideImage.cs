@@ -545,7 +545,17 @@ namespace BioLib
                 return bgra;
             }
 
-            var tileTask = BioImage.GetTile(BioImage.GetFrameIndex(zct.Z, zct.C, zct.T), level, (int)x, (int)y, (int)width, (int)height);
+            // Remote Zarr images keep only the initially loaded preview plane in
+            // Buffers. Pass the requested coordinate explicitly so GetTile does
+            // not fall back to BioImage.Coordinate (usually Z=0) for every tile.
+            var tileTask = BioImage.GetTile(
+                BioImage.GetFrameIndex(zct.Z, zct.C, zct.T),
+                level,
+                (int)x,
+                (int)y,
+                (int)width,
+                (int)height,
+                zct);
             var tileCompleted = await global::System.Threading.Tasks.Task.WhenAny(
                 tileTask,
                 global::System.Threading.Tasks.Task.Delay(global::System.Threading.Timeout.Infinite, ct)).ConfigureAwait(false);
