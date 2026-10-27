@@ -5637,34 +5637,32 @@ namespace BioLib
         /// in a Zarr store, regardless of whether the store is a plain
         /// MultiscaleImage, a Bioformats2RawCollection, or an HCS Plate.
         ///
-        /// For Plate stores the first well's first field (index "0") is opened
-        /// via its path relative to the store root.
+        /// For Plate stores the first well's first field is opened using the
+        /// paths declared in the plate and well metadata.
         /// </summary>
         private static async Task<(MultiscaleNode image, PlateMetadata plate)> ResolveMultiscaleAsync(
             OmeZarrReader reader, string baseUrl)
         {
-            try
+            if (reader.RootNodeType != OmeAttributesParser.OmeNodeType.Plate)
             {
                 var ms = await reader.AsMultiscaleImageAsync().ConfigureAwait(false);
                 return (ms, null);
             }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("Plate"))
-            {
-                var plate = reader.AsPlate();
 
-                if (plate.Wells == null || !plate.Wells.Any())
-                    throw new Exception("OME-Zarr Plate contains no wells.");
+            var plate = reader.AsPlate();
+            if (plate.Wells == null || plate.Wells.Count == 0)
+                throw new InvalidOperationException("OME-Zarr Plate contains no wells.");
 
-                // NGFF HCS layout: <store>/<rowName>/<colName>/<fieldIndex>
-                // WellReference.Path is "rowName/colName".
-                // Field paths are integer indices starting at 0.
-                var firstWell   = plate.Wells.First();
-                string fieldUrl = baseUrl.TrimEnd('/') + "/" + firstWell.Path.Trim('/') + "/0";
+            var firstWell = plate.Wells[0];
+            var well = await plate.OpenWellAsync(firstWell.Path).ConfigureAwait(false);
+            if (well.Fields == null || well.Fields.Count == 0)
+                throw new InvalidOperationException($"OME-Zarr well '{firstWell.Path}' contains no fields.");
 
-                var fieldReader = await OmeZarrReader.OpenAsync(fieldUrl).ConfigureAwait(false);
-                var fieldMs     = await fieldReader.AsMultiscaleImageAsync().ConfigureAwait(false);
-                return (fieldMs, plate.PlateMetadata);
-            }
+            string fieldUrl = baseUrl.TrimEnd('/') + "/" + firstWell.Path.Trim('/')
+                            + "/" + well.Fields[0].Path.Trim('/');
+            var fieldReader = await OmeZarrReader.OpenAsync(fieldUrl).ConfigureAwait(false);
+            var fieldMs = await fieldReader.AsMultiscaleImageAsync().ConfigureAwait(false);
+            return (fieldMs, plate.PlateMetadata);
         }
 
         /// <summary>

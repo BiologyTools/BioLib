@@ -11,16 +11,18 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>4.1.1</AssemblyVersion>
-    <FileVersion>4.1.1</FileVersion>
-    <PackageVersion>4.1.1</PackageVersion>
+    <AssemblyVersion>4.2.0</AssemblyVersion>
+    <FileVersion>4.2.0</FileVersion>
+    <PackageVersion>4.2.0</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; Napari; </PackageTags>
-    <PackageReleaseNotes>
-		Cache Fiji command options for pyramidal runs and avoid per-level prompts.
-	</PackageReleaseNotes>
+    <PackageReleaseNotes>BioLib 4.2.0 improves pyramidal image processing and tile loading:
+- Caches Fiji command options for pyramidal runs to avoid repeated prompts for each resolution level.
+- Fixes remote Zarr tile loading to use the requested Z, C, and T coordinates.
+- Replaces ImageSharp-based tile assembly with NetVips for 8-bit, 16-bit grayscale, and RGB images.
+- Updates BioFormats.NET6, CS-Script, and SkiaSharp dependencies.</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
@@ -47,11 +49,9 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="OMERO.NET" Version="1.0.5" />
+    <PackageReference Include="OpenSlideGTK" Version="2.8.1" />
     <PackageReference Include="SkiaSharp" Version="4.151.1" />
   </ItemGroup>
-	<ItemGroup>
-	  <ProjectReference Include="..\OpenSlideSharp\src\OpenSlideSharp\OpenSlideGTK.csproj" />
-	</ItemGroup>
 	<ItemGroup>
 	  <Reference Include="ZarrNET">
 	    <HintPath>..\ZarrNET\bin\Debug\net10.0\ZarrNET.dll</HintPath>
