@@ -747,13 +747,15 @@ namespace BioLib
             if (width <= 0 || height <= 0)
                 return null;
 
-            string tempDir = Path.GetDirectoryName(Environment.ProcessPath);
-            string tempLevelZarr = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + "-level.zarr");
+            string tempLevelZarr = BioImage.CreateTemporaryZarrPath("-level.zarr");
             if (Directory.Exists(tempLevelZarr))
                 Directory.Delete(tempLevelZarr, true);
             if (File.Exists(tempLevelZarr))
                 File.Delete(tempLevelZarr);
 
+            bool temporaryZarrOwnedByResult = false;
+            try
+            {
             int bytesPerSample = levelImage.Buffers[0].PixelFormat == PixelFormat.Format16bppGrayScale ? 2 : 1;
             int planeCount = Math.Max(1, levelImage.SizeZ * levelImage.SizeC * levelImage.SizeT);
             (int tileW, int tileH) = GetLargestSafeTileSize(width, height, bytesPerSample, planeCount);
@@ -855,7 +857,18 @@ namespace BioLib
             }
 
             BioImage result = await BioImage.OpenFileAsync(tempLevelZarr, 0, false, false).ConfigureAwait(false);
+            if (result == null)
+                return null;
+
+            result.OwnTemporaryZarr(tempLevelZarr);
+            temporaryZarrOwnedByResult = true;
             return ApplyProcessedResultName(source, result);
+            }
+            finally
+            {
+                if (!temporaryZarrOwnedByResult)
+                    BioImage.DeleteTemporaryZarr(tempLevelZarr);
+            }
         }
 
         private static (int tileW, int tileH) GetLargestSafeTileSize(int width, int height, int bytesPerSample, int planeCount)
@@ -935,6 +948,8 @@ namespace BioLib
 
             string effectiveCommand = await TryParameterizePyramidalCommand(b, con, headless, resultInNewTab).ConfigureAwait(false);
             List<BioImage> results = new List<BioImage>();
+            try
+            {
             for (int level = 0; level < b.Resolutions.Count; level++)
             {
                 ReportProgress(0, $"Processing pyramid level {level + 1}/{b.Resolutions.Count}");
@@ -946,17 +961,37 @@ namespace BioLib
             if (results.Count == 0)
                 return null;
 
-            string tempDir = Path.GetDirectoryName(Environment.ProcessPath);
-            string tempFile = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + "-pyr.zarr");
-            ReportProgress(0, $"Saving processed pyramid ({results.Count}/{b.Resolutions.Count} levels)");
-            await BioImage.SaveOMEZarr(results.ToArray(), tempFile).ConfigureAwait(false);
+            string tempFile = BioImage.CreateTemporaryZarrPath("-pyr.zarr");
+            try
+            {
+                ReportProgress(0, $"Saving processed pyramid ({results.Count}/{b.Resolutions.Count} levels)");
+                await BioImage.SaveOMEZarr(results.ToArray(), tempFile).ConfigureAwait(false);
 
-            ReportProgress(0, "Opening processed pyramid");
-            BioImage pyramidal = await BioImage.OpenFileAsync(tempFile, 0, false, false).ConfigureAwait(false);
-            pyramidal = ApplyProcessedResultName(b, pyramidal);
-            ReportProgress(100, "Completed pyramid command");
-            Recorder.Record($"ImageJ.RunOnAllPyramidLevels({b}, \"{con}\", {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
-            return pyramidal;
+                ReportProgress(0, "Opening processed pyramid");
+                BioImage pyramidal = await BioImage.OpenFileAsync(tempFile, 0, false, false).ConfigureAwait(false);
+                if (pyramidal == null)
+                {
+                    BioImage.DeleteTemporaryZarr(tempFile);
+                    return null;
+                }
+
+                pyramidal.OwnTemporaryZarr(tempFile);
+                pyramidal = ApplyProcessedResultName(b, pyramidal);
+                ReportProgress(100, "Completed pyramid command");
+                Recorder.Record($"ImageJ.RunOnAllPyramidLevels({b}, \"{con}\", {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
+                return pyramidal;
+            }
+            catch
+            {
+                BioImage.DeleteTemporaryZarr(tempFile);
+                throw;
+            }
+            }
+            finally
+            {
+                foreach (BioImage result in results)
+                    result?.Dispose();
+            }
         }
 
         /// <summary>

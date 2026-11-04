@@ -2980,6 +2980,55 @@ namespace BioLib
             }
         }
         public string file;
+        private string? temporaryZarrDirectory;
+
+        internal static string CreateTemporaryZarrPath(string suffix)
+        {
+            string? startupPath = Path.GetDirectoryName(Environment.ProcessPath);
+            if (string.IsNullOrWhiteSpace(startupPath))
+                startupPath = AppContext.BaseDirectory;
+
+            string tempRoot = Path.Combine(startupPath, "Temp");
+            Directory.CreateDirectory(tempRoot);
+            return Path.Combine(tempRoot, Guid.NewGuid().ToString("N") + suffix);
+        }
+
+        internal void OwnTemporaryZarr(string path)
+        {
+            temporaryZarrDirectory = path;
+        }
+
+        internal static void DeleteTemporaryZarr(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return;
+
+            string? startupPath = Path.GetDirectoryName(Environment.ProcessPath);
+            if (string.IsNullOrWhiteSpace(startupPath))
+                startupPath = AppContext.BaseDirectory;
+
+            string tempRoot = Path.GetFullPath(Path.Combine(startupPath, "Temp"));
+            string fullPath = Path.GetFullPath(path);
+            string rootPrefix = tempRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            if (!fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            try
+            {
+                if (Directory.Exists(fullPath))
+                    Directory.Delete(fullPath, true);
+                else if (File.Exists(fullPath))
+                    File.Delete(fullPath);
+
+                if (Directory.Exists(tempRoot) && !Directory.EnumerateFileSystemEntries(tempRoot).Any())
+                    Directory.Delete(tempRoot);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Could not delete temporary Zarr '{fullPath}': {ex.Message}");
+            }
+        }
         static string stat;
         public static string Status
         {
@@ -5924,6 +5973,13 @@ namespace BioLib
                         physicalSizeX, physicalSizeY, physicalSizeZ,
                         stageSizeX, stageSizeY, stageSizeZ));
                 }
+
+                // Remote Zarr images must use the tiled slide viewer whenever they
+                // expose a native pyramid. Large single-resolution stores get the
+                // same synthetic metadata pyramid used by other whole-slide inputs,
+                // so opening them never allocates or displays them as a normal stack.
+                b.PyramidNativeLevelCount = b.Resolutions.Count;
+                AppendSyntheticPyramidResolutions(b);
 
                 // -----------------------------------------------------------------
                 // Dimension sizes from the full-resolution array shape
@@ -11707,6 +11763,8 @@ namespace BioLib
         /// list, and then forces the garbage collector to run
         public void Dispose()
         {
+            string? ownedTemporaryZarr = temporaryZarrDirectory;
+            temporaryZarrDirectory = null;
             try
             {
                 imRead?.close();
@@ -11715,6 +11773,15 @@ namespace BioLib
             {
             }
             imRead = null;
+
+            try
+            {
+                zarrReader?.Dispose();
+            }
+            catch
+            {
+            }
+            zarrReader = null;
 
             for (int i = 0; i < Buffers.Count; i++)
             {
@@ -11728,6 +11795,7 @@ namespace BioLib
             {
                 Annotations[i].Dispose();
             }
+            DeleteTemporaryZarr(ownedTemporaryZarr);
         }
         /// This function returns the filename of the object, and the location of the object in the 3D
         /// space

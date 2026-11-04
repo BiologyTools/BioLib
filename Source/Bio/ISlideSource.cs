@@ -56,17 +56,11 @@ namespace BioLib
         {
             lock (sync)
             {
-                foreach (LinkedListNode<(Info key, TValue value)> item in cacheMap.Values)
+                if (cacheMap.TryGetValue(ke, out LinkedListNode<(Info key, TValue value)> item))
                 {
-                    if (ke.Coordinate.Z == item.Value.key.Coordinate.Z &&
-                        ke.Coordinate.C == item.Value.key.Coordinate.C &&
-                        ke.Coordinate.T == item.Value.key.Coordinate.T &&
-                        ke.Index == item.Value.key.Index)
-                    {
-                        lruList.Remove(item);
-                        lruList.AddLast(item);
-                        return item.Value.value;
-                    }
+                    lruList.Remove(item);
+                    lruList.AddLast(item);
+                    return item.Value.value;
                 }
                 return default(TValue);
             }
@@ -132,6 +126,7 @@ namespace BioLib
         private int capacity;
         SlideSourceBase source = null;
         private readonly object sync = new object();
+        private readonly Dictionary<LruCache<TileInformation, byte[]>.Info, Task<byte[]>> inFlight = new();
         public TileCache(SlideSourceBase source, int capacity = 64)
         {
             this.source = source;
@@ -181,27 +176,77 @@ namespace BioLib
                 return null;
             var sw = Stopwatch.StartNew();
             TraceTile("[TileCache.GetTile] start", info, info.Coordinate);
+            var key = new LruCache<TileInformation, byte[]>.Info
+            {
+                Coordinate = info.Coordinate,
+                Index = info.Index
+            };
+            Task<byte[]> loadTask;
+            TaskCompletionSource<byte[]> completion = null;
             lock (sync)
             {
                 if (cache == null)
                     cache = new LruCache<TileInformation, byte[]>(capacity);
-                LruCache<TileInformation, byte[]>.Info inf = new LruCache<TileInformation, byte[]>.Info();
-                inf.Coordinate = info.Coordinate;
-                inf.Index = info.Index;
-                byte[] data = cache.Get(inf);
+                byte[] data = cache.Get(key);
                 if (data != null)
                 {
                     TraceTile("[TileCache.GetTile] cache-hit", info, info.Coordinate, sw.ElapsedMilliseconds, $"bytes={data.Length}");
                     return data;
                 }
+
+                if (!inFlight.TryGetValue(key, out loadTask))
+                {
+                    completion = new TaskCompletionSource<byte[]>(
+                        TaskCreationOptions.RunContinuationsAsynchronously);
+                    loadTask = completion.Task;
+                    inFlight.Add(key, loadTask);
+                }
             }
-            byte[] tile = await LoadTile(info, ct);
-            if (tile != null)
-                AddTile(info, tile);
+
+            // Only the first caller starts the source read. Other callers await
+            // the same task, preventing duplicate downloads for overlapping views.
+            if (completion != null)
+                _ = CompleteLoadAsync(info, key, completion);
+
+            byte[] tile = ct.CanBeCanceled
+                ? await loadTask.WaitAsync(ct).ConfigureAwait(false)
+                : await loadTask.ConfigureAwait(false);
             TraceTile("[TileCache.GetTile] end", info, info.Coordinate, sw.ElapsedMilliseconds, tile != null ? $"bytes={tile.Length}" : "tile=null");
             return tile;
         }
 
+        private async Task CompleteLoadAsync(
+            TileInformation info,
+            LruCache<TileInformation, byte[]>.Info key,
+            TaskCompletionSource<byte[]> completion)
+        {
+            try
+            {
+                // The shared read is allowed to finish and warm the cache even if
+                // one obsolete viewport stops waiting for it.
+                byte[] tile = await LoadTile(info, CancellationToken.None).ConfigureAwait(false);
+                if (tile != null)
+                    AddTile(info, tile);
+                completion.TrySetResult(tile);
+            }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+            finally
+            {
+                lock (sync)
+                {
+                    if (inFlight.TryGetValue(key, out Task<byte[]> current) &&
+                        ReferenceEquals(current, completion.Task))
+                    {
+                        inFlight.Remove(key);
+                    }
+                }
+            }
+        }
+
+        [Conditional("DEBUG_TILE_TRACE")]
         private static void TraceTile(string phase, TileInformation tileInfo, ZCT coord, long? elapsedMs = null, string extra = null)
         {
             try
@@ -214,6 +259,7 @@ namespace BioLib
             catch { }
         }
 
+        [Conditional("DEBUG_TILE_TRACE")]
         private static void TraceTile(string phase, BruTile.TileIndex index, ZCT coord, Extent extent, long? elapsedMs = null, string extra = null)
         {
             try
@@ -351,6 +397,7 @@ namespace BioLib
             return 50;
         }
 
+        [Conditional("DEBUG_TILE_TRACE")]
         private static void TraceTile(string phase, TileInformation tileInfo, ZCT coord, long? elapsedMs = null, string extra = null)
         {
             try
@@ -363,6 +410,7 @@ namespace BioLib
             catch { }
         }
 
+        [Conditional("DEBUG_TILE_TRACE")]
         private static void TraceTile(string phase, BruTile.TileIndex index, ZCT coord, Extent extent, long? elapsedMs = null, string extra = null)
         {
             try
@@ -428,14 +476,28 @@ namespace BioLib
             // 3. Fetch tiles in batches
             // --------------------------------------------------------------------
             int batchSize = GetOptimalBatchSize(PyramidalOrigin, PyramidalSize);
+            const int maxConcurrentTileLoads = 8;
+            using var loadGate = new SemaphoreSlim(maxConcurrentTileLoads, maxConcurrentTileLoads);
 
             for (int i = 0; i < prioritizedTiles.Count; i += batchSize)
             {
                 var batch = prioritizedTiles.Skip(i).Take(batchSize).ToList();
 
-                // Parallel fetch within batch
+                // Bound parallelism so remote stores and local decoders are not
+                // overwhelmed by a large viewport requesting 50-150 tiles at once.
                 byte[][] results = await Task.WhenAll(
-                    batch.Select(tile => FetchSingleTileAsync(tile, level, coordinate))
+                    batch.Select(async tile =>
+                    {
+                        await loadGate.WaitAsync().ConfigureAwait(false);
+                        try
+                        {
+                            return await FetchSingleTileAsync(tile, level, coordinate).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            loadGate.Release();
+                        }
+                    })
                 ).ConfigureAwait(false);
 
                 // ----------------------------------------------------------------
