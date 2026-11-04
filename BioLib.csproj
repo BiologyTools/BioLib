@@ -11,14 +11,14 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>4.3.0</AssemblyVersion>
-    <FileVersion>4.3.0</FileVersion>
-    <PackageVersion>4.3.0</PackageVersion>
+    <AssemblyVersion>4.3.1</AssemblyVersion>
+    <FileVersion>4.3.1</FileVersion>
+    <PackageVersion>4.3.1</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; Napari; </PackageTags>
-    <PackageReleaseNotes>BioLib 4.3.0 improves OME-Zarr integration and package deployment:
+    <PackageReleaseNotes>BioLib 4.3.1 improves OME-Zarr integration and package deployment:
 - Replaces the local ZarrNET assembly reference with the published ZarrNET 0.8.1 package for reproducible builds and deployment.
 - Adds support for opening OME-Zarr 0.6 scene roots through ZarrNET's automatic multiscale-image dispatch.
 - Includes ZarrNET fixes for byDimension coordinate transformations and parallel Blosc block decoding.
