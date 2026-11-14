@@ -11,17 +11,17 @@
     <PackageIcon>banner.jpg</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/BiologyTools/BioLib</RepositoryUrl>
-    <AssemblyVersion>4.3.1</AssemblyVersion>
-    <FileVersion>4.3.1</FileVersion>
-    <PackageVersion>4.3.1</PackageVersion>
+    <AssemblyVersion>4.3.2</AssemblyVersion>
+    <FileVersion>4.3.2</FileVersion>
+    <PackageVersion>4.3.2</PackageVersion>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; Napari; </PackageTags>
-    <PackageReleaseNotes>BioLib 4.3.1 improves OME-Zarr integration and package deployment:
-- Replaces the local ZarrNET assembly reference with the published ZarrNET 0.8.1 package for reproducible builds and deployment.
-- Adds support for opening OME-Zarr 0.6 scene roots through ZarrNET's automatic multiscale-image dispatch.
-- Includes ZarrNET fixes for byDimension coordinate transformations and parallel Blosc block decoding.
+    <PackageReleaseNotes>BioLib 4.3.2 updates core imaging and scripting dependencies:
+- Updates BioFormats.NET6 to 9.0.0-rc2 and configures its assembly alias for reliable integration.
+- Updates ZarrNET to 0.8.2 for the latest OME-Zarr compatibility and fixes.
+- Updates SkiaSharp to 4.156.0 and CS-Script to 4.14.14.
 </PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
@@ -39,9 +39,11 @@
     </Content>
   </ItemGroup>
 	<ItemGroup>
-    <PackageReference Include="BioFormats.NET6" Version="9.0.0-pr" />
+	<PackageReference Include="BioFormats.NET6" Version="9.0.0-rc2">
+		<Aliases>BioFormats</Aliases>
+	</PackageReference>
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.660" />
-    <PackageReference Include="CS-Script" Version="4.14.13" />
+    <PackageReference Include="CS-Script" Version="4.14.14" />
     <PackageReference Include="Fiji.NET" Version="0.1.0" Aliases="FijiNet" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="NuGet.Build.Tasks.Pack" Version="6.14.0">
@@ -50,8 +52,8 @@
     </PackageReference>
     <PackageReference Include="OMERO.NET" Version="1.0.5" />
     <PackageReference Include="OpenSlideGTK" Version="2.8.1" />
-    <PackageReference Include="SkiaSharp" Version="4.153.1" />
-    <PackageReference Include="ZarrNET" Version="0.8.1" />
+    <PackageReference Include="SkiaSharp" Version="4.156.0" />
+    <PackageReference Include="ZarrNET" Version="0.8.2" />
   </ItemGroup>
   <ItemGroup>
     <None Update="banner.jpg">
