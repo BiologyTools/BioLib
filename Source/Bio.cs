@@ -2667,7 +2667,7 @@ namespace BioLib
             }
         }
 
-        static bool initialized = false;
+        static volatile bool initialized = false;
         OpenSlideBase openslideBase;
         public OpenSlideBase OpenSlideBase { get { return openslideBase; } }
         SlideBase slideBase;
@@ -4804,9 +4804,7 @@ namespace BioLib
         {
             //We initialize OME on a seperate thread so the user doesn't have to wait for initialization to
             //view images. 
-            InitFactory();
-            InitReader();
-            InitWriter();
+            EnsureBioFormatsInitialized();
             if (OperatingSystem.IsMacOS())
                 return;
             if (imageJPath.Contains("Fiji"))
@@ -4819,6 +4817,31 @@ namespace BioLib
         }
 
         static bool inf = false, inr = false, inw = false;
+        private static readonly object initializationLock = new object();
+
+        private static void EnsureBioFormatsInitialized()
+        {
+            if (initialized)
+                return;
+
+            lock (initializationLock)
+            {
+                if (initialized)
+                    return;
+
+                Console.WriteLine("Initializing Bio-Formats.");
+                if (!inf)
+                    InitFactory();
+                if (!inr)
+                    InitReader();
+                if (!inw)
+                    InitWriter();
+
+                if (!initialized)
+                    throw new InvalidOperationException("Bio-Formats initialization did not complete.");
+                Console.WriteLine("Bio-Formats initialized.");
+            }
+        }
         /// > Initialize the OME-XML library
         private static void InitFactory()
         {
@@ -7752,11 +7775,7 @@ namespace BioLib
         {
             if (file == null || file == "")
                 throw new InvalidDataException("File is empty or null");
-            //We wait incase OME has not initialized.
-            do
-            {
-                Thread.Sleep(10);
-            } while (!initialized);
+            EnsureBioFormatsInitialized();
             Console.WriteLine("OpenOME " + file);
             reader = new ImageReader();
             if (tileSizeX == 0)
@@ -9922,13 +9941,7 @@ namespace BioLib
         /// @return An array of BioImage objects.
         public static BioImage[] OpenOMESeries(string file, bool tab, bool addToImages)
         {
-            //We wait incase OME has not initialized yet.
-            if (!initialized)
-                do
-                {
-                    Thread.Sleep(100);
-                    //Application.DoEvents();
-                } while (!Initialized);
+            EnsureBioFormatsInitialized();
             var meta = (IMetadata)((OMEXMLService)new ServiceFactory().getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
             if (reader.getCurrentFile() != null)
                 reader.close();
