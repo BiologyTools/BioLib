@@ -19,9 +19,9 @@
     <PackageProjectUrl>https://biologytools.github.io/</PackageProjectUrl>
     <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; Napari; </PackageTags>
     <PackageReleaseNotes>BioLib 4.3.2 updates core imaging and scripting dependencies:
-- Updates BioFormats.NET6 to 9.0.0-rc4 and unifies Bio-Formats, Fiji, and OMERO on IKVM11 8.15.3 with the macOS native JVM image.
+- Updates BioFormats.NET6 to 9.0.0-rc2 and unifies Bio-Formats, Fiji, and OMERO on IKVM11 8.15.3 with the macOS native JVM image.
 - Updates ZarrNET to 0.8.2 for the latest OME-Zarr compatibility and fixes.
-- Updates SkiaSharp to 4.156.0 and CS-Script to 4.14.14.
+- Updates SkiaSharp to 4.156.1 and CS-Script to 4.14.14.
 </PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
@@ -40,7 +40,7 @@
   </ItemGroup>
 	<ItemGroup>
 	<PackageReference Include="AForgeBio" Version="2.5.1" />
-	<PackageReference Include="BioFormats.NET6" Version="9.0.0-rc4">
+	<PackageReference Include="BioFormats.NET6" Version="9.0.0-rc2">
 		<Aliases>BioFormats</Aliases>
 	</PackageReference>
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.660" />
@@ -51,9 +51,9 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="OMERO.NET" Version="1.0.7" />
+    <PackageReference Include="OMERO.NET" Version="1.0.6" />
     <PackageReference Include="OpenSlideGTK" Version="2.8.1" />
-    <PackageReference Include="SkiaSharp" Version="4.156.0" />
+    <PackageReference Include="SkiaSharp" Version="4.156.1" />
     <PackageReference Include="ZarrNET" Version="0.8.2" />
   </ItemGroup>
   <ItemGroup>

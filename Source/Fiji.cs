@@ -13,6 +13,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using ByteProcessor = FijiNet::ij.process.ByteProcessor;
 using ColorProcessor = FijiNet::ij.process.ColorProcessor;
@@ -482,60 +483,112 @@ namespace BioLib
         /// @return Nothing.
         public async static Task<BioImage> RunStringFiji(BioImage b,string con, string param, bool headless, string outputPath = null)
         {
+            if (b == null)
+                throw new ArgumentNullException(nameof(b));
+            if (string.IsNullOrWhiteSpace(ImageJPath) || !File.Exists(ImageJPath))
+                throw new FileNotFoundException("The Fiji/ImageJ executable is not configured or does not exist.", ImageJPath);
+
+            string runDirectory = Path.Combine(Path.GetTempPath(), "BioGTK-Fiji", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(runDirectory);
+            string macroPath = Path.Combine(runDirectory, "command.ijm");
+            string donePath = Path.Combine(runDirectory, "done.txt");
+            string escapedDonePath = donePath.Replace("\\", "/").Replace("\"", "\\\"");
+            File.WriteAllText(macroPath,
+                con + Environment.NewLine +
+                "File.saveString(\"done\", \"" + escapedDonePath + "\");");
+
             Process pr = new Process();
             pr.StartInfo.FileName = ImageJPath;
-            string te = rng.Next(0, 9999999).ToString();
-            string p = Path.GetDirectoryName(Environment.ProcessPath) + "/" + te;
-            if (OperatingSystem.IsMacOS())
-            {
-                Console.WriteLine(p);
-                pr.StartInfo.UseShellExecute = true;
-            }
-            File.WriteAllText(p, con);
+            pr.StartInfo.UseShellExecute = false;
+            pr.StartInfo.RedirectStandardOutput = true;
+            pr.StartInfo.RedirectStandardError = true;
+            string imageJDirectory = Path.GetDirectoryName(ImageJPath);
+            if (!string.IsNullOrWhiteSpace(imageJDirectory))
+                pr.StartInfo.WorkingDirectory = imageJDirectory;
             if (headless)
-                pr.StartInfo.Arguments = "--headless -macro " + p + " " + param;
-            else
-                pr.StartInfo.Arguments = "-macro " + p + " " + param;
-            pr.Start();
-            string donedir = Path.GetDirectoryName(Environment.ProcessPath);
-            donedir = donedir.Replace("\\", "/");
-            File.Delete(Path.GetDirectoryName(Environment.ProcessPath) + "/done.txt");
-            processes.Add(pr);
-            do
-            {
-                if (File.Exists(donedir + "/done.txt"))
-                {
-                    do
-                    {
-                        try
-                        {
-                            File.Delete(donedir + "/done.txt");
-                        }
-                        catch (Exception)
-                        {
+                pr.StartInfo.ArgumentList.Add("--headless");
+            pr.StartInfo.ArgumentList.Add("-macro");
+            pr.StartInfo.ArgumentList.Add(macroPath);
+            if (!string.IsNullOrWhiteSpace(param))
+                pr.StartInfo.ArgumentList.Add(param);
 
-                        }
-                    } while (File.Exists(donedir + "/done.txt"));
-                    pr.Kill();
-                    break;
-                }
-            } while (!pr.HasExited);
-            Console.WriteLine("Deleting temp file:" + p);
-            File.Delete(p);
-            string f = outputPath;
-            if (string.IsNullOrWhiteSpace(f))
+            Console.WriteLine($"[Fiji.RunStringFiji] Starting '{ImageJPath}' with macro '{macroPath}'.");
+            if (!pr.Start())
+                throw new InvalidOperationException("Fiji/ImageJ could not be started.");
+
+            processes.Add(pr);
+            Task<string> standardOutput = pr.StandardOutput.ReadToEndAsync();
+            Task<string> standardError = pr.StandardError.ReadToEndAsync();
+            try
             {
-                Console.WriteLine("Directory: " + Path.GetDirectoryName(b.file));
-                Console.WriteLine("FileName: " + Path.GetFileNameWithoutExtension(b.file));
-                f = Path.GetDirectoryName(b.file) + "/" + Path.GetFileNameWithoutExtension(b.file) + "-temp.ome.tif";
+                while (!File.Exists(donePath) && !pr.HasExited)
+                    await Task.Delay(100).ConfigureAwait(false);
+
+                // Some macOS launchers exit just before their child process flushes
+                // the marker/output. Give that handoff a short grace period.
+                if (!File.Exists(donePath) && pr.HasExited)
+                {
+                    for (int attempt = 0; attempt < 50 && !File.Exists(donePath); attempt++)
+                        await Task.Delay(100).ConfigureAwait(false);
+                }
+
+                if (File.Exists(donePath) && !pr.HasExited)
+                {
+                    pr.Kill(true);
+                    await pr.WaitForExitAsync().ConfigureAwait(false);
+                }
+
+                string f = outputPath;
+                if (string.IsNullOrWhiteSpace(f))
+                {
+                    f = Path.Combine(
+                        Path.GetDirectoryName(b.file) ?? string.Empty,
+                        Path.GetFileNameWithoutExtension(b.file) + "-temp.ome.tif");
+                }
+
+                for (int attempt = 0; attempt < 50 && !File.Exists(f); attempt++)
+                    await Task.Delay(100).ConfigureAwait(false);
+
+                if (!File.Exists(f))
+                {
+                    string error = (await standardError.ConfigureAwait(false)).Trim();
+                    string output = (await standardOutput.ConfigureAwait(false)).Trim();
+                    throw new InvalidOperationException(
+                        "Fiji/ImageJ did not create the expected result file '" + f + "'." +
+                        (string.IsNullOrWhiteSpace(error) ? string.Empty : Environment.NewLine + error) +
+                        (string.IsNullOrWhiteSpace(output) ? string.Empty : Environment.NewLine + output));
+                }
+
+                Console.WriteLine("[Fiji.RunStringFiji] Opening result: " + f);
+                BioImage bm = await BioImage.OpenFile(f, 0, false, true, false, 0, 0).ConfigureAwait(false);
+                if (bm == null)
+                    throw new InvalidDataException("The Fiji/ImageJ result could not be opened: " + f);
+
+                BioLib.Recorder.Record($"Fiji.RunStringFiji({b}, \"{con}\", \"{param}\", {headless.ToString().ToLower()});");
+                return bm;
             }
-            Console.WriteLine("Opening: " + f);
-            if (File.Exists(f))
-                await BioImage.OpenAsync(f, true, true, true, 0);
-            Console.WriteLine("GetImage: " + f);
-            BioImage bm = Images.GetImage(f);
-            BioLib.Recorder.Record($"Fiji.RunStringFiji({b}, \"{con}\", \"{param}\", {headless.ToString().ToLower()});");
-            return bm;
+            finally
+            {
+                processes.Remove(pr);
+                if (!pr.HasExited)
+                {
+                    try
+                    {
+                        pr.Kill(true);
+                    }
+                    catch
+                    {
+                    }
+                }
+                pr.Dispose();
+                try
+                {
+                    Directory.Delete(runDirectory, true);
+                }
+                catch
+                {
+                }
+            }
         }
         /// It runs a macro on the current image, saves the result as a new image, and then opens the
         /// new image in a new tab
@@ -561,14 +614,13 @@ namespace BioLib
                 }
                 else
                     filename = Path.GetFileNameWithoutExtension(b.ID);
+                string outputStem = GetSequentialOutputStem(dir, filename);
                 string file = dir + "/" + filename + ".ome.tif";
-                string filet = dir + "/" + filename + "-temp.ome.tif";
+                string filet = dir + "/" + outputStem + ".ome.tif";
                 if (!bioformats)
                     file = dir + "/" + filename + ".tif";
-                string outputFile = bioformats ? filet : filet + ".tif";
+                string outputFile = bioformats ? filet : dir + "/" + outputStem + ".tif";
                 string roiZip = ExportRoiZipForFiji(b, filename);
-                string donepath = Path.GetDirectoryName(Environment.ProcessPath);
-                donepath = donepath.Replace("\\", "/");
                 string op = b.ID.Replace("\\", "/");
                 string ex = Path.GetExtension(b.ID);
                 op = op.Replace(ex, ".ome.tif");
@@ -579,9 +631,7 @@ namespace BioLib
                 string st =
                 "run(\"Bio-Formats Importer\", \"open=" + file + " autoscale color_mode=Default open_all_series display_rois rois_import=[ROI manager] view=Hyperstack stack_order=XYCZT\"); " + con +
                 "roiManager(\"Show None\"); run(\"Select None\"); " +
-                "run(\"Bio-Formats Exporter\", \"save=" + filet + " export compression=Uncompressed\"); " +
-                "dir = \"" + donepath + "\"" +
-                "File.saveString(\"done\", dir + \"/done.txt\");";
+                "run(\"Bio-Formats Exporter\", \"save=" + filet + " export compression=Uncompressed\");";
                 if (!bioformats)
                     st =
                     "open(getArgument); " +
@@ -590,11 +640,9 @@ namespace BioLib
                         : string.Empty) +
                     con +
                     "roiManager(\"Show None\"); run(\"Select None\"); " +
-                    "saveAs(\"Tiff\",\"" + outputFile + "\"); " +
-                    "dir = \"" + donepath + "\"" +
-                    "File.saveString(\"done\", dir + \"/done.txt\");";
+                    "saveAs(\"Tiff\",\"" + outputFile + "\");";
 
-                BioImage bm = await Fiji.RunStringFiji(b, st, "", headless, outputFile);
+                BioImage bm = await Fiji.RunStringFiji(b, st, bioformats ? "" : file, headless, outputFile);
                 if (File.Exists(file) && bioformats)
                     File.Delete(file);
                 BioLib.Recorder.Record($"Fiji.RunOnImageFiji({b}, \"{con}\", {index}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
@@ -614,6 +662,52 @@ namespace BioLib
                 t.Wait();
                 BioLib.Recorder.Record($"Fiji.RunOnImageFiji({b}, \"{con}\", {index}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
                 return t.Result;
+            }
+        }
+
+        /// <summary>
+        /// Returns a stable, collision-free name for a processed Fiji result.
+        /// Reprocessing an earlier result advances the numeric suffix instead of
+        /// repeatedly appending "-temp" (for example: image-temp, image-temp-2).
+        /// </summary>
+        private static string GetSequentialOutputStem(string directory, string inputStem)
+        {
+            const string generatedSuffixPattern = @"^(?<root>.+?)(?:-temp)+(?:-\d+)?$";
+            Match generatedName = Regex.Match(
+                inputStem ?? string.Empty,
+                generatedSuffixPattern,
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+            string root = generatedName.Success
+                ? generatedName.Groups["root"].Value
+                : inputStem;
+            if (string.IsNullOrWhiteSpace(root))
+                root = "image";
+
+            int sequence = 1;
+            while (true)
+            {
+                string candidate = sequence == 1
+                    ? root + "-temp"
+                    : root + "-temp-" + sequence.ToString();
+
+                bool fileExists = File.Exists(Path.Combine(directory, candidate + ".tif")) ||
+                    File.Exists(Path.Combine(directory, candidate + ".ome.tif"));
+                bool imageExists = Images.images.Any(image =>
+                {
+                    string imageName = image?.Filename;
+                    if (string.IsNullOrWhiteSpace(imageName))
+                        imageName = image?.ID;
+                    return string.Equals(
+                        Images.RemoveExtensions(Path.GetFileName(imageName ?? string.Empty)),
+                        candidate,
+                        StringComparison.OrdinalIgnoreCase);
+                });
+
+                if (!fileExists && !imageExists)
+                    return candidate;
+
+                sequence++;
             }
         }
 
@@ -893,9 +987,19 @@ namespace BioLib
         /// @param path The path to the ImageJ executable.
         public static bool Initialize(string path)
         {
-            Macro.Initialize();
+            InitializeCommandMetadata();
             ImageJPath = path;
             return true;
+        }
+
+        /// <summary>
+        /// Loads the ImageJ macro function and command metadata without starting
+        /// ImageJ. On macOS the command table comes from the bundled CSV because
+        /// the in-process ImageJ UI is not initialized there.
+        /// </summary>
+        public static void InitializeCommandMetadata()
+        {
+            Macro.Initialize();
         }
         private static void EnsureCommandTableLoaded()
         {
@@ -925,11 +1029,13 @@ namespace BioLib
                 if (string.IsNullOrWhiteSpace(s))
                     continue;
 
-                string[] v = s.Split(',');
-                if (v.Length < 2)
+                int separator = s.IndexOf(',');
+                if (separator <= 0 || separator == s.Length - 1)
                     continue;
 
-                Macro.Commands[v[0]] = new Macro.Command(v[0], v[1], "");
+                string name = s.Substring(0, separator).Trim();
+                string command = s.Substring(separator + 1).Trim();
+                Macro.Commands[name] = new Macro.Command(name, command, "");
             }
         }
         static class IJCommandDump
