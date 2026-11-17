@@ -19,10 +19,20 @@ namespace BioLib
             Source = source.file;
             SlideImage = im;
             Image = im;
-            double baseUnitsPerPixel = source.PhysicalSizeX > 0
-                ? source.PhysicalSizeX
-                : source.PhysicalSizeY > 0
-                    ? source.PhysicalSizeY
+            // Schema coordinates always describe the full-resolution image.
+            // PhysicalSizeX/Y properties follow the currently selected display
+            // level, which can already be a synthetic overview when this slide
+            // source is constructed.
+            double basePhysicalSizeX = source.Resolutions != null && source.Resolutions.Count > 0
+                ? source.Resolutions[0].PhysicalSizeX
+                : source.PhysicalSizeX;
+            double basePhysicalSizeY = source.Resolutions != null && source.Resolutions.Count > 0
+                ? source.Resolutions[0].PhysicalSizeY
+                : source.PhysicalSizeY;
+            double baseUnitsPerPixel = basePhysicalSizeX > 0
+                ? basePhysicalSizeX
+                : basePhysicalSizeY > 0
+                    ? basePhysicalSizeY
                     : 1;
             MinUnitsPerPixel = UseRealResolution ? baseUnitsPerPixel : 1;
             if (MinUnitsPerPixel <= 0) MinUnitsPerPixel = 1;

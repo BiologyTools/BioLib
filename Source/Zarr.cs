@@ -7,6 +7,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using ZarrNET;
 using ZarrNET.Core;
@@ -216,6 +217,8 @@ namespace BioLib
 
             try
             {
+                await CorrectPyramidLevelScalesAsync(outputDir, baseDescriptor, levelDescriptors);
+
                 // ------------------------------------------------------------------
                 // 5. Stream tiles into each resolution level
                 // ------------------------------------------------------------------
@@ -300,15 +303,25 @@ namespace BioLib
             if (root == null)
                 throw new ArgumentNullException(nameof(levels));
 
-            if (root.SizeX <= 0 || root.SizeY <= 0 || root.SizeZ <= 0 || root.SizeC <= 0 || root.SizeT <= 0)
+            int rootWidth = root.Resolutions.Count > 0 && root.Resolutions[0].SizeX > 0
+                ? root.Resolutions[0].SizeX
+                : root.SizeX;
+            int rootHeight = root.Resolutions.Count > 0 && root.Resolutions[0].SizeY > 0
+                ? root.Resolutions[0].SizeY
+                : root.SizeY;
+
+            if (rootWidth <= 0 || rootHeight <= 0 || root.SizeZ <= 0 || root.SizeC <= 0 || root.SizeT <= 0)
                 throw new InvalidOperationException(
-                    $"Invalid pyramid root dimensions: X={root.SizeX} Y={root.SizeY} Z={root.SizeZ} C={root.SizeC} T={root.SizeT}.");
+                    $"Invalid pyramid root dimensions: X={rootWidth} Y={rootHeight} Z={root.SizeZ} C={root.SizeC} T={root.SizeT}.");
 
             int bitsPerSample = DetermineSourceBitsPerSample(root);
             var sourcePixelFormat = DetermineSourcePixelFormat(root);
             bool sourceIsInterleavedRgb = IsInterleavedRgbFormat(sourcePixelFormat);
             int sourceChannelCount = sourceIsInterleavedRgb ? BioImage.GetBands(sourcePixelFormat) : 1;
             bool sourceIsBGRA = IsBGRAFormat(sourcePixelFormat);
+            int exportChannelCount = sourceIsInterleavedRgb
+                ? Math.Max(1, root.SizeC) * Math.Min(3, sourceChannelCount)
+                : Math.Max(1, root.SizeC);
             int bytesPerSample = bitsPerSample / 8;
             int tileW = 512;
             int tileH = 512;
@@ -349,7 +362,7 @@ namespace BioLib
                 if (haveLast && levelWidth == lastSizeX && levelHeight == lastSizeY)
                     continue;
 
-                double dsample = root.SizeX > 0 ? (double)root.SizeX / levelWidth : 1.0;
+                double dsample = rootWidth > 0 ? (double)rootWidth / levelWidth : 1.0;
                 if (!double.IsFinite(dsample) || dsample <= 0)
                     dsample = 1.0;
 
@@ -361,17 +374,22 @@ namespace BioLib
             }
 
             if (levelDescriptors.Count == 0)
-                levelDescriptors.Add(new ResolutionLevelDescriptor(root.SizeX, root.SizeY, 1.0));
+                levelDescriptors.Add(new ResolutionLevelDescriptor(rootWidth, rootHeight, 1.0));
 
             // Fallback: if there is somehow no Resolutions list, use the image dims.
-            var coord = new ZarrNET.Core.ZCT(root.SizeZ, root.SizeC, root.SizeT);
-            var baseDescriptor = new BioImageDescriptor(root.SizeX, root.SizeY, coord)
+            // OME-Zarr stores packed RGB as three scalar channel planes. Keep the
+            // BioImage logical channel count separate from the exported array's C
+            // dimension or the reopened pyramid becomes an 8-bit indexed image.
+            var coord = new ZarrNET.Core.ZCT(root.SizeZ, exportChannelCount, root.SizeT);
+            var baseDescriptor = new BioImageDescriptor(rootWidth, rootHeight, coord)
             {
                 Name = Path.GetFileNameWithoutExtension(root.Filename),
                 DataType = MapDataType(bitsPerSample),
-                PhysicalSizeX = root.PhysicalSizeX,
-                PhysicalSizeY = root.PhysicalSizeY,
-                PhysicalSizeZ = root.PhysicalSizeZ,
+                // A viewer may currently be displaying any pyramid level. The
+                // multiscale base transform must always describe level 0.
+                PhysicalSizeX = root.Resolutions.Count > 0 ? root.Resolutions[0].PhysicalSizeX : root.PhysicalSizeX,
+                PhysicalSizeY = root.Resolutions.Count > 0 ? root.Resolutions[0].PhysicalSizeY : root.PhysicalSizeY,
+                PhysicalSizeZ = root.Resolutions.Count > 0 ? root.Resolutions[0].PhysicalSizeZ : root.PhysicalSizeZ,
                 ChunkY = tileH,
                 ChunkX = tileW,
             };
@@ -379,7 +397,9 @@ namespace BioLib
             var writer = await OmeZarrWriter.CreateAsync(outputDir, baseDescriptor, levelDescriptors).ConfigureAwait(false);
             try
             {
-                long totalPlanes = Math.Max(1L, (long)levelDescriptors.Count * root.SizeT * root.SizeZ * root.SizeC);
+                await CorrectPyramidLevelScalesAsync(outputDir, baseDescriptor, levelDescriptors).ConfigureAwait(false);
+
+                long totalPlanes = Math.Max(1L, (long)levelDescriptors.Count * root.SizeT * root.SizeZ * exportChannelCount);
                 long writtenPlanes = 0;
 
                 for (int levelIndex = 0; levelIndex < levels.Length; levelIndex++)
@@ -402,19 +422,43 @@ namespace BioLib
                     {
                         for (int z = 0; z < levelImage.SizeZ; z++)
                         {
-                            for (int c = 0; c < levelImage.SizeC; c++)
+                            for (int logicalC = 0; logicalC < levelImage.SizeC; logicalC++)
                             {
                                 if (levelIsInterleavedRgb)
                                 {
-                                    await WritePlaneInTiles(
-                                        writer, levelImage, lvlDesc,
-                                        t, c, z,
-                                        levelBytesPerSample, tileW, tileH,
-                                        levelIndex: levelIndex,
-                                        rgbChannelIndex: c,
-                                        srcChannelCount: levelChannelCount,
-                                        isBGRA: levelIsBGRA,
-                                        logicalC: 0).ConfigureAwait(false);
+                                    int packedChannels = Math.Min(3, levelChannelCount);
+                                    for (int packedChannel = 0; packedChannel < packedChannels; packedChannel++)
+                                    {
+                                        int outputC = (logicalC * packedChannels) + packedChannel;
+                                        if (levelImage.IsZarrSource)
+                                        {
+                                            // RGB OME-Zarr data is already planar. Read the
+                                            // matching scalar C plane directly instead of
+                                            // attempting to deinterleave the red plane three
+                                            // times, which produced a red-only level 0.
+                                            await WritePlaneInTiles(
+                                                writer, levelImage, lvlDesc,
+                                                t, outputC, z,
+                                                levelBytesPerSample, tileW, tileH,
+                                                levelIndex: levelIndex,
+                                                sourceLevelIndex: 0).ConfigureAwait(false);
+                                        }
+                                        else
+                                        {
+                                            await WritePlaneInTiles(
+                                                writer, levelImage, lvlDesc,
+                                                t, outputC, z,
+                                                levelBytesPerSample, tileW, tileH,
+                                                levelIndex: levelIndex,
+                                                rgbChannelIndex: packedChannel,
+                                                srcChannelCount: levelChannelCount,
+                                                isBGRA: levelIsBGRA,
+                                                logicalC: logicalC).ConfigureAwait(false);
+                                        }
+
+                                        writtenPlanes++;
+                                        BioImage.Progress = (float)(writtenPlanes * 100.0 / totalPlanes);
+                                    }
                                 }
                                 else
                                 {
@@ -426,16 +470,15 @@ namespace BioLib
 
                                     await WritePlaneFromBuffer(
                                         writer, levelImage, lvlDesc,
-                                        t, c, z,
+                                        t, logicalC, z,
                                         levelBytesPerSample, tileW, tileH,
                                         levelIndex: levelIndex,
                                         originX: originX,
                                         originY: originY,
                                         sourceLevelIndex: 0).ConfigureAwait(false);
+                                    writtenPlanes++;
+                                    BioImage.Progress = (float)(writtenPlanes * 100.0 / totalPlanes);
                                 }
-
-                                writtenPlanes++;
-                                BioImage.Progress = (float)(writtenPlanes * 100.0 / totalPlanes);
                             }
                         }
                     }
@@ -454,6 +497,55 @@ namespace BioLib
 
             Recorder.Record($"Zarr.SavePyramidalZarr(new BioImage[] {{ {string.Join(", ", levels.Select(level => level.ToString()))} }}, \"{outputDir}\");");
             BioImage.Progress = 100;
+        }
+
+        /// <summary>
+        /// Corrects the OME-NGFF coordinate transform emitted by ZarrNET versions
+        /// that expose only one downsample value per level. Whole-slide pyramids
+        /// are not required to use identical X/Y downsampling, so applying the X
+        /// ratio to both axes changes the physical aspect ratio on reopen.
+        /// </summary>
+        private static async Task CorrectPyramidLevelScalesAsync(
+            string outputDir,
+            BioImageDescriptor descriptor,
+            IReadOnlyList<ResolutionLevelDescriptor> levels)
+        {
+            if (levels == null || levels.Count == 0)
+                return;
+
+            string metadataPath = Path.Combine(outputDir, "zarr.json");
+            if (!File.Exists(metadataPath))
+                return;
+
+            JsonNode metadata = JsonNode.Parse(await File.ReadAllTextAsync(metadataPath).ConfigureAwait(false));
+            JsonArray multiscales = metadata?["attributes"]?["ome"]?["multiscales"] as JsonArray;
+            JsonArray datasets = multiscales?[0]?["datasets"] as JsonArray;
+            if (datasets == null)
+                throw new InvalidDataException("OME-Zarr metadata does not contain a multiscale datasets array.");
+
+            int baseWidth = levels[0].SizeX;
+            int baseHeight = levels[0].SizeY;
+            int count = Math.Min(levels.Count, datasets.Count);
+
+            for (int levelIndex = 0; levelIndex < count; levelIndex++)
+            {
+                ResolutionLevelDescriptor level = levels[levelIndex];
+                if (level.SizeX <= 0 || level.SizeY <= 0)
+                    continue;
+
+                JsonArray transforms = datasets[levelIndex]?["coordinateTransformations"] as JsonArray;
+                JsonArray scale = transforms?[0]?["scale"] as JsonArray;
+                if (scale == null || scale.Count < 5)
+                    throw new InvalidDataException($"OME-Zarr level {levelIndex} is missing its 5D scale transform.");
+
+                double downsampleX = (double)baseWidth / level.SizeX;
+                double downsampleY = (double)baseHeight / level.SizeY;
+                scale[3] = descriptor.PhysicalSizeY * downsampleY;
+                scale[4] = descriptor.PhysicalSizeX * downsampleX;
+            }
+
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            await File.WriteAllTextAsync(metadataPath, metadata.ToJsonString(options)).ConfigureAwait(false);
         }
 
         private static bool IsAssociatedResolution(BioImage image, int sourceIndex)
@@ -545,9 +637,8 @@ namespace BioLib
                             pixelBytes = trimmed;
                         }
 
-                        // For BGRA buffers the byte order is [B, G, R, A].
-                        // OpenSlide SVS tiles commonly arrive as BGRA even when the
-                        // nominal source pixel format is reported as 24bpp RGB.
+                        // AForge's packed RGB buffers use BGR(A) byte order. Map
+                        // packed byte positions back to OME-Zarr's R, G, B planes.
                         bool actualIsBGRA = isBGRA || inferredChannelCount == 4;
                         int srcByteIndex = actualIsBGRA ? (2 - rgbChannelIndex) : rgbChannelIndex;
 
@@ -710,7 +801,8 @@ namespace BioLib
                 if (pixelCount <= 0)
                     return;
 
-                int srcByteIndex = isBGRA ? (2 - rgbChannelIndex) : rgbChannelIndex;
+                bool actualIsBgr = isBGRA || IsBGRAFormat(buffer.PixelFormat);
+                int srcByteIndex = actualIsBgr ? (2 - rgbChannelIndex) : rgbChannelIndex;
                 pixelBytes = DeinterleaveChannel(
                     pixelBytes, srcByteIndex, srcChannelCount,
                     bytesPerSample, pixelCount);
@@ -856,9 +948,13 @@ namespace BioLib
 
         private static bool IsBGRAFormat(AForge.PixelFormat format)
         {
-            return format == AForge.PixelFormat.Format32bppArgb ||
+            // Despite the enum names, these packed AForge formats follow the
+            // native BGR(A) memory layout used by System.Drawing/OpenSlide.
+            return format == AForge.PixelFormat.Format24bppRgb ||
+                   format == AForge.PixelFormat.Format32bppArgb ||
                    format == AForge.PixelFormat.Format32bppPArgb ||
                    format == AForge.PixelFormat.Format32bppRgb ||
+                   format == AForge.PixelFormat.Format48bppRgb ||
                    format == AForge.PixelFormat.Format64bppArgb ||
                    format == AForge.PixelFormat.Format64bppPArgb;
         }

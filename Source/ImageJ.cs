@@ -596,7 +596,182 @@ namespace BioLib
             if (!string.IsNullOrWhiteSpace(status))
                 BioImage.Status = status;
         }
-        private static BioImage ApplyProcessedResultName(BioImage source, BioImage result)
+
+        private static BioImage RestoreProcessedPixelFormat(BioImage image, PixelFormat targetFormat)
+        {
+            if (image == null)
+                return null;
+
+            for (int i = 0; i < image.Buffers.Count; i++)
+            {
+                Bitmap buffer = image.Buffers[i];
+                if (buffer == null || buffer.PixelFormat == targetFormat)
+                    continue;
+
+                Bitmap converted = ConvertProcessedBuffer(buffer, targetFormat);
+                image.Buffers[i] = converted;
+                buffer.Dispose();
+            }
+
+            for (int i = 0; i < image.Resolutions.Count; i++)
+            {
+                Resolution resolution = image.Resolutions[i];
+                resolution.PixelFormat = targetFormat;
+                image.Resolutions[i] = resolution;
+            }
+
+            int bitsPerSample = targetFormat == PixelFormat.Format16bppGrayScale ||
+                targetFormat == PixelFormat.Format48bppRgb ? 16 : 8;
+            int samplesPerPixel = targetFormat == PixelFormat.Format24bppRgb ||
+                targetFormat == PixelFormat.Format48bppRgb ? 3 :
+                targetFormat == PixelFormat.Format32bppArgb ||
+                targetFormat == PixelFormat.Format32bppPArgb ||
+                targetFormat == PixelFormat.Format32bppRgb ? 4 : 1;
+
+            image.Channels.Clear();
+            for (int c = 0; c < Math.Max(1, image.SizeC); c++)
+                image.Channels.Add(new Channel(c, bitsPerSample, samplesPerPixel));
+
+            return image;
+        }
+
+        private static Bitmap ConvertProcessedBuffer(Bitmap source, PixelFormat targetFormat)
+        {
+            int width = source.SizeX;
+            int height = source.SizeY;
+            int targetBytesPerPixel = targetFormat switch
+            {
+                PixelFormat.Format8bppIndexed => 1,
+                PixelFormat.Format16bppGrayScale => 2,
+                PixelFormat.Format24bppRgb => 3,
+                PixelFormat.Format32bppArgb => 4,
+                PixelFormat.Format32bppPArgb => 4,
+                PixelFormat.Format32bppRgb => 4,
+                PixelFormat.Format48bppRgb => 6,
+                _ => throw new NotSupportedException($"Restoring ImageJ output to {targetFormat} is not supported.")
+            };
+
+            byte[] output = new byte[checked(width * height * targetBytesPerPixel)];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    ReadProcessedPixel(source, x, y,
+                        out ushort blue, out ushort green, out ushort red, out ushort alpha);
+                    int destination = ((y * width) + x) * targetBytesPerPixel;
+
+                    switch (targetFormat)
+                    {
+                        case PixelFormat.Format8bppIndexed:
+                            output[destination] = ToByte(Luminance(blue, green, red));
+                            break;
+                        case PixelFormat.Format16bppGrayScale:
+                            WriteUInt16(output, destination, Luminance(blue, green, red));
+                            break;
+                        case PixelFormat.Format24bppRgb:
+                            output[destination] = ToByte(blue);
+                            output[destination + 1] = ToByte(green);
+                            output[destination + 2] = ToByte(red);
+                            break;
+                        case PixelFormat.Format32bppArgb:
+                        case PixelFormat.Format32bppPArgb:
+                        case PixelFormat.Format32bppRgb:
+                            output[destination] = ToByte(blue);
+                            output[destination + 1] = ToByte(green);
+                            output[destination + 2] = ToByte(red);
+                            output[destination + 3] = ToByte(alpha);
+                            break;
+                        case PixelFormat.Format48bppRgb:
+                            WriteUInt16(output, destination, blue);
+                            WriteUInt16(output, destination + 2, green);
+                            WriteUInt16(output, destination + 4, red);
+                            break;
+                    }
+                }
+            }
+
+            return new Bitmap(
+                source.ID,
+                width,
+                height,
+                targetFormat,
+                output,
+                source.Coordinate,
+                0,
+                source.Plane,
+                BitConverter.IsLittleEndian,
+                true);
+        }
+
+        private static void ReadProcessedPixel(
+            Bitmap source, int x, int y,
+            out ushort blue, out ushort green, out ushort red, out ushort alpha)
+        {
+            int row = y * source.Stride;
+            alpha = ushort.MaxValue;
+            switch (source.PixelFormat)
+            {
+                case PixelFormat.Format8bppIndexed:
+                {
+                    ushort value = ExpandByte(source.Bytes[row + x]);
+                    blue = green = red = value;
+                    return;
+                }
+                case PixelFormat.Format16bppGrayScale:
+                {
+                    ushort value = ReadUInt16(source.Bytes, row + (x * 2), source.LittleEndian);
+                    blue = green = red = value;
+                    return;
+                }
+                case PixelFormat.Format24bppRgb:
+                {
+                    int offset = row + (x * 3);
+                    blue = ExpandByte(source.Bytes[offset]);
+                    green = ExpandByte(source.Bytes[offset + 1]);
+                    red = ExpandByte(source.Bytes[offset + 2]);
+                    return;
+                }
+                case PixelFormat.Format32bppArgb:
+                case PixelFormat.Format32bppPArgb:
+                case PixelFormat.Format32bppRgb:
+                {
+                    int offset = row + (x * 4);
+                    blue = ExpandByte(source.Bytes[offset]);
+                    green = ExpandByte(source.Bytes[offset + 1]);
+                    red = ExpandByte(source.Bytes[offset + 2]);
+                    alpha = ExpandByte(source.Bytes[offset + 3]);
+                    return;
+                }
+                case PixelFormat.Format48bppRgb:
+                {
+                    int offset = row + (x * 6);
+                    blue = ReadUInt16(source.Bytes, offset, source.LittleEndian);
+                    green = ReadUInt16(source.Bytes, offset + 2, source.LittleEndian);
+                    red = ReadUInt16(source.Bytes, offset + 4, source.LittleEndian);
+                    return;
+                }
+                default:
+                    throw new NotSupportedException($"Converting ImageJ output from {source.PixelFormat} is not supported.");
+            }
+        }
+
+        private static ushort ExpandByte(byte value) => (ushort)(value * 257);
+        private static byte ToByte(ushort value) => (byte)(value >> 8);
+        private static ushort Luminance(ushort blue, ushort green, ushort red) =>
+            (ushort)(((29u * blue) + (150u * green) + (77u * red)) >> 8);
+
+        private static ushort ReadUInt16(byte[] bytes, int offset, bool littleEndian) =>
+            littleEndian
+                ? (ushort)(bytes[offset] | (bytes[offset + 1] << 8))
+                : (ushort)((bytes[offset] << 8) | bytes[offset + 1]);
+
+        private static void WriteUInt16(byte[] bytes, int offset, ushort value)
+        {
+            bytes[offset] = (byte)value;
+            bytes[offset + 1] = (byte)(value >> 8);
+        }
+
+        private static BioImage ApplyProcessedResultName(BioImage source, BioImage result, bool detachBackingSource = false)
         {
             if (source == null || result == null)
                 return result;
@@ -608,6 +783,15 @@ namespace BioLib
             string friendlyName = Images.GetImageName(Path.GetFileName(sourceName));
             result.Filename = friendlyName;
             result.ID = friendlyName;
+            // ImageJ-created results are backed by their in-memory buffers, not by
+            // the source image path copied into the ImagePlus title.  Leaving that
+            // path in BioImage.file makes a subsequent command treat the result as
+            // a Zarr reader and silently ignore its newly processed pixels.
+            //
+            // Do not detach assembled pyramid results: those intentionally retain
+            // their owned temporary Zarr store and have no populated Buffers list.
+            if (detachBackingSource)
+                result.UseInMemoryBuffersAsSource();
             return result;
         }
 
@@ -633,9 +817,19 @@ namespace BioLib
             if (previewImage == null)
                 return con;
 
-            if (Fiji.TryParameterizeInteractiveRunCommand(previewImage, con, headless, resultInNewTab, out string parameterizedCommand))
-                return parameterizedCommand;
-            return con;
+            try
+            {
+                if (Fiji.TryParameterizeInteractiveRunCommand(previewImage, con, headless, resultInNewTab, out string parameterizedCommand))
+                    return parameterizedCommand;
+                return con;
+            }
+            finally
+            {
+                // Remote extractions are deliberately cached. Local slide levels are
+                // one-shot command inputs and must release their large tile buffers.
+                if (!IsRemotePyramidalSource(b))
+                    DisposePixelBuffers(previewImage);
+            }
         }
 
         /// <summary>
@@ -654,8 +848,28 @@ namespace BioLib
                 return b;
             }
 
+            if (b.Resolutions == null || b.Resolutions.Count == 0)
+                throw new InvalidOperationException("The pyramidal image does not contain any resolution levels.");
+            if (level < 0 || level >= b.Resolutions.Count)
+                throw new ArgumentOutOfRangeException(nameof(level), level,
+                    $"Pyramid level must be between 0 and {b.Resolutions.Count - 1}.");
+
             Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] start id={b.ID} level={level} bioformats={bioformats}");
             ReportProgress(0, $"Preparing pyramid level {level + 1}/{b.Resolutions.Count}");
+
+            // Decide from pyramid metadata before extracting the level. Full-resolution
+            // RGB slides can exceed the maximum managed array size, so materializing the
+            // level first defeats the purpose of the tiled fallback.
+            if (ShouldUseTiledFallback(b, level, currentViewOnly))
+            {
+                Console.WriteLine("[ImageJ.RunOnPyramidalImageInternal] using tiled fallback before level extraction");
+                BioImage tiled = await RunOnPyramidalLevelTiled(
+                    b, con, level, headless, resultInNewTab, currentViewOnly).ConfigureAwait(false);
+                if (record)
+                    Recorder.Record($"ImageJ.RunOnPyramidalImage({b}, \"{con}\", {level}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()}, {currentViewOnly.ToString().ToLower()});");
+                return tiled;
+            }
+
             BioImage levelImage = await PreparePyramidalLevelImage(b, level, currentViewOnly).ConfigureAwait(false);
             if (levelImage == null)
             {
@@ -663,44 +877,21 @@ namespace BioLib
                 return null;
             }
 
-            bool useTiledFallback = ShouldUseTiledFallback(levelImage);
-            if (useTiledFallback)
-            {
-                Console.WriteLine("[ImageJ.RunOnPyramidalImageInternal] using tiled fallback for large pyramid level");
-                try
-                {
-                    BioImage tiled = await RunOnPyramidalLevelTiled(levelImage, b, con, level, headless, resultInNewTab).ConfigureAwait(false);
-                    if (record)
-                        Recorder.Record($"ImageJ.RunOnPyramidalImage({b}, \"{con}\", {level}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()}, {currentViewOnly.ToString().ToLower()});");
-                    return tiled;
-                }
-                finally
-                {
-                }
-            }
-
             try
             {
                 ReportProgress(0, $"Running Fiji on pyramid level {level + 1}/{b.Resolutions.Count}");
-                Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] dispatching level image through IKVM/ImagePlus runner");
+                Console.WriteLine("[ImageJ.RunOnPyramidalImageInternal] dispatching level image through IKVM/ImagePlus runner");
                 BioImage bm = Fiji.RunOnImageInProcess(levelImage, con, headless, true, resultInNewTab, false);
+                bm = RestoreProcessedPixelFormat(bm, levelImage.Resolutions[0].PixelFormat);
                 if (bm != null && bm.Resolutions.Count > 0 && levelImage.Resolutions.Count > 0)
                 {
                     Resolution srcRes = levelImage.Resolutions[0];
-                    if (bm.Buffers.Count > 0 && bm.Buffers[0].PixelFormat != srcRes.PixelFormat)
-                    {
-                        Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] normalizing {bm.Buffers[0].PixelFormat} -> {srcRes.PixelFormat}");
-                        if (srcRes.PixelFormat == AForge.PixelFormat.Format8bppIndexed)
-                            bm.To8Bit();
-                        else if (srcRes.PixelFormat == AForge.PixelFormat.Format16bppGrayScale)
-                            bm.To16Bit();
-                        else if (srcRes.PixelFormat == AForge.PixelFormat.Format24bppRgb)
-                            bm.To24Bit();
-                        else if (srcRes.PixelFormat == AForge.PixelFormat.Format48bppRgb)
-                            bm.To48Bit();
-                    }
                     Resolution outRes = bm.Resolutions[0];
-                    outRes.PixelFormat = srcRes.PixelFormat;
+                    // Pyramid command results retain the selected source level's
+                    // pixel format so every generated level can be assembled into
+                    // one consistent RGB or grayscale pyramid.
+                    if (bm.Buffers.Count > 0)
+                        outRes.PixelFormat = bm.Buffers[0].PixelFormat;
                     outRes.PhysicalSizeX = srcRes.PhysicalSizeX;
                     outRes.PhysicalSizeY = srcRes.PhysicalSizeY;
                     outRes.PhysicalSizeZ = srcRes.PhysicalSizeZ;
@@ -711,7 +902,7 @@ namespace BioLib
                     bm.Volume = levelImage.Volume;
                 }
                 ReportProgress(100, $"Completed pyramid level {level + 1}/{b.Resolutions.Count}");
-                bm = ApplyProcessedResultName(b, bm);
+                bm = ApplyProcessedResultName(b, bm, detachBackingSource: true);
                 Console.WriteLine($"[ImageJ.RunOnPyramidalImageInternal] result={(bm == null ? "null" : bm.ID)}");
                 if (record)
                     Recorder.Record($"ImageJ.RunOnPyramidalImage({b}, \"{con}\", {level}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()}, {currentViewOnly.ToString().ToLower()});");
@@ -719,33 +910,52 @@ namespace BioLib
             }
             finally
             {
+                // A local extracted level is only an ImageJ command input. Keeping its
+                // buffers alive doubles the memory held by the resulting image until a
+                // later full collection. Remote extractions remain in the bounded cache.
+                if (!IsRemotePyramidalSource(b))
+                    DisposePixelBuffers(levelImage);
             }
         }
 
-        private static bool ShouldUseTiledFallback(BioImage levelImage)
+        private static bool ShouldUseTiledFallback(BioImage source, int level, bool currentViewOnly)
         {
-            if (levelImage == null || levelImage.Buffers == null || levelImage.Buffers.Count == 0)
+            if (source == null || source.Resolutions == null || source.Resolutions.Count == 0)
                 return false;
 
-            var fmt = levelImage.Buffers[0].PixelFormat;
-            if (fmt != PixelFormat.Format8bppIndexed && fmt != PixelFormat.Format16bppGrayScale)
+            PyramidExtractionRequest request = BuildExtractionRequest(source, level, currentViewOnly);
+            if (request == null)
                 return false;
 
-            long estimatedBytes = (long)Math.Max(1, levelImage.SizeX) * Math.Max(1, levelImage.SizeY)
-                * Math.Max(1, levelImage.SizeZ) * Math.Max(1, levelImage.SizeC) * Math.Max(1, levelImage.SizeT)
-                * (fmt == PixelFormat.Format16bppGrayScale ? 2L : 1L);
+            PixelFormat format = source.Resolutions[Math.Clamp(level, 0, source.Resolutions.Count - 1)].PixelFormat;
+            int bytesPerPixel = Math.Max(1, Bitmap.GetPixelFormatSize(format) / 8);
+            long estimatedBytes = (long)Math.Max(1, request.Width) * Math.Max(1, request.Height)
+                * Math.Max(1, source.SizeZ) * Math.Max(1, source.SizeC) * Math.Max(1, source.SizeT)
+                * bytesPerPixel;
             return estimatedBytes > 256L * 1024L * 1024L;
         }
 
-        private static async Task<BioImage> RunOnPyramidalLevelTiled(BioImage levelImage, BioImage source, string con, int level, bool headless, bool resultInNewTab)
+        private static async Task<BioImage> RunOnPyramidalLevelTiled(BioImage source, string con, int level, bool headless, bool resultInNewTab, bool currentViewOnly)
         {
-            if (levelImage == null || levelImage.Buffers.Count == 0)
+            if (source == null || source.Resolutions == null || source.Resolutions.Count == 0)
                 return null;
 
-            int width = levelImage.SizeX;
-            int height = levelImage.SizeY;
+            PyramidExtractionRequest request = BuildExtractionRequest(source, level, currentViewOnly);
+            if (request == null)
+                return null;
+
+            int width = request.Width;
+            int height = request.Height;
             if (width <= 0 || height <= 0)
                 return null;
+
+            Resolution sourceResolution = source.Resolutions[Math.Clamp(level, 0, source.Resolutions.Count - 1)];
+            PixelFormat sourceFormat = sourceResolution.PixelFormat;
+            int sourceBitsPerPixel = Math.Max(8, Bitmap.GetPixelFormatSize(sourceFormat));
+            int sourceBytesPerSample = sourceFormat == PixelFormat.Format16bppGrayScale ||
+                sourceFormat == PixelFormat.Format48bppRgb ? 2 : 1;
+            int sourcePackedChannels = Math.Max(1, sourceBitsPerPixel / (sourceBytesPerSample * 8));
+            int outputChannelCount = Math.Max(1, source.SizeC * sourcePackedChannels);
 
             string tempLevelZarr = BioImage.CreateTemporaryZarrPath("-level.zarr");
             if (Directory.Exists(tempLevelZarr))
@@ -756,17 +966,16 @@ namespace BioLib
             bool temporaryZarrOwnedByResult = false;
             try
             {
-            int bytesPerSample = levelImage.Buffers[0].PixelFormat == PixelFormat.Format16bppGrayScale ? 2 : 1;
-            int planeCount = Math.Max(1, levelImage.SizeZ * levelImage.SizeC * levelImage.SizeT);
-            (int tileW, int tileH) = GetLargestSafeTileSize(width, height, bytesPerSample, planeCount);
-            var coord = new ZarrNET.Core.ZCT(levelImage.SizeZ, levelImage.SizeC, levelImage.SizeT);
+            int planeCount = Math.Max(1, source.SizeZ * outputChannelCount * source.SizeT);
+            (int tileW, int tileH) = GetLargestSafeTileSize(width, height, sourceBytesPerSample, planeCount);
+            var coord = new ZarrNET.Core.ZCT(source.SizeZ, outputChannelCount, source.SizeT);
             var baseDescriptor = new BioImageDescriptor(width, height, coord)
             {
-                Name = Path.GetFileNameWithoutExtension(levelImage.Filename),
-                DataType = bytesPerSample == 2 ? "uint16" : "uint8",
-                PhysicalSizeX = levelImage.PhysicalSizeX,
-                PhysicalSizeY = levelImage.PhysicalSizeY,
-                PhysicalSizeZ = levelImage.PhysicalSizeZ,
+                Name = Path.GetFileNameWithoutExtension(source.Filename),
+                DataType = sourceBytesPerSample == 2 ? "uint16" : "uint8",
+                PhysicalSizeX = sourceResolution.PhysicalSizeX,
+                PhysicalSizeY = sourceResolution.PhysicalSizeY,
+                PhysicalSizeZ = sourceResolution.PhysicalSizeZ,
                 ChunkX = Math.Max(1, tileW),
                 ChunkY = Math.Max(1, tileH),
             };
@@ -774,7 +983,7 @@ namespace BioLib
             var writer = await OmeZarrWriter.CreateAsync(tempLevelZarr, baseDescriptor, levelDescriptors).ConfigureAwait(false);
             try
             {
-                long totalTiles = Math.Max(1L, ((width + tileW - 1) / tileW) * ((height + tileH - 1) / tileH) * Math.Max(1, levelImage.SizeZ) * Math.Max(1, levelImage.SizeC) * Math.Max(1, levelImage.SizeT));
+                long totalTiles = Math.Max(1L, ((width + tileW - 1) / tileW) * ((height + tileH - 1) / tileH) * Math.Max(1, source.SizeZ) * outputChannelCount * Math.Max(1, source.SizeT));
                 long writtenTiles = 0;
 
                 for (int tileY = 0; tileY < height; tileY += tileH)
@@ -785,62 +994,109 @@ namespace BioLib
                         int actualH = Math.Min(tileH, height - tileY);
 
                         BioImage tileInput = BioImage.CopyInfo(source, true, true);
-                        tileInput.Buffers.Clear();
-                        tileInput.UpdateCoords(source.SizeZ, source.SizeC, source.SizeT);
-                        tileInput.Resolutions.Clear();
-                        tileInput.Resolutions.Add(new Resolution(actualW, actualH, source.Buffers[0].PixelFormat, source.PhysicalSizeX, source.PhysicalSizeY, source.PhysicalSizeZ, source.StageSizeX, source.StageSizeY, source.StageSizeZ));
-
-                        for (int t = 0; t < source.SizeT; t++)
+                        BioImage processed = null;
+                        try
                         {
-                            for (int c = 0; c < source.SizeC; c++)
-                            {
-                                for (int z = 0; z < source.SizeZ; z++)
-                                {
-                                    int index = source.GetFrameIndex(z, c, t);
-                                    if (index < 0)
-                                        continue;
+                            tileInput.Buffers.Clear();
+                            tileInput.UpdateCoords(source.SizeZ, source.SizeC, source.SizeT);
+                            tileInput.Resolutions.Clear();
+                            // Pyramidal sources do not normally populate BioImage.Buffers;
+                            // resolution metadata is the authoritative input format.
+                            tileInput.Resolutions.Add(new Resolution(actualW, actualH, sourceFormat,
+                                sourceResolution.PhysicalSizeX, sourceResolution.PhysicalSizeY, sourceResolution.PhysicalSizeZ,
+                                request.StageX + (tileX * sourceResolution.PhysicalSizeX),
+                                request.StageY + (tileY * sourceResolution.PhysicalSizeY), sourceResolution.StageSizeZ));
 
-                                    Bitmap tile = await source.GetTile(
-                                        index, level,
-                                        tileX, tileY, actualW, actualH,
-                                        new AForge.ZCT(z, c, t),
-                                        true).ConfigureAwait(false);
-                                    if (tile != null)
-                                        tileInput.Buffers.Add(tile);
+                            for (int t = 0; t < source.SizeT; t++)
+                            {
+                                for (int c = 0; c < source.SizeC; c++)
+                                {
+                                    for (int z = 0; z < source.SizeZ; z++)
+                                    {
+                                        int index = source.GetFrameIndex(z, c, t);
+                                        if (index < 0)
+                                            continue;
+
+                                        Bitmap tile = await source.GetTile(
+                                            index, level,
+                                            request.X + tileX, request.Y + tileY, actualW, actualH,
+                                            new AForge.ZCT(z, c, t),
+                                            true).ConfigureAwait(false);
+                                        if (tile != null)
+                                            tileInput.Buffers.Add(tile);
+                                    }
+                                }
+                            }
+
+                            if (tileInput.Buffers.Count == 0)
+                                continue;
+
+                            processed = Fiji.RunOnImageInProcess(tileInput, con, headless, true, resultInNewTab, false);
+                            if (processed == null || processed.Buffers.Count == 0)
+                                continue;
+                            processed = RestoreProcessedPixelFormat(processed, sourceFormat);
+
+                            int outIndex = 0;
+                            for (int t = 0; t < processed.SizeT; t++)
+                            {
+                                for (int c = 0; c < processed.SizeC; c++)
+                                {
+                                    for (int z = 0; z < processed.SizeZ; z++)
+                                    {
+                                        if (outIndex >= processed.Buffers.Count)
+                                            continue;
+
+                                        Bitmap outputBuffer = processed.Buffers[outIndex];
+                                        int outputBits = Math.Max(8, Bitmap.GetPixelFormatSize(outputBuffer.PixelFormat));
+                                        int outputBytesPerSample = outputBuffer.PixelFormat == PixelFormat.Format16bppGrayScale ||
+                                            outputBuffer.PixelFormat == PixelFormat.Format48bppRgb ? 2 : 1;
+                                        int packedChannels = Math.Max(1, outputBits / (outputBytesPerSample * 8));
+                                        if (outputBytesPerSample != sourceBytesPerSample ||
+                                            processed.SizeC * packedChannels != outputChannelCount)
+                                        {
+                                            throw new InvalidOperationException(
+                                                $"The ImageJ command changed tiled output from {sourceFormat} to {outputBuffer.PixelFormat}. " +
+                                                "Commands that change pixel type must be run on a smaller pyramid level.");
+                                        }
+
+                                        for (int packedChannel = 0; packedChannel < packedChannels; packedChannel++)
+                                        {
+                                            int logicalChannel = (c * packedChannels) + packedChannel;
+                                            await Zarr.WriteTileFromBuffer(
+                                                writer,
+                                                outputBuffer,
+                                                levelDescriptors[0],
+                                                t, logicalChannel, z,
+                                                tileX, tileY,
+                                                outputBytesPerSample,
+                                                levelIndex: 0,
+                                                rgbChannelIndex: packedChannels > 1 ? packedChannel : -1,
+                                                srcChannelCount: packedChannels).ConfigureAwait(false);
+                                            writtenTiles++;
+                                        }
+                                        outIndex++;
+                                        BioImage.Progress = (float)(writtenTiles * 100.0 / totalTiles);
+                                    }
                                 }
                             }
                         }
-
-                        if (tileInput.Buffers.Count == 0)
-                            continue;
-
-                        BioImage processed = Fiji.RunOnImageInProcess(tileInput, con, headless, true, resultInNewTab, false);
-                        if (processed == null || processed.Buffers.Count == 0)
-                            continue;
-
-                        int outIndex = 0;
-                        for (int t = 0; t < processed.SizeT; t++)
+                        finally
                         {
-                            for (int c = 0; c < processed.SizeC; c++)
+                            // Each tile creates independent BioImage and ImageJ pixel
+                            // buffers. Release them immediately after the tile is written
+                            // so a large slide does not retain every prior tile.
+                            if (processed != null)
                             {
-                                for (int z = 0; z < processed.SizeZ; z++)
+                                try
                                 {
-                                    if (outIndex >= processed.Buffers.Count)
-                                        continue;
-
-                                    await Zarr.WriteTileFromBuffer(
-                                        writer,
-                                        processed.Buffers[outIndex],
-                                        levelDescriptors[0],
-                                        t, c, z,
-                                        tileX, tileY,
-                                        processed.Buffers[outIndex].PixelFormat == PixelFormat.Format16bppGrayScale ? 2 : 1,
-                                        levelIndex: 0).ConfigureAwait(false);
-                                    outIndex++;
-                                    writtenTiles++;
-                                    BioImage.Progress = (float)(writtenTiles * 100.0 / totalTiles);
+                                    processed.Dispose();
+                                }
+                                catch
+                                {
+                                    DisposePixelBuffers(processed);
                                 }
                             }
+                            DisposePixelBuffers(tileInput);
                         }
                     }
                 }
@@ -869,6 +1125,24 @@ namespace BioLib
                 if (!temporaryZarrOwnedByResult)
                     BioImage.DeleteTemporaryZarr(tempLevelZarr);
             }
+        }
+
+        private static void DisposePixelBuffers(BioImage image)
+        {
+            if (image?.Buffers == null)
+                return;
+
+            foreach (Bitmap buffer in image.Buffers.ToArray())
+            {
+                try
+                {
+                    buffer?.Dispose();
+                }
+                catch
+                {
+                }
+            }
+            image.Buffers.Clear();
         }
 
         private static (int tileW, int tileH) GetLargestSafeTileSize(int width, int height, int bytesPerSample, int planeCount)
@@ -948,11 +1222,14 @@ namespace BioLib
 
             string effectiveCommand = await TryParameterizePyramidalCommand(b, con, headless, resultInNewTab).ConfigureAwait(false);
             List<BioImage> results = new List<BioImage>();
+            int levelCount = b.PyramidNativeLevelCount > 0
+                ? Math.Min(b.PyramidNativeLevelCount, b.Resolutions.Count)
+                : b.Resolutions.Count;
             try
             {
-            for (int level = 0; level < b.Resolutions.Count; level++)
+            for (int level = 0; level < levelCount; level++)
             {
-                ReportProgress(0, $"Processing pyramid level {level + 1}/{b.Resolutions.Count}");
+                ReportProgress(0, $"Processing pyramid level {level + 1}/{levelCount}");
                 BioImage result = await RunOnPyramidalImageInternal(b, effectiveCommand, level, headless, onTab, bioformats, resultInNewTab, false, false).ConfigureAwait(false);
                 if (result != null)
                     results.Add(result);
@@ -964,7 +1241,7 @@ namespace BioLib
             string tempFile = BioImage.CreateTemporaryZarrPath("-pyr.zarr");
             try
             {
-                ReportProgress(0, $"Saving processed pyramid ({results.Count}/{b.Resolutions.Count} levels)");
+                ReportProgress(0, $"Saving processed pyramid ({results.Count}/{levelCount} levels)");
                 await BioImage.SaveOMEZarr(results.ToArray(), tempFile).ConfigureAwait(false);
 
                 ReportProgress(0, "Opening processed pyramid");

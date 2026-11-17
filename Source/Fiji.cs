@@ -183,7 +183,21 @@ namespace BioLib
         }
         public static ImagePlus GetImagePlus(BioImage bm)
         {
-            ImageStack ims = new ImageStack(bm.SizeX, bm.SizeY);
+            if (bm == null)
+                throw new ArgumentNullException(nameof(bm));
+            if (bm.Buffers == null || bm.Buffers.Count == 0 || bm.Buffers[0] == null)
+            {
+                if (bm.isPyramidal)
+                    throw new InvalidOperationException("Pyramidal images do not populate BioImage.Buffers. Extract a pyramid level or tile region before converting it to ImagePlus.");
+                throw new InvalidOperationException("The selected image does not contain any pixel buffers.");
+            }
+
+            int width = bm.Buffers[0].Width;
+            int height = bm.Buffers[0].Height;
+            if (width <= 0 || height <= 0)
+                throw new InvalidOperationException($"The selected image has invalid buffer dimensions ({width}x{height}).");
+
+            ImageStack ims = new ImageStack(width, height);
             if (bm.Buffers[0].PixelFormat == AForge.PixelFormat.Format16bppGrayScale)
             {
                 // Populate the stack with 16-bit images
@@ -193,8 +207,9 @@ namespace BioLib
                     {
                         for (int c = 0; c < bm.SizeC; c++)
                         {
-                            short[] pixels = ConvertByteArrayToShortArray(bm.Buffers[bm.GetFrameIndex(z, c, t)].Bytes, true);
-                            ImageProcessor ip = new ShortProcessor(bm.SizeX, bm.SizeY, pixels, java.awt.image.ColorModel.getRGBdefault());
+                            AForge.Bitmap buffer = GetImagePlusBuffer(bm, z, c, t, width, height);
+                            short[] pixels = Copy16BitPixels(buffer, width, height);
+                            ImageProcessor ip = new ShortProcessor(width, height, pixels, java.awt.image.ColorModel.getRGBdefault());
                             ims.addSlice("Z" + z + "C" + c + "T" + t, ip);
                         }
                     }
@@ -215,7 +230,9 @@ namespace BioLib
                     {
                         for (int c = 0; c < bm.SizeC; c++)
                         {
-                            ImageProcessor ip = new ByteProcessor(bm.SizeX, bm.SizeY, bm.Buffers[bm.GetFrameIndex(z, c, t)].Bytes, colorModel);
+                            AForge.Bitmap buffer = GetImagePlusBuffer(bm, z, c, t, width, height);
+                            byte[] pixels = Copy8BitPixels(buffer, width, height);
+                            ImageProcessor ip = new ByteProcessor(width, height, pixels, colorModel);
                             ims.addSlice("Z" + z + "C" + c + "T" + t, ip);
                         }
                     }
@@ -229,18 +246,27 @@ namespace BioLib
                     {
                         for (int c = 0; c < bm.SizeC; c++)
                         {
-                            byte[] bts = bm.Buffers[bm.GetFrameIndex(z, c, t)].Bytes;
+                            AForge.Bitmap buffer = GetImagePlusBuffer(bm, z, c, t, width, height);
+                            byte[] bts = buffer.Bytes;
                             // Convert the byte array to an int array for the RGB processor
-                            int[] rgbPixels = new int[bm.SizeX * bm.SizeY];
-                            for (int i = 0; i < rgbPixels.Length; i++)
+                            int[] rgbPixels = new int[width * height];
+                            for (int y = 0; y < height; y++)
                             {
-                                int r = bts[i * 3] & 0xFF; // Red
-                                int g = bts[i * 3 + 1] & 0xFF; // Green
-                                int b = bts[i * 3 + 2] & 0xFF; // Blue
-                                rgbPixels[i] = (r << 16) | (g << 8) | b; // Combine into RGB int
+                                int sourceRow = y * buffer.Stride;
+                                int targetRow = y * width;
+                                for (int x = 0; x < width; x++)
+                                {
+                                    int source = sourceRow + (x * 3);
+                                    // AForge RGB formats use the native Windows
+                                    // packed layout: B, G, R in memory.
+                                    int b = bts[source] & 0xFF;
+                                    int g = bts[source + 1] & 0xFF;
+                                    int r = bts[source + 2] & 0xFF;
+                                    rgbPixels[targetRow + x] = (r << 16) | (g << 8) | b;
+                                }
                             }
                             // Create a ColorProcessor
-                            ImageProcessor ip = new ColorProcessor(bm.SizeX, bm.SizeY, rgbPixels);
+                            ImageProcessor ip = new ColorProcessor(width, height, rgbPixels);
                             ims.addSlice("Z" + z + "C" + c + "T" + t, ip);
                         }
                     }
@@ -254,19 +280,26 @@ namespace BioLib
                     {
                         for (int c = 0; c < bm.SizeC; c++)
                         {
-                            byte[] bts = bm.Buffers[bm.GetFrameIndex(z, c, t)].Bytes;
+                            AForge.Bitmap buffer = GetImagePlusBuffer(bm, z, c, t, width, height);
+                            byte[] bts = buffer.Bytes;
                             // Convert the byte array to an int array for the ColorProcessor
-                            int[] rgbaPixels = new int[bm.SizeX * bm.SizeY];
-                            for (int i = 0; i < rgbaPixels.Length; i++)
+                            int[] rgbaPixels = new int[width * height];
+                            for (int y = 0; y < height; y++)
                             {
-                                int r = bts[i * 4] & 0xFF;       // Red
-                                int g = bts[i * 4 + 1] & 0xFF;   // Green
-                                int b = bts[i * 4 + 2] & 0xFF;   // Blue
-                                int a = bts[i * 4 + 3] & 0xFF;   // Alpha
-                                rgbaPixels[i] = (a << 24) | (r << 16) | (g << 8) | b; // Combine into ARGB int
+                                int sourceRow = y * buffer.Stride;
+                                int targetRow = y * width;
+                                for (int x = 0; x < width; x++)
+                                {
+                                    int source = sourceRow + (x * 4);
+                                    int b = bts[source] & 0xFF;
+                                    int g = bts[source + 1] & 0xFF;
+                                    int r = bts[source + 2] & 0xFF;
+                                    int a = bts[source + 3] & 0xFF;
+                                    rgbaPixels[targetRow + x] = (a << 24) | (r << 16) | (g << 8) | b;
+                                }
                             }
                             // Create a ColorProcessor with the ARGB int array
-                            ImageProcessor ip = new ColorProcessor(bm.SizeX, bm.SizeY, rgbaPixels);
+                            ImageProcessor ip = new ColorProcessor(width, height, rgbaPixels);
                             ims.addSlice("Z" + z + "C" + c + "T" + t, ip);
                         }
                     }
@@ -282,8 +315,9 @@ namespace BioLib
                     {
                         for (int c = 0; c < bm.SizeC; c++)
                         {
-                            short[] pixels = ConvertByteArrayToShortArray(bm.Buffers[bm.GetFrameIndex(z, c, t)].Bytes, true);
-                            ImageProcessor ip = new ShortProcessor(bm.SizeX, bm.SizeY, pixels, java.awt.image.ColorModel.getRGBdefault());
+                            AForge.Bitmap buffer = GetImagePlusBuffer(bm, z, c, t, width, height);
+                            short[] pixels = Copy16BitPixels(buffer, width, height);
+                            ImageProcessor ip = new ShortProcessor(width, height, pixels, java.awt.image.ColorModel.getRGBdefault());
                             ims.addSlice("Z" + z + "C" + c + "T" + t, ip);
                         }
                     }
@@ -292,6 +326,52 @@ namespace BioLib
             ImagePlus imp = new ImagePlus(bm.ID, ims);
             imp.setDimensions(bm.SizeC, bm.SizeZ, bm.SizeT);
             return imp;
+        }
+
+        private static AForge.Bitmap GetImagePlusBuffer(BioImage image, int z, int c, int t, int width, int height)
+        {
+            int index = image.GetFrameIndex(z, c, t);
+            if (index < 0 || index >= image.Buffers.Count)
+                throw new InvalidOperationException($"Image plane Z={z}, C={c}, T={t} maps to buffer {index}, but only {image.Buffers.Count} buffers are available.");
+
+            AForge.Bitmap buffer = image.Buffers[index];
+            if (buffer == null)
+                throw new InvalidOperationException($"Image buffer {index} (Z={z}, C={c}, T={t}) is empty.");
+            if (buffer.Width != width || buffer.Height != height)
+                throw new InvalidOperationException($"Image buffer {index} is {buffer.Width}x{buffer.Height}; expected {width}x{height}.");
+
+            int requiredLength = checked(buffer.Stride * height);
+            if (buffer.Bytes == null || buffer.Bytes.Length < requiredLength)
+                throw new InvalidOperationException($"Image buffer {index} contains {buffer.Bytes?.Length ?? 0} bytes; {requiredLength} are required for {width}x{height} {buffer.PixelFormat} pixels.");
+            return buffer;
+        }
+
+        private static byte[] Copy8BitPixels(AForge.Bitmap buffer, int width, int height)
+        {
+            byte[] pixels = new byte[checked(width * height)];
+            for (int y = 0; y < height; y++)
+                Buffer.BlockCopy(buffer.Bytes, y * buffer.Stride, pixels, y * width, width);
+            return pixels;
+        }
+
+        private static short[] Copy16BitPixels(AForge.Bitmap buffer, int width, int height)
+        {
+            short[] pixels = new short[checked(width * height)];
+            bool sourceLittleEndian = buffer.LittleEndian;
+            for (int y = 0; y < height; y++)
+            {
+                int sourceRow = y * buffer.Stride;
+                int targetRow = y * width;
+                for (int x = 0; x < width; x++)
+                {
+                    int source = sourceRow + (x * 2);
+                    ushort value = sourceLittleEndian
+                        ? (ushort)(buffer.Bytes[source] | (buffer.Bytes[source + 1] << 8))
+                        : (ushort)((buffer.Bytes[source] << 8) | buffer.Bytes[source + 1]);
+                    pixels[targetRow + x] = unchecked((short)value);
+                }
+            }
+            return pixels;
         }
         private static int GetHyperStackSliceIndex(ImagePlus pl, int z, int c, int t)
         {
@@ -321,12 +401,20 @@ namespace BioLib
         /// <returns>The BioImage represented by the ImagePlus object.</returns>
         public static BioImage GetBioImage(ImagePlus pl, VolumeD vol, double PhysicalX, double PhysicalY, double PhysicalZ)
         {
+            if (pl == null)
+                throw new ArgumentNullException(nameof(pl));
+
             BioImage bm = new BioImage(pl.getTitle());
             ImageStack st = pl.getImageStack();
+            if (st == null || st.getSize() <= 0)
+                throw new InvalidOperationException("The ImageJ command did not produce an image stack.");
+
             int b = pl.getBitDepth();
-            int slices = pl.getNSlices();
-            int chs = pl.getNChannels();
-            int frs = pl.getNFrames();
+            int stackSize = st.getSize();
+            int slices = Math.Max(1, pl.getNSlices());
+            int chs = Math.Max(1, pl.getNChannels());
+            int frs = Math.Max(1, pl.getNFrames());
+            NormalizeImageJDimensions(stackSize, ref slices, ref chs, ref frs);
             int rgb = (int)(pl.getBytesPerPixel() * 8);
             bool isrgb = isRGB(pl);
             bm.StackOrder = BioImage.Order.ZCT;
@@ -355,7 +443,12 @@ namespace BioLib
                             bmp = new AForge.Bitmap(st.getWidth(), st.getHeight(), AForge.PixelFormat.Format24bppRgb);
                         }
                         int ind = bm.GetFrameIndex(z, c, t);
-                        int stackIndex = GetHyperStackSliceIndex(pl, z, c, t);
+                        // ImageJ stores hyperstacks with channels varying fastest.
+                        // Calculate against the normalized dimensions instead of
+                        // trusting a stale ImagePlus dimension table.
+                        int stackIndex = c + (chs * (z + (slices * t)));
+                        if (stackIndex < 0 || stackIndex >= stackSize)
+                            throw new InvalidOperationException($"ImageJ stack index {stackIndex} is outside the {stackSize}-plane result stack.");
                         outputBuffers[ind] = bmp;
                         if (!isrgb)
                         {
@@ -384,9 +477,10 @@ namespace BioLib
                                     int rv = (v >> 16) & 0xFF; // Red
                                     int gv = (v >> 8) & 0xFF;  // Green
                                     int bv = v & 0xFF;         // Blue
-                                    bmp.SetValue(x, y, 0, (byte)rv);
+                                    // Keep the AForge buffer in packed BGR order.
+                                    bmp.SetValue(x, y, 0, (byte)bv);
                                     bmp.SetValue(x, y, 1, (byte)gv);
-                                    bmp.SetValue(x, y, 2, (byte)bv);
+                                    bmp.SetValue(x, y, 2, (byte)rv);
                                 }
                             }
 
@@ -433,6 +527,41 @@ namespace BioLib
             return bm;
         }
 
+        private static void NormalizeImageJDimensions(int stackSize, ref int slices, ref int channels, ref int frames)
+        {
+            long declaredSize = (long)slices * channels * frames;
+            if (declaredSize == stackSize)
+                return;
+
+            // Some ImageJ commands replace or reshape the current stack without
+            // updating all three hyperstack dimensions. Preserve every dimension
+            // that still divides the actual stack before falling back to Z planes.
+            long channelsAndFrames = (long)channels * frames;
+            if (channelsAndFrames > 0 && stackSize % channelsAndFrames == 0)
+            {
+                slices = stackSize / (int)channelsAndFrames;
+                return;
+            }
+
+            long slicesAndFrames = (long)slices * frames;
+            if (slicesAndFrames > 0 && stackSize % slicesAndFrames == 0)
+            {
+                channels = stackSize / (int)slicesAndFrames;
+                return;
+            }
+
+            long slicesAndChannels = (long)slices * channels;
+            if (slicesAndChannels > 0 && stackSize % slicesAndChannels == 0)
+            {
+                frames = stackSize / (int)slicesAndChannels;
+                return;
+            }
+
+            slices = stackSize;
+            channels = 1;
+            frames = 1;
+        }
+
         public static List<Process> processes = new List<Process>();
         public static List<Macro.Command> Macros = new List<Macro.Command>();
         private static Random rng = new Random();
@@ -441,16 +570,24 @@ namespace BioLib
             if (!init)
                 RunMacroFiji(b, file, param);
             Console.WriteLine("RunImageJ(" + file + "," + param);
-            ImagePlus ip = GetImagePlus(b);
-            Console.WriteLine("Fiji.GetImagePlus(" + b.ToString() + ")");
-            WindowManager.setTempCurrentImage(ip);
-            Console.WriteLine("WindowManager.setTempCurrentImage(" + ip.ToString() + ")");
-            IJ.runMacroFile(file, param);
-            BioImage bm = GetBioImage(ip, b.Volume, b.PhysicalSizeX, b.PhysicalSizeY, b.PhysicalSizeZ);
-            int i = Images.GetImageCountByName(bm.Filename);
-            if (bm.Filename.EndsWith("-" + i))
-                bm.Filename.Replace("-" + i, "-" + (i + 1).ToString());
-            return bm;
+            ImagePlus ip = null;
+            try
+            {
+                ip = GetImagePlus(b);
+                Console.WriteLine("Fiji.GetImagePlus(" + b.ToString() + ")");
+                WindowManager.setTempCurrentImage(ip);
+                Console.WriteLine("WindowManager.setTempCurrentImage(" + ip.ToString() + ")");
+                IJ.runMacroFile(file, param);
+                BioImage bm = GetBioImage(ip, b.Volume, b.PhysicalSizeX, b.PhysicalSizeY, b.PhysicalSizeZ);
+                int i = Images.GetImageCountByName(bm.Filename);
+                if (bm.Filename.EndsWith("-" + i))
+                    bm.Filename.Replace("-" + i, "-" + (i + 1).ToString());
+                return bm;
+            }
+            finally
+            {
+                ClearCurrentImageAndRelease(ip, null);
+            }
         }
         /// It runs a macro in ImageJ
         /// 
@@ -602,7 +739,15 @@ namespace BioLib
         /// @return The image is being returned as a new tab.
         public async static Task<BioImage> RunOnImageFiji(BioImage b, string con, int index, bool headless, bool onTab, bool bioformats, bool resultInNewTab)
         {
-            if (UseFiji || OperatingSystem.IsMacOS())
+            // BioGTK hosts ImageJ through IKVM on macOS. Keep this legacy API
+            // compatible without ever spawning the external Fiji application.
+            if (OperatingSystem.IsMacOS())
+            {
+                BioLib.Recorder.Record($"Fiji.RunOnImageFiji({b}, \"{con}\", {index}, {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
+                return RunOnImageInProcess(b, con, headless, bioformats, resultInNewTab);
+            }
+
+            if (UseFiji)
             {
                 string filename = "";
                 string dir = Path.GetDirectoryName(b.file);
@@ -779,11 +924,43 @@ namespace BioLib
         static bool resultInNewTabs;
         static BioImage bioImage;
         private static readonly object imageJRunLock = new object();
+        private static readonly object embeddedRuntimeConfigurationLock = new object();
+        private static bool embeddedRuntimeConfigured;
+
+        /// <summary>
+        /// Prepares the embedded IKVM runtime before ImageJ initializes any
+        /// Java graphics classes. BioGTK owns the macOS UI, so ImageJ commands
+        /// run through the headless macro engine and return their pixels to GTK.
+        /// </summary>
+        private static void ConfigureEmbeddedImageJRuntime()
+        {
+            if (embeddedRuntimeConfigured)
+                return;
+
+            lock (embeddedRuntimeConfigurationLock)
+            {
+                if (embeddedRuntimeConfigured)
+                    return;
+
+                if (OperatingSystem.IsMacOS())
+                {
+                    // This must be set before GraphicsEnvironment or Toolkit is
+                    // initialized. Native AWT cannot safely share GTK's AppKit
+                    // event loop, while ImageJ's macro/image engine works headless.
+                    java.lang.System.setProperty("java.awt.headless", "true");
+                    java.lang.System.setProperty("apple.awt.UIElement", "true");
+                }
+
+                embeddedRuntimeConfigured = true;
+            }
+        }
+
         public static BioImage RunOnImageInProcess(BioImage b, string con, bool headless, bool bioformats, bool resultInNewTab, bool registerWithImages = true)
         {
+            ConfigureEmbeddedImageJRuntime();
             lock (imageJRunLock)
             {
-                cons = con;
+                cons = PrepareEmbeddedMacCommand(con);
                 indexs = 0;
                 Fiji.headless = headless;
                 Fiji.bioformats = bioformats;
@@ -803,6 +980,17 @@ namespace BioLib
             parameterizedCommand = con;
             if (previewImage == null || headless || !TryExtractBareRunCommand(con, out string commandName))
                 return false;
+
+            ConfigureEmbeddedImageJRuntime();
+
+            // Do not instantiate ImageJ's AWT Recorder in the GTK process.
+            // Supplying an options argument, even when empty, tells the macro
+            // interpreter to use command defaults without opening a Java dialog.
+            if (OperatingSystem.IsMacOS())
+            {
+                parameterizedCommand = BuildRunCommand(commandName, string.Empty);
+                return true;
+            }
 
             lock (imageJRunLock)
             {
@@ -868,25 +1056,74 @@ namespace BioLib
 
         private static BioImage RunImageJ(bool registerWithImages = true)
         {
-            ImagePlus ip = GetImagePlus(bioImage);
-            WindowManager.setTempCurrentImage(ip);
-            BioImage b;
+            ConfigureEmbeddedImageJRuntime();
+            ImagePlus ip = null;
+            ImagePlus result = null;
             try
             {
+                ip = GetImagePlus(bioImage);
+                WindowManager.setTempCurrentImage(ip);
                 IJ.runMacro(cons);
-                b = GetBioImage(ip, bioImage.Volume, bioImage.PhysicalSizeX, bioImage.PhysicalSizeY, bioImage.PhysicalSizeZ);
+                result = WindowManager.getCurrentImage() ?? ip;
+                BioImage b = GetBioImage(result, bioImage.Volume, bioImage.PhysicalSizeX, bioImage.PhysicalSizeY, bioImage.PhysicalSizeZ);
+                string s = registerWithImages ? Images.GetImageName(b.Filename) : b.Filename;
+                if (registerWithImages)
+                    Images.AddImage(b);
+                b.Filename = s;
+                b.ID = s;
+                return b;
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message.ToString());
-                return null;
+                Console.Error.WriteLine("[Fiji.RunImageJ] " + e);
+                throw new InvalidOperationException("ImageJ command failed while converting its image data: " + e.Message, e);
             }
-            string s = registerWithImages ? Images.GetImageName(b.Filename) : b.Filename;
-            if (registerWithImages)
-                Images.AddImage(b);
-            b.Filename = s;
-            b.ID = s;
-            return b;
+            finally
+            {
+                ClearCurrentImageAndRelease(ip, result);
+            }
+        }
+
+        /// <summary>
+        /// Releases the ImageJ images used by an embedded command. ImageJ keeps the
+        /// temporary current image in a static, per-thread table; leaving it there
+        /// roots the ImagePlus, its ImageStack and every managed pixel array under IKVM.
+        /// </summary>
+        private static void ClearCurrentImageAndRelease(ImagePlus input, ImagePlus result)
+        {
+            try
+            {
+                WindowManager.setTempCurrentImage(null);
+            }
+            catch
+            {
+            }
+
+            ReleaseImagePlus(result);
+            if (input != null && !ReferenceEquals(input, result))
+                ReleaseImagePlus(input);
+        }
+
+        private static void ReleaseImagePlus(ImagePlus image)
+        {
+            if (image == null)
+                return;
+
+            try
+            {
+                image.close();
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                image.flush();
+            }
+            catch
+            {
+            }
         }
 
         private static bool TryExtractBareRunCommand(string con, out string commandName)
@@ -911,9 +1148,29 @@ namespace BioLib
 
         private static string BuildRunCommand(string commandName, string options)
         {
-            string safeCommand = ImageJRecorder.fixString(commandName ?? string.Empty);
-            string safeOptions = ImageJRecorder.fixString(options ?? string.Empty);
+            string safeCommand = EscapeMacroString(commandName);
+            string safeOptions = EscapeMacroString(options);
             return $"run(\"{safeCommand}\", \"{safeOptions}\");";
+        }
+
+        private static string EscapeMacroString(string value)
+        {
+            return (value ?? string.Empty)
+                .Replace("\\", "\\\\", StringComparison.Ordinal)
+                .Replace("\"", "\\\"", StringComparison.Ordinal)
+                .Replace("\r", "\\r", StringComparison.Ordinal)
+                .Replace("\n", "\\n", StringComparison.Ordinal);
+        }
+
+        private static string PrepareEmbeddedMacCommand(string command)
+        {
+            if (!OperatingSystem.IsMacOS())
+                return command;
+
+            if (TryExtractBareRunCommand(command, out string commandName))
+                return BuildRunCommand(commandName, string.Empty);
+
+            return command;
         }
 
         private static bool TryExtractRecordedRunCommand(string recorderText, string previousText, string commandName, out string parameterizedCommand)
@@ -953,18 +1210,13 @@ namespace BioLib
             if (b != null && b.isPyramidal)
                 return await ImageJ.RunOnAllPyramidLevels(b, con, headless, onTab, useBioformats, resultInNewTab).ConfigureAwait(false);
             BioImage bm;
-            if (UseFiji || OperatingSystem.IsMacOS())
+            if (UseFiji && !OperatingSystem.IsMacOS())
                 bm = await RunOnImageFiji(b, con, 0, headless, onTab, useBioformats, resultInNewTab);
             else
             {
-                bioImage = b;
-                cons = con;
-                indexs = 0;
-                Fiji.headless = headless;
-                bioformats = useBioformats;
-                resultInNewTabs = resultInNewTab;
                 Recorder.Record($"Fiji.RunOnImage({b}, \"{con}\", {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {useBioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
-                return RunImageJ();
+                return await Task.Run(() => RunOnImageInProcess(
+                    b, con, headless, useBioformats, resultInNewTab)).ConfigureAwait(false);
             }
             return bm;
         }
@@ -987,6 +1239,7 @@ namespace BioLib
         /// @param path The path to the ImageJ executable.
         public static bool Initialize(string path)
         {
+            ConfigureEmbeddedImageJRuntime();
             InitializeCommandMetadata();
             ImageJPath = path;
             return true;
@@ -999,6 +1252,7 @@ namespace BioLib
         /// </summary>
         public static void InitializeCommandMetadata()
         {
+            ConfigureEmbeddedImageJRuntime();
             Macro.Initialize();
         }
         private static void EnsureCommandTableLoaded()

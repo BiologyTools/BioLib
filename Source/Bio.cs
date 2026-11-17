@@ -89,11 +89,29 @@ namespace BioLib
                 return;
             foreach (var item in Images.images)
             {
-                if (im.Filename.Contains(item.Filename))
+                // A derived name such as sample-2.svs must not be mistaken for
+                // sample.svs. Only the exact same displayed name is already
+                // registered; numeric siblings are separate command results.
+                if (string.Equals(im.Filename, item.Filename, StringComparison.OrdinalIgnoreCase))
                     return;
             }
             im.Filename = im.Filename.Split(' ')[0];
             images.Add(im);
+        }
+
+        private static (string BaseName, int Number) SplitNumericImageName(string value)
+        {
+            string stem = RemoveExtensions(Path.GetFileName(value));
+            int separator = stem.LastIndexOf('-');
+            if (separator > 0 &&
+                separator < stem.Length - 1 &&
+                int.TryParse(stem.Substring(separator + 1), out int number) &&
+                number >= 2)
+            {
+                return (stem.Substring(0, separator), number);
+            }
+
+            return (stem, 1);
         }
         /// It takes a string as an argument, and returns the number of times that string appears in the
         /// list of images
@@ -104,15 +122,14 @@ namespace BioLib
         public static int GetImageCountByName(string s)
         {
             int i = 0;
-            s = RemoveExtensions(s);
-            if (s.Contains("-"))
-            {
-                string ss = RemoveExtensions(s.Substring(s.LastIndexOf("-"), s.Length - s.LastIndexOf("-")));
-                s = ss;
-            }
+            var requested = SplitNumericImageName(s);
             for (int im = 0; im < images.Count; im++)
             {
-                if (images[im].ID.Contains(s))
+                string candidateName = string.IsNullOrWhiteSpace(images[im].Filename)
+                    ? images[im].ID
+                    : images[im].Filename;
+                var candidate = SplitNumericImageName(candidateName);
+                if (string.Equals(candidate.BaseName, requested.BaseName, StringComparison.OrdinalIgnoreCase))
                     i++;
             }
             return i;
@@ -150,15 +167,37 @@ namespace BioLib
         /// <returns></returns>
         public static string GetImageName(string s)
         {
-            //Here we create a unique ID for an image.
-            int i = Images.GetImageCountByName(s);
-            if (i == 0)
-                return Path.GetFileName(s);
-            string name = RemoveExtensions(s);
+            string fileName = Path.GetFileName(s);
+            var requested = SplitNumericImageName(fileName);
             string ext = GetExtensions(s);
-            if (name.EndsWith("-" + i))
-                name = name.Substring(name.LastIndexOf('-'), name.Length - name.LastIndexOf('-'));
-            return name + "-" + (i + 1) + ext;
+            int highestNumber = 0;
+
+            foreach (BioImage image in images)
+            {
+                string candidateName = string.IsNullOrWhiteSpace(image.Filename)
+                    ? image.ID
+                    : image.Filename;
+                var candidate = SplitNumericImageName(candidateName);
+                string candidateExtension = GetExtensions(candidateName);
+                if (string.Equals(candidate.BaseName, requested.BaseName, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(candidateExtension, ext, StringComparison.OrdinalIgnoreCase))
+                {
+                    highestNumber = Math.Max(highestNumber, candidate.Number);
+                }
+            }
+
+            if (highestNumber == 0)
+            {
+                // A derived image may not yet be in the global registry (for
+                // example while a command is still being assembled). Continue
+                // an explicit numeric chain instead of reusing sample-2.svs.
+                if (requested.Number >= 2)
+                    return requested.BaseName + "-" + (requested.Number + 1) + ext;
+                return fileName;
+            }
+
+            int nextNumber = Math.Max(highestNumber, requested.Number) + 1;
+            return requested.BaseName + "-" + nextNumber + ext;
         }
         /// This function removes an image from the table
         /// 
@@ -2045,6 +2084,8 @@ namespace BioLib
         {
             get
             {
+                if (useInMemoryBuffersAsSource)
+                    return false;
                 string source = SourceFile;
                 return !string.IsNullOrWhiteSpace(source) &&
                     (source.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
@@ -2864,18 +2905,29 @@ namespace BioLib
         {
             get
             {
+                // Pyramid buffers, when present, are only a display preview/tile and
+                // are not the dimensions of the image. Resolution level 0 is the
+                // authoritative full-resolution geometry.
+                if (isPyramidal && Resolutions.Count > 0 && Resolutions[0].SizeX > 0)
+                    return Resolutions[0].SizeX;
                 if (Buffers.Count > 0)
                     return Buffers[0].SizeX;
-                else return 0;
+                if (Resolutions.Count > 0)
+                    return Resolutions[0].SizeX;
+                return 0;
             }
         }
         public int SizeY
         {
             get
             {
+                if (isPyramidal && Resolutions.Count > 0 && Resolutions[0].SizeY > 0)
+                    return Resolutions[0].SizeY;
                 if (Buffers.Count > 0)
                     return Buffers[0].SizeY;
-                else return 0;
+                if (Resolutions.Count > 0)
+                    return Resolutions[0].SizeY;
+                return 0;
             }
         }
         public int SizeZ
@@ -2980,7 +3032,19 @@ namespace BioLib
             }
         }
         public string file;
+        private bool useInMemoryBuffersAsSource;
         private string? temporaryZarrDirectory;
+
+        internal void UseInMemoryBuffersAsSource()
+        {
+            // A processed ImageJ result may retain the input path through its
+            // ImagePlus title. Its authoritative pixels are nevertheless the
+            // newly created Buffers, even when the friendly filename ends in
+            // .zarr. Keep the display name while preventing tile reads from the
+            // stale input store during a subsequent command.
+            file = string.Empty;
+            useInMemoryBuffersAsSource = true;
+        }
 
         internal static string CreateTemporaryZarrPath(string suffix)
         {
@@ -3254,14 +3318,52 @@ namespace BioLib
             else if(Buffers[0].PixelFormat == PixelFormat.Format8bppIndexed)
             {
                 List<Bitmap> bms = new List<Bitmap>();
-                //We run 8bit so we get 24 bit rgb.
-                for (int i = 0; i < Buffers.Count; i+=3)
+                int originalZ = SizeZ;
+                int originalC = SizeC;
+                int originalT = SizeT;
+                bool combineChannels = originalC == 3 && Buffers.Count >= originalZ * originalC * originalT;
+                if (combineChannels)
                 {
-                    bms.Add(Bitmap.RGB8To24(new Bitmap[] { Buffers[i], Buffers[i+1], Buffers[i+2] }));
+                    for (int t = 0; t < originalT; t++)
+                    {
+                        for (int z = 0; z < originalZ; z++)
+                        {
+                            Bitmap red = Buffers[GetFrameIndex(z, 0, t)];
+                            Bitmap green = Buffers[GetFrameIndex(z, 1, t)];
+                            Bitmap blue = Buffers[GetFrameIndex(z, 2, t)];
+                            bms.Add(Bitmap.RGB8To24(new Bitmap[] { red, green, blue }));
+                        }
+                    }
+                }
+                else
+                {
+                    // A single grayscale plane is a valid source for a 24-bit
+                    // image. Replicate it into R, G and B instead of assuming
+                    // that two additional channel buffers exist.
+                    foreach (Bitmap buffer in Buffers)
+                        bms.Add(Bitmap.RGB8To24(new Bitmap[] { buffer, buffer, buffer }));
                 }
                 Buffers.Clear();
                 Buffers.AddRange(bms);
-                UpdateCoords(SizeZ, 1, SizeT);
+                UpdateCoords(originalZ, combineChannels ? 1 : originalC, originalT, StackOrder);
+                if (combineChannels && Channels.Count > 0)
+                {
+                    Channel channel = Channels[0].Copy();
+                    channel.SamplesPerPixel = 3;
+                    channel.range = new IntRange[3]
+                    {
+                        new IntRange(0, byte.MaxValue),
+                        new IntRange(0, byte.MaxValue),
+                        new IntRange(0, byte.MaxValue)
+                    };
+                    Channels.Clear();
+                    Channels.Add(channel);
+                }
+                else
+                {
+                    foreach (Channel channel in Channels)
+                        channel.SamplesPerPixel = 3;
+                }
             }
             foreach (var item in Buffers)
             {
@@ -4805,8 +4907,6 @@ namespace BioLib
             //We initialize OME on a seperate thread so the user doesn't have to wait for initialization to
             //view images. 
             EnsureBioFormatsInitialized();
-            if (OperatingSystem.IsMacOS())
-                return;
             if (imageJPath.Contains("Fiji"))
             {
                 Fiji.Initialize(imageJPath);
@@ -6164,12 +6264,23 @@ namespace BioLib
                 
                 //}
                 
+                bool hasBaseResolution = b.Resolutions.Count > 0;
+                Resolution baseResolution = hasBaseResolution ? b.Resolutions[0] : default;
+                int fullWidth = hasBaseResolution && baseResolution.SizeX > 0 ? baseResolution.SizeX : b.SizeX;
+                int fullHeight = hasBaseResolution && baseResolution.SizeY > 0 ? baseResolution.SizeY : b.SizeY;
+                double basePhysicalX = hasBaseResolution && baseResolution.PhysicalSizeX > 0 ? baseResolution.PhysicalSizeX : b.PhysicalSizeX;
+                double basePhysicalY = hasBaseResolution && baseResolution.PhysicalSizeY > 0 ? baseResolution.PhysicalSizeY : b.PhysicalSizeY;
+                double basePhysicalZ = hasBaseResolution && baseResolution.PhysicalSizeZ > 0 ? baseResolution.PhysicalSizeZ : b.PhysicalSizeZ;
+                double baseStageX = hasBaseResolution ? baseResolution.StageSizeX : b.StageSizeX;
+                double baseStageY = hasBaseResolution ? baseResolution.StageSizeY : b.StageSizeY;
+                double baseStageZ = hasBaseResolution ? baseResolution.StageSizeZ : b.StageSizeZ;
+
                 b.Volume = new VolumeD(
-                    new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ),
+                    new Point3D(baseStageX, baseStageY, baseStageZ),
                     new Point3D(
-                        b.SizeX * b.PhysicalSizeX,
-                        b.SizeY * b.PhysicalSizeY,
-                        b.SizeZ * b.PhysicalSizeZ));
+                        fullWidth * basePhysicalX,
+                        fullHeight * basePhysicalY,
+                        b.SizeZ * basePhysicalZ));
                 
                 // -----------------------------------------------------------------
                 // Channels
@@ -8433,6 +8544,13 @@ namespace BioLib
                         b.openSlideImage = OpenSlideImage.Open(file);
                         b.openslideBase = (OpenSlideBase)OpenSlideGTK.SlideSourceBase.Create(file, true);
                         b.openslideBase.Image = b.openSlideImage;
+                        // Bio-Formats may expose an associated thumbnail as another
+                        // monotonically smaller resolution. OpenSlide's level count is
+                        // the authoritative native pyramid boundary; later entries must
+                        // be generated by the synthetic-level geometry path.
+                        b.PyramidNativeLevelCount = Math.Min(
+                            b.Resolutions.Count,
+                            Math.Max(1, b.openSlideImage.LevelCount));
                     }
                     else
                     {
@@ -9280,23 +9398,69 @@ namespace BioLib
                 else
                     vips = false;
             }
-            // Prefer the synthetic-level-aware OpenSlide wrapper when available.
-            if (b.OpenSlideBase != null)
+            // Native OpenSlide can read an arbitrary rectangular region. Prefer it
+            // for native levels so callers that request a complete level do not get
+            // a single 256x256 map tile padded with black pixels.
+            if (b.openSlideImage != null &&
+                level >= 0 && level < b.openSlideImage.LevelCount)
             {
-                TileInfo tf = new TileInfo();
-                int tileCol = (int)Math.Floor((double)tilex / Math.Max(1, tileSizeX));
-                int tileRow = (int)Math.Floor((double)tiley / Math.Max(1, tileSizeY));
-                tf.Index = new TileIndex(tileCol, tileRow, level);
+                double downsample = b.openSlideImage.GetLevelDownsample(level);
+                long level0X = (long)Math.Round(tilex * downsample);
+                long level0Y = (long)Math.Round(tiley * downsample);
 
-                byte[] bts = b.OpenSlideBase.GetTile(tf);
-                if (bts == null)
-                    return null;
-
+                byte[] bts = b.openSlideImage.ReadRegion(level, level0X, level0Y, tileSizeX, tileSizeY);
                 bts = NormalizeArgbTileBytes(bts, tileSizeX, tileSizeY);
                 Bitmap bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, bts, new ZCT(), 0);
                 return bm;
             }
-            //We check if we can open this with OpenSlide as this is faster than Bioformats with IKVM.
+
+            // Synthetic levels still require the level-aware tiled wrapper.
+            if (b.OpenSlideBase != null)
+            {
+                var schemaResolution = b.OpenSlideBase.Schema.Resolutions[level];
+                int sourceTileWidth = Math.Max(1, schemaResolution.TileWidth);
+                int sourceTileHeight = Math.Max(1, schemaResolution.TileHeight);
+                int firstColumn = Math.Max(0, tilex / sourceTileWidth);
+                int firstRow = Math.Max(0, tiley / sourceTileHeight);
+                int lastColumn = Math.Max(firstColumn, (tilex + Math.Max(1, tileSizeX) - 1) / sourceTileWidth);
+                int lastRow = Math.Max(firstRow, (tiley + Math.Max(1, tileSizeY) - 1) / sourceTileHeight);
+                byte[] regionBytes = new byte[Math.Max(0, tileSizeX * tileSizeY * 4)];
+
+                for (int row = firstRow; row <= lastRow; row++)
+                {
+                    for (int column = firstColumn; column <= lastColumn; column++)
+                    {
+                        TileInfo tileInfo = new TileInfo
+                        {
+                            Index = new TileIndex(column, row, level)
+                        };
+                        byte[] sourceTile = b.OpenSlideBase.GetTile(tileInfo);
+                        if (sourceTile == null || sourceTile.Length < sourceTileWidth * sourceTileHeight * 4)
+                            continue;
+
+                        int sourceX = column * sourceTileWidth;
+                        int sourceY = row * sourceTileHeight;
+                        int copyX0 = Math.Max(tilex, sourceX);
+                        int copyY0 = Math.Max(tiley, sourceY);
+                        int copyX1 = Math.Min(tilex + tileSizeX, sourceX + sourceTileWidth);
+                        int copyY1 = Math.Min(tiley + tileSizeY, sourceY + sourceTileHeight);
+                        int copyWidth = Math.Max(0, copyX1 - copyX0);
+                        int copyHeight = Math.Max(0, copyY1 - copyY0);
+
+                        for (int copyRow = 0; copyRow < copyHeight; copyRow++)
+                        {
+                            int sourceOffset = (((copyY0 - sourceY) + copyRow) * sourceTileWidth + (copyX0 - sourceX)) * 4;
+                            int destinationOffset = (((copyY0 - tiley) + copyRow) * tileSizeX + (copyX0 - tilex)) * 4;
+                            Buffer.BlockCopy(sourceTile, sourceOffset, regionBytes, destinationOffset, copyWidth * 4);
+                        }
+                    }
+                }
+
+                Bitmap bm = new Bitmap("", tileSizeX, tileSizeY, AForge.PixelFormat.Format32bppArgb, regionBytes, new ZCT(), 0);
+                return bm;
+            }
+            // Fallback for OpenSlide implementations that do not expose a valid
+            // native level count.
             if (b.openSlideImage != null)
             {
                 double downsample = b.GetLevelDownsample(level);
@@ -9490,6 +9654,15 @@ namespace BioLib
 
                 return planef.Data;
             }
+
+            // Processed ImageJ levels are ordinary in-memory BioImages. Read the
+            // requested rectangle directly from their buffers before falling back
+            // to an original file reader; otherwise SavePyramidalZarr receives no
+            // pixels and writes an all-zero pyramid.
+            byte[] bufferedTile = TryGetRawTileFromBuffer(
+                index, tilex, tiley, tileSizeX, tileSizeY);
+            if (bufferedTile != null)
+                return bufferedTile;
 
             if (imRead != null)
             {
