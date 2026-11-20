@@ -330,6 +330,7 @@ namespace BioLib
             BioImage.Status = "Preparing pyramid Zarr writer";
 
             var levelDescriptors = new List<ResolutionLevelDescriptor>();
+            var writableLevels = new List<BioImage>();
             int lastSizeX = int.MaxValue;
             int lastSizeY = int.MaxValue;
             bool haveLast = false;
@@ -367,6 +368,7 @@ namespace BioLib
                     dsample = 1.0;
 
                 levelDescriptors.Add(new ResolutionLevelDescriptor(levelWidth, levelHeight, dsample));
+                writableLevels.Add(levelImage);
                 Log($"[SaveZarr] level={lvl} size={levelWidth}x{levelHeight} downsample={dsample} fmt={levelPixelFormat}");
                 lastSizeX = levelWidth;
                 lastSizeY = levelHeight;
@@ -374,7 +376,10 @@ namespace BioLib
             }
 
             if (levelDescriptors.Count == 0)
+            {
                 levelDescriptors.Add(new ResolutionLevelDescriptor(rootWidth, rootHeight, 1.0));
+                writableLevels.Add(root);
+            }
 
             // Fallback: if there is somehow no Resolutions list, use the image dims.
             // OME-Zarr stores packed RGB as three scalar channel planes. Keep the
@@ -402,13 +407,10 @@ namespace BioLib
                 long totalPlanes = Math.Max(1L, (long)levelDescriptors.Count * root.SizeT * root.SizeZ * exportChannelCount);
                 long writtenPlanes = 0;
 
-                for (int levelIndex = 0; levelIndex < levels.Length; levelIndex++)
+                for (int levelIndex = 0; levelIndex < writableLevels.Count; levelIndex++)
                 {
-                    BioImage levelImage = levels[levelIndex];
-                    if (levelImage == null)
-                        continue;
-
-                    ResolutionLevelDescriptor lvlDesc = levelDescriptors[Math.Min(levelIndex, levelDescriptors.Count - 1)];
+                    BioImage levelImage = writableLevels[levelIndex];
+                    ResolutionLevelDescriptor lvlDesc = levelDescriptors[levelIndex];
                     int levelBitsPerSample = DetermineSourceBitsPerSample(levelImage);
                     int levelBytesPerSample = levelBitsPerSample / 8;
                     var levelPixelFormat = DetermineSourcePixelFormat(levelImage);
@@ -416,7 +418,7 @@ namespace BioLib
                     int levelChannelCount = levelIsInterleavedRgb ? BioImage.GetBands(levelPixelFormat) : 1;
                     bool levelIsBGRA = IsBGRAFormat(levelPixelFormat);
 
-                    BioImage.Status = $"Writing pyramid level {levelIndex + 1}/{levels.Length}";
+                    BioImage.Status = $"Writing pyramid level {levelIndex + 1}/{writableLevels.Count}";
 
                     for (int t = 0; t < levelImage.SizeT; t++)
                     {
