@@ -891,7 +891,15 @@ namespace BioLib
                     // pixel format so every generated level can be assembled into
                     // one consistent RGB or grayscale pyramid.
                     if (bm.Buffers.Count > 0)
+                    {
                         outRes.PixelFormat = bm.Buffers[0].PixelFormat;
+                        // ImageJ is authoritative for the returned buffer size.
+                        // Do not let copied input metadata describe a different
+                        // canvas, because the Zarr writer would then stretch or
+                        // crop this level into the wrong pyramid descriptor.
+                        outRes.SizeX = bm.Buffers[0].SizeX;
+                        outRes.SizeY = bm.Buffers[0].SizeY;
+                    }
                     outRes.PhysicalSizeX = srcRes.PhysicalSizeX;
                     outRes.PhysicalSizeY = srcRes.PhysicalSizeY;
                     outRes.PhysicalSizeZ = srcRes.PhysicalSizeZ;
@@ -1253,6 +1261,7 @@ namespace BioLib
                 }
 
                 pyramidal.OwnTemporaryZarr(tempFile);
+                RestoreProcessedPyramidGeometry(b, pyramidal);
                 pyramidal = ApplyProcessedResultName(b, pyramidal);
                 ReportProgress(100, "Completed pyramid command");
                 Recorder.Record($"ImageJ.RunOnAllPyramidLevels({b}, \"{con}\", {headless.ToString().ToLower()}, {onTab.ToString().ToLower()}, {bioformats.ToString().ToLower()}, {resultInNewTab.ToString().ToLower()});");
@@ -1269,6 +1278,38 @@ namespace BioLib
                 foreach (BioImage result in results)
                     result?.Dispose();
             }
+        }
+
+        private static void RestoreProcessedPyramidGeometry(BioImage source, BioImage result)
+        {
+            if (source == null || result == null ||
+                source.Resolutions == null || result.Resolutions == null)
+                return;
+
+            int count = Math.Min(source.Resolutions.Count, result.Resolutions.Count);
+            for (int level = 0; level < count; level++)
+            {
+                Resolution sourceResolution = source.Resolutions[level];
+                Resolution resultResolution = result.Resolutions[level];
+                resultResolution.PhysicalSizeX = sourceResolution.PhysicalSizeX;
+                resultResolution.PhysicalSizeY = sourceResolution.PhysicalSizeY;
+                resultResolution.PhysicalSizeZ = sourceResolution.PhysicalSizeZ;
+                resultResolution.StageSizeX = sourceResolution.StageSizeX;
+                resultResolution.StageSizeY = sourceResolution.StageSizeY;
+                resultResolution.StageSizeZ = sourceResolution.StageSizeZ;
+                result.Resolutions[level] = resultResolution;
+            }
+
+            if (count > 0 &&
+                source.Resolutions[0].SizeX == result.Resolutions[0].SizeX &&
+                source.Resolutions[0].SizeY == result.Resolutions[0].SizeY)
+            {
+                result.Volume = source.Volume;
+            }
+
+            // The Zarr reader already counted the stored levels before adding synthetic overviews.
+            if (result.Resolutions.Count > 0)
+                result.Resolution = result.GetUnitPerPixel(0);
         }
 
         /// <summary>

@@ -4978,7 +4978,7 @@ namespace BioLib
                 int serie = re.getSeries();
                 int seriesCount = re.getSeriesCount();
 
-                Resolution ReadLevel(int seriesIndex, int resolutionIndex, bool useSeriesMetadata)
+                Resolution ReadLevel(int seriesIndex, int resolutionIndex)
                 {
                     re.setSeries(seriesIndex);
                     re.setResolution(resolutionIndex);
@@ -5008,7 +5008,11 @@ namespace BioLib
                     // For macOS, keep the metadata reads conservative to avoid bus errors on some files.
                     if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                     {
-                        int metadataIndex = useSeriesMetadata ? seriesIndex : resolutionIndex;
+                        // OME metadata is indexed by image/series, not by the
+                        // resolution level inside a series. Using resolutionIndex
+                        // here reads physical sizes and stage positions from an
+                        // unrelated scene in multi-series formats such as ZVI.
+                        int metadataIndex = seriesIndex;
                         try
                         {
                             if (meta.getPixelsPhysicalSizeX(metadataIndex) != null)
@@ -5069,7 +5073,7 @@ namespace BioLib
                     List<Resolution> seriesResolutions = new List<Resolution>();
                     for (int r = 0; r < currentResolutionCount; r++)
                     {
-                        seriesResolutions.Add(ReadLevel(serie, r, false));
+                        seriesResolutions.Add(ReadLevel(serie, r));
                     }
 
                     int pyramidEnd = 0;
@@ -5089,9 +5093,26 @@ namespace BioLib
                         }
                     }
 
+                    // Bio-Formats exposes one physical-pixel size for the image.
+                    // Derive the coarser levels from their dimensions so every
+                    // level covers exactly the same physical field of view.
+                    Resolution baseResolution = seriesResolutions[0];
                     for (int r = 0; r <= pyramidEnd; r++)
                     {
-                        rss.Add(seriesResolutions[r]);
+                        Resolution levelResolution = seriesResolutions[r];
+                        double downsampleX = baseResolution.SizeX > 0 && levelResolution.SizeX > 0
+                            ? (double)baseResolution.SizeX / levelResolution.SizeX
+                            : 1.0;
+                        double downsampleY = baseResolution.SizeY > 0 && levelResolution.SizeY > 0
+                            ? (double)baseResolution.SizeY / levelResolution.SizeY
+                            : 1.0;
+                        levelResolution.PhysicalSizeX = baseResolution.PhysicalSizeX * downsampleX;
+                        levelResolution.PhysicalSizeY = baseResolution.PhysicalSizeY * downsampleY;
+                        levelResolution.PhysicalSizeZ = baseResolution.PhysicalSizeZ;
+                        levelResolution.StageSizeX = baseResolution.StageSizeX;
+                        levelResolution.StageSizeY = baseResolution.StageSizeY;
+                        levelResolution.StageSizeZ = baseResolution.StageSizeZ;
+                        rss.Add(levelResolution);
                     }
                     Console.WriteLine("Series: " + serie + " Resolutions:" + currentResolutionCount + " Pyramidal:" + (pyramidEnd + 1));
                     return rss;
@@ -5107,7 +5128,7 @@ namespace BioLib
                     if (resCount <= 0)
                         continue;
 
-                    Resolution level = ReadLevel(s, 0, true);
+                    Resolution level = ReadLevel(s, 0);
                     if (seriesLevels.Count == 0)
                     {
                         seriesLevels.Add(level);
@@ -5115,9 +5136,7 @@ namespace BioLib
                     }
 
                     var prev = seriesLevels[seriesLevels.Count - 1];
-                    if (prev.SizeX > level.SizeX &&
-                        prev.SizeY > level.SizeY &&
-                        prev.PixelFormat == level.PixelFormat)
+                    if (AreSeriesPyramidLevels(prev, level))
                     {
                         seriesLevels.Add(level);
                     }
@@ -5135,6 +5154,42 @@ namespace BioLib
                 Console.WriteLine(e.Message);
             }
             return rss;
+        }
+
+        private static bool AreSeriesPyramidLevels(Resolution finer, Resolution coarser)
+        {
+            if (finer.SizeX <= coarser.SizeX ||
+                finer.SizeY <= coarser.SizeY ||
+                finer.PixelFormat != coarser.PixelFormat)
+                return false;
+
+            // A smaller series is not necessarily a pyramid level. Formats such as
+            // ZVI commonly expose independent scenes as consecutive series. Real
+            // pyramid levels describe the same stage rectangle at a larger pixel
+            // size, so require both their origin and physical coverage to agree.
+            if (finer.PhysicalSizeX <= 0 || finer.PhysicalSizeY <= 0 ||
+                coarser.PhysicalSizeX <= 0 || coarser.PhysicalSizeY <= 0 ||
+                coarser.PhysicalSizeX <= finer.PhysicalSizeX ||
+                coarser.PhysicalSizeY <= finer.PhysicalSizeY)
+                return false;
+
+            double finerWidth = finer.SizeX * finer.PhysicalSizeX;
+            double finerHeight = finer.SizeY * finer.PhysicalSizeY;
+            double coarserWidth = coarser.SizeX * coarser.PhysicalSizeX;
+            double coarserHeight = coarser.SizeY * coarser.PhysicalSizeY;
+
+            static bool NearlyEqual(double a, double b, double relativeTolerance)
+            {
+                double scale = Math.Max(Math.Abs(a), Math.Abs(b));
+                return scale > 0 && Math.Abs(a - b) <= scale * relativeTolerance;
+            }
+
+            double originToleranceX = Math.Max(finer.PhysicalSizeX, coarser.PhysicalSizeX);
+            double originToleranceY = Math.Max(finer.PhysicalSizeY, coarser.PhysicalSizeY);
+            return Math.Abs(finer.StageSizeX - coarser.StageSizeX) <= originToleranceX &&
+                   Math.Abs(finer.StageSizeY - coarser.StageSizeY) <= originToleranceY &&
+                   NearlyEqual(finerWidth, coarserWidth, 0.02) &&
+                   NearlyEqual(finerHeight, coarserHeight, 0.02);
         }
         private static int GetPyramidCount(Resolution[] rss)
         {
@@ -8114,6 +8169,19 @@ namespace BioLib
                 b.Resolutions.AddRange(ress);
             b.PyramidNativeLevelCount = b.Resolutions.Count;
             AppendSyntheticPyramidResolutions(b);
+
+            // Metadata coordinates are expressed relative to the full-resolution
+            // image. BioImage.Resolution defaults to 1.0, which can select a coarse
+            // pyramid level before the viewer has initialized and consequently
+            // scale Volume and every imported ROI with the wrong pixel size.
+            // Anchor metadata conversion and the initial tile read to level 0;
+            // ImageView will choose the display resolution after construction.
+            if (b.Resolutions.Count > 0)
+            {
+                double baseUnitsPerPixel = b.GetUnitPerPixel(0);
+                if (baseUnitsPerPixel > 0)
+                    b.Resolution = baseUnitsPerPixel;
+            }
             try
             {
                 string s = b.meta.getStageLabelName(serie);
@@ -8132,9 +8200,13 @@ namespace BioLib
 
             b.Volume = new VolumeD(new Point3D(b.StageSizeX, b.StageSizeY, b.StageSizeZ), new Point3D(b.PhysicalSizeX * SizeX, b.PhysicalSizeY * SizeY, b.PhysicalSizeZ * SizeZ));
             int rc = b.meta.getROICount();
+            HashSet<string> referencedRoiIds = GetReferencedRoiIds(b.meta, serie);
+            bool includeUnreferencedRois = b.seriesCount <= 1;
             for (int im = 0; im < rc; im++)
             {
                 string roiID = b.meta.getROIID(im);
+                if (!ShouldIncludeRoi(roiID, referencedRoiIds, includeUnreferencedRois))
+                    continue;
                 string roiName = b.meta.getROIName(im);
                 ZCT co = new ZCT(0, 0, 0);
                 int scount = 1;
@@ -9483,8 +9555,29 @@ namespace BioLib
 
                 lock (imRead)
                 {
-                    if (imRead.getSeries() != level)
-                        imRead.setSeries(level);
+                    int sourceSeries = Math.Clamp(b.series, 0, Math.Max(0, imRead.getSeriesCount() - 1));
+                    if (imRead.getSeries() != sourceSeries)
+                        imRead.setSeries(sourceSeries);
+
+                    int resolutionCount = Math.Max(1, imRead.getResolutionCount());
+                    if (resolutionCount > 1)
+                    {
+                        // Native pyramid levels belonging to one Bio-Formats
+                        // series must be selected with setResolution. Treating
+                        // the level as a series index reads a different scene in
+                        // formats such as ZVI and contaminates processed pyramids.
+                        imRead.setResolution(Math.Clamp(level, 0, resolutionCount - 1));
+                    }
+                    else
+                    {
+                        // A few readers expose flattened pyramids as consecutive
+                        // series. GetResolutions validates that those series cover
+                        // the same physical field before adding them as levels.
+                        int levelSeries = Math.Clamp(sourceSeries + level, 0, Math.Max(0, imRead.getSeriesCount() - 1));
+                        if (imRead.getSeries() != levelSeries)
+                            imRead.setSeries(levelSeries);
+                        imRead.setResolution(0);
+                    }
                     int SizeX = imRead.getSizeX();
                     int SizeY = imRead.getSizeY();
                     bool flat = imRead.hasFlattenedResolutions();
@@ -9511,7 +9604,14 @@ namespace BioLib
                     if (sy <= 1)
                         return null;
                     byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
-                var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, true);
+                    var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, true);
+                    // ImageJ pyramid processing explicitly asks for the source
+                    // samples. Returning RangedRGBA here silently converted a
+                    // 16-bit grayscale ZVI level into display RGB before the
+                    // command ran, and the converted level was then written back
+                    // with the wrong pixel layout and apparent magnification.
+                    if (returnRaw)
+                        return raw;
                     if (PixelFormat == AForge.PixelFormat.Format16bppGrayScale &&
                         b.IsZarrSource)
                     {
@@ -11070,6 +11170,47 @@ namespace BioLib
             Recorder.Record($"BioImage.OpenXML(\"{file.Replace("\\", "\\\\").Replace("\"", "\\\"")}\");");
             return f[0].ToString();
         }
+
+        private static HashSet<string> GetReferencedRoiIds(
+            loci.formats.meta.IMetadata metadata,
+            int series)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            if (metadata == null || series < 0)
+                return ids;
+
+            try
+            {
+                int count = metadata.getImageROIRefCount(series);
+                for (int i = 0; i < count; i++)
+                {
+                    string id = metadata.getImageROIRef(series, i);
+                    if (!string.IsNullOrWhiteSpace(id))
+                        ids.Add(id);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Unable to read image ROI references: " + e.Message);
+            }
+
+            return ids;
+        }
+
+        private static bool ShouldIncludeRoi(
+            string roiId,
+            HashSet<string> referencedRoiIds,
+            bool includeUnreferencedRois)
+        {
+            if (referencedRoiIds != null && referencedRoiIds.Count > 0)
+                return !string.IsNullOrWhiteSpace(roiId) && referencedRoiIds.Contains(roiId);
+
+            // With multiple images, an unreferenced ROI cannot safely be assigned
+            // to every series. Doing so places annotations from other ZVI scenes
+            // outside the current image. Preserve the legacy behavior for files
+            // containing a single image, where the association is unambiguous.
+            return includeUnreferencedRois;
+        }
         /// It reads the OME-XML file and converts the ROIs to a list of ROI objects
         /// 
         /// @param file the path to the OME-TIFF file
@@ -11139,9 +11280,13 @@ namespace BioLib
             }
             VolumeD volume = new VolumeD(new Point3D(stageSizeX, stageSizeY, stageSizeZ), new Point3D(physicalSizeX * SizeX, physicalSizeY * SizeY, physicalSizeZ * SizeZ));
             int rc = meta.getROICount();
+            HashSet<string> referencedRoiIds = GetReferencedRoiIds(meta, series);
+            bool includeUnreferencedRois = seriesCount <= 1;
             for (int im = 0; im < rc; im++)
             {
                 string roiID = meta.getROIID(im);
+                if (!ShouldIncludeRoi(roiID, referencedRoiIds, includeUnreferencedRois))
+                    continue;
                 string roiName = meta.getROIName(im);
                 ZCT co = new ZCT(0, 0, 0);
                 int scount = 1;
