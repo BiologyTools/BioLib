@@ -925,12 +925,19 @@ namespace BioLib
         static BioImage bioImage;
         private static readonly object imageJRunLock = new object();
         private static readonly object embeddedRuntimeConfigurationLock = new object();
-        private static bool embeddedRuntimeConfigured;
+        // ImageJ clears macro options when the string is empty.
+        private const string DefaultMacroOptions = " ";
+        private static volatile bool embeddedRuntimeConfigured;
+        private static readonly bool useHeadlessMacRuntime = OperatingSystem.IsMacOS() &&
+            !(AppContext.TryGetSwitch("BioLib.EnableMacOSImageJDialogs", out bool enableDialogs) && enableDialogs);
+
+        [DllImport("/usr/lib/libSystem.B.dylib", EntryPoint = "setenv", SetLastError = true)]
+        private static extern int SetNativeEnvironment(string name, string value, int overwrite);
 
         /// <summary>
         /// Prepares the embedded IKVM runtime before ImageJ initializes any
-        /// Java graphics classes. BioGTK owns the macOS UI, so ImageJ commands
-        /// run through the headless macro engine and return their pixels to GTK.
+        /// Java graphics classes. GTK provides the AppKit event loop when the
+        /// bundled IKVM runtime supports native dialogs.
         /// </summary>
         private static void ConfigureEmbeddedImageJRuntime()
         {
@@ -942,13 +949,25 @@ namespace BioLib
                 if (embeddedRuntimeConfigured)
                     return;
 
-                if (OperatingSystem.IsMacOS())
+                if (useHeadlessMacRuntime)
                 {
-                    // This must be set before GraphicsEnvironment or Toolkit is
-                    // initialized. Native AWT cannot safely share GTK's AppKit
-                    // event loop, while ImageJ's macro/image engine works headless.
                     java.lang.System.setProperty("java.awt.headless", "true");
                     java.lang.System.setProperty("apple.awt.UIElement", "true");
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    // OpenJDK uses this flag to use the host's existing AppKit event loop.
+                    if (SetNativeEnvironment($"JAVA_STARTED_ON_FIRST_THREAD_{Environment.ProcessId}", "1", 1) != 0)
+                        throw new InvalidOperationException("Could not configure the macOS ImageJ dialog runtime.");
+
+                    java.lang.System.setProperty("java.awt.headless", "false");
+                    if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
+                    {
+                        // The IKVM Java 8 runtime image ships the Aqua library only for Intel.
+                        const string metalLookAndFeel = "javax.swing.plaf.metal.MetalLookAndFeel";
+                        java.lang.System.setProperty("swing.defaultlaf", metalLookAndFeel);
+                        java.lang.System.setProperty("swing.systemlaf", metalLookAndFeel);
+                    }
                 }
 
                 embeddedRuntimeConfigured = true;
@@ -960,7 +979,7 @@ namespace BioLib
             ConfigureEmbeddedImageJRuntime();
             lock (imageJRunLock)
             {
-                cons = PrepareEmbeddedMacCommand(con);
+                cons = PrepareEmbeddedMacCommand(con, headless);
                 indexs = 0;
                 Fiji.headless = headless;
                 Fiji.bioformats = bioformats;
@@ -983,12 +1002,9 @@ namespace BioLib
 
             ConfigureEmbeddedImageJRuntime();
 
-            // Do not instantiate ImageJ's AWT Recorder in the GTK process.
-            // Supplying an options argument, even when empty, tells the macro
-            // interpreter to use command defaults without opening a Java dialog.
-            if (OperatingSystem.IsMacOS())
+            if (useHeadlessMacRuntime)
             {
-                parameterizedCommand = BuildRunCommand(commandName, string.Empty);
+                parameterizedCommand = BuildRunCommand(commandName, DefaultMacroOptions);
                 return true;
             }
 
@@ -1054,17 +1070,75 @@ namespace BioLib
             }
         }
 
+        // ImageJ uses an invisible AWT owner when embedded in GTK. Its modal
+        // dialogs can otherwise open behind the host's windows and wait unseen.
+        private sealed class ImageJDialogFocusScope : java.awt.@event.AWTEventListener, IDisposable
+        {
+            private readonly java.awt.Toolkit toolkit = java.awt.Toolkit.getDefaultToolkit();
+            private readonly object sync = new object();
+            private readonly List<(java.awt.Dialog Dialog, bool AlwaysOnTop)> dialogs = new();
+            private bool disposed;
+
+            public ImageJDialogFocusScope()
+            {
+                toolkit.addAWTEventListener(this, java.awt.AWTEvent.WINDOW_EVENT_MASK);
+            }
+
+            public void eventDispatched(java.awt.AWTEvent ev)
+            {
+                if (ev.getID() != java.awt.@event.WindowEvent.WINDOW_OPENED ||
+                    ev.getSource() is not java.awt.Dialog dialog || !dialog.isModal())
+                    return;
+
+                lock (sync)
+                {
+                    if (disposed)
+                        return;
+                    dialogs.Add((dialog, dialog.isAlwaysOnTop()));
+                    BioImage.Progress = 0;
+                    BioImage.Status = $"Waiting for ImageJ dialog: {dialog.getTitle()}";
+                    dialog.setAlwaysOnTop(true);
+                    dialog.toFront();
+                    dialog.requestFocus();
+                }
+            }
+
+            public void Dispose()
+            {
+                toolkit.removeAWTEventListener(this);
+                lock (sync)
+                {
+                    disposed = true;
+                    foreach (var entry in dialogs)
+                    {
+                        if (entry.Dialog.isDisplayable())
+                            entry.Dialog.setAlwaysOnTop(entry.AlwaysOnTop);
+                    }
+                    dialogs.Clear();
+                }
+            }
+        }
+
         private static BioImage RunImageJ(bool registerWithImages = true)
         {
             ConfigureEmbeddedImageJRuntime();
+            using var dialogFocus = OperatingSystem.IsWindows() && !java.awt.GraphicsEnvironment.isHeadless()
+                ? new ImageJDialogFocusScope()
+                : null;
             ImagePlus ip = null;
             ImagePlus result = null;
             try
             {
+                BioImage.Progress = 0;
+                BioImage.Status = "Preparing ImageJ command";
                 ip = GetImagePlus(bioImage);
                 WindowManager.setTempCurrentImage(ip);
-                IJ.runMacro(cons);
+                BioImage.Status = "Running ImageJ command";
+                string macroResult = IJ.runMacro(cons);
+                BioImage.Status = "Converting ImageJ result";
                 result = WindowManager.getCurrentImage() ?? ip;
+                if (useHeadlessMacRuntime && macroResult == "[aborted]")
+                    throw new InvalidOperationException("ImageJ aborted while running the macro in headless mode.");
                 BioImage b = GetBioImage(result, bioImage.Volume, bioImage.PhysicalSizeX, bioImage.PhysicalSizeY, bioImage.PhysicalSizeZ);
                 string s = registerWithImages ? Images.GetImageName(b.Filename) : b.Filename;
                 if (registerWithImages)
@@ -1162,13 +1236,13 @@ namespace BioLib
                 .Replace("\n", "\\n", StringComparison.Ordinal);
         }
 
-        private static string PrepareEmbeddedMacCommand(string command)
+        private static string PrepareEmbeddedMacCommand(string command, bool headless)
         {
-            if (!OperatingSystem.IsMacOS())
+            if (!OperatingSystem.IsMacOS() || (!headless && !useHeadlessMacRuntime))
                 return command;
 
             if (TryExtractBareRunCommand(command, out string commandName))
-                return BuildRunCommand(commandName, string.Empty);
+                return BuildRunCommand(commandName, DefaultMacroOptions);
 
             return command;
         }

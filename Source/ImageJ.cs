@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -819,9 +819,12 @@ namespace BioLib
 
             try
             {
-                if (Fiji.TryParameterizeInteractiveRunCommand(previewImage, con, headless, resultInNewTab, out string parameterizedCommand))
-                    return parameterizedCommand;
-                return con;
+                ReportProgress(0, "Configuring ImageJ command; check the ImageJ options dialog");
+                // The native ImageJ dialog needs the GTK event loop even if the preview was cached.
+                return await Task.Run(() =>
+                    Fiji.TryParameterizeInteractiveRunCommand(previewImage, con, headless, resultInNewTab, out string parameterizedCommand)
+                        ? parameterizedCommand
+                        : con).ConfigureAwait(false);
             }
             finally
             {
@@ -881,7 +884,8 @@ namespace BioLib
             {
                 ReportProgress(0, $"Running Fiji on pyramid level {level + 1}/{b.Resolutions.Count}");
                 Console.WriteLine("[ImageJ.RunOnPyramidalImageInternal] dispatching level image through IKVM/ImagePlus runner");
-                BioImage bm = Fiji.RunOnImageInProcess(levelImage, con, headless, true, resultInNewTab, false);
+                BioImage bm = await Task.Run(() => Fiji.RunOnImageInProcess(
+                    levelImage, con, headless, true, resultInNewTab, false)).ConfigureAwait(false);
                 bm = RestoreProcessedPixelFormat(bm, levelImage.Resolutions[0].PixelFormat);
                 if (bm != null && bm.Resolutions.Count > 0 && levelImage.Resolutions.Count > 0)
                 {
