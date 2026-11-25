@@ -9582,7 +9582,7 @@ namespace BioLib
                     int SizeY = imRead.getSizeY();
                     bool flat = imRead.hasFlattenedResolutions();
                     bool littleEndian = imRead.isLittleEndian();
-                    bool interleaved = imRead.isInterleaved();
+                    bool interleaved = imRead.getRGBChannelCount() <= 1 || imRead.isInterleaved();
                     PixelFormat PixelFormat = b.Resolutions[level].PixelFormat;
                     if (tilex < 0)
                         tilex = 0;
@@ -9604,7 +9604,7 @@ namespace BioLib
                     if (sy <= 1)
                         return null;
                     byte[] bytesr = b.imRead.openBytes(index, tilex, tiley, sx, sy);
-                    var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, true);
+                    var raw = new Bitmap(b.file, sx, sy, PixelFormat, bytesr, new ZCT(), index, null, littleEndian, interleaved);
                     // ImageJ pyramid processing explicitly asks for the source
                     // samples. Returning RangedRGBA here silently converted a
                     // 16-bit grayscale ZVI level into display RGB before the
