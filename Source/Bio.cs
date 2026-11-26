@@ -5616,10 +5616,8 @@ namespace BioLib
                 int SizeY = image.GetField(TiffTag.IMAGELENGTH)[0].ToInt();
                 b.littleEndian = image.IsBigEndian();
                 int RGBChannelCount = image.GetField(TiffTag.SAMPLESPERPIXEL)[0].ToInt();
-                string desc = "";
-
                 FieldValue[] f = image.GetField(TiffTag.IMAGEDESCRIPTION);
-                desc = f[0].ToString();
+                string desc = f?[0].ToString() ?? "";
                 ImageJDesc imDesc = null;
                 b.sizeC = 1;
                 b.sizeT = 1;
@@ -5799,6 +5797,8 @@ namespace BioLib
                 }
                 else
                 {
+                    // LibTiff decodes scanlines to the host's byte order.
+                    b.littleEndian = BitConverter.IsLittleEndian;
                     for (int p = series * pages; p < (series + 1) * pages; p++)
                     {
                         image.SetDirectory((short)p);
@@ -6682,15 +6682,9 @@ namespace BioLib
             }
             if (file.EndsWith(".tif") || file.EndsWith(".TIF") || file.EndsWith("tiff") || file.EndsWith("TIFF"))
             {
-                Tiff image = Tiff.Open(file, "r");
-                string desc = "";
+                using Tiff image = Tiff.Open(file, "r");
                 FieldValue[] f = image.GetField(TiffTag.IMAGEDESCRIPTION);
-                desc = f[0].ToString();
-                image.Close();
-                if (desc.Contains("OME-XML"))
-                    return true;
-                else
-                    return false;
+                return f?[0].ToString().Contains("OME-XML") == true;
             }
             if ((file.EndsWith("png") || file.EndsWith("PNG") || file.EndsWith("jpg") || file.EndsWith("JPG") ||
                 file.EndsWith("jpeg") || file.EndsWith("JPEG") || file.EndsWith("bmp") || file.EndsWith("BMP")))

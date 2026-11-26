@@ -20,6 +20,7 @@
     <PackageTags>Biology; ImageJ; Bio-Formats; OMERO; Image-Stacks; Microscopy; Whole-Slide-Image; QuPath; Napari; </PackageTags>
     <PackageReleaseNotes>
 		- Preserves native Bio-Formats pyramid levels on macOS when opening and reading tiled images.
+		- Opens TIFF stacks without an image description and decodes 16-bit TIFF scanlines in the correct byte order.
 	</PackageReleaseNotes>
     <Authors>Erik Repo</Authors>
     <Platforms>AnyCPU;x64</Platforms>
