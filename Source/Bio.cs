@@ -4954,10 +4954,20 @@ namespace BioLib
         /// > Initialize the OME-XML library
         private static void InitReader()
         {
-            reader = new ImageReader();
+            reader = CreateImageReader();
             inr = true;
             if (inf && inr && inw)
                 initialized = true;
+        }
+
+        private static ImageReader CreateImageReader()
+        {
+            var imageReader = new ImageReader();
+            // The conservative macOS metadata path cannot infer the pixel sizes
+            // of flattened pyramid levels. Preserve Bio-Formats' level grouping.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                imageReader.setFlattenedResolutions(false);
+            return imageReader;
         }
         /// > Initialize the OME-XML library
         private static void InitWriter()
@@ -6698,7 +6708,7 @@ namespace BioLib
         {
             if (!isOME(file))
                 return false;
-            ImageReader reader = new ImageReader();
+            ImageReader reader = CreateImageReader();
             var meta = (IMetadata)((OMEXMLService)new ServiceFactory().getInstance(typeof(OMEXMLService))).createOMEXMLMetadata();
             reader.setMetadataStore((MetadataStore)meta);
             file = file.Replace("\\", "/");
@@ -7943,7 +7953,7 @@ namespace BioLib
                 throw new InvalidDataException("File is empty or null");
             EnsureBioFormatsInitialized();
             Console.WriteLine("OpenOME " + file);
-            reader = new ImageReader();
+            reader = CreateImageReader();
             if (tileSizeX == 0)
                 tileSizeX = 1920;
             if (tileSizeY == 0)
@@ -9768,8 +9778,17 @@ namespace BioLib
             {
                 lock (imRead)
                 {
-                    if (imRead.getSeries() != level)
-                        imRead.setSeries(level);
+                    if (imRead.hasFlattenedResolutions())
+                    {
+                        if (imRead.getSeries() != level)
+                            imRead.setSeries(level);
+                    }
+                    else
+                    {
+                        if (imRead.getSeries() != series)
+                            imRead.setSeries(series);
+                        imRead.setResolution(Math.Clamp(level, 0, imRead.getResolutionCount() - 1));
+                    }
 
                     int sizeX = imRead.getSizeX();
                     int sizeY = imRead.getSizeY();
@@ -11225,7 +11244,7 @@ namespace BioLib
             OMEXMLService service = (OMEXMLService)factory.getInstance(typeof(OMEXMLService));
             loci.formats.ome.OMEXMLMetadata meta = service.createOMEXMLMetadata();
             // create format reader
-            ImageReader imageReader = new ImageReader();
+            ImageReader imageReader = CreateImageReader();
             imageReader.setMetadataStore(meta);
             imageReader.setOriginalMetadataPopulated(true);
             imageReader.setMetadataFiltered(false);
@@ -12138,7 +12157,7 @@ namespace BioLib
         }
         public static int GetSeriesCount(string file)
         {
-            ImageReader r = new ImageReader();
+            ImageReader r = CreateImageReader();
             try
             {
                 r.setId(file);
